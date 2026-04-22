@@ -189,8 +189,13 @@ FETCH IN ORDER:
 1. Flow alerts: size_greater_oi=true, is_otm=true, min_ask_perc=0.7, limit=50. Both calls AND puts.
 2. Dark pool recent: limit=40. Cross-reference tickers in both sweeps AND dark pool (higher conviction).
 3. Market tide: net direction.
-4. For each unique non-macro ticker (up to 8): fetch darkpool/{ticker} last 7 days. Count consecutive days with DP prints at same price zone (±2%). count = staircase_days. Zone = staircase_zone.
-5. For top 6 tickers: fetch shorts/interest-float/v2, shorts/data (borrow_rate), shorts/ftds, options-volume (put_call_ratio), net-prem-ticks (trending up/down), earnings, greek-exposure (bias, wall, comment), volatility/term-structure (near%, far%, elevated bool), stock-price-levels.
+4. Earnings calendar: pull next 14 days premarket + afterhours. Build a map {ticker -> {next_date, days_away}} so EVERY signal's earnings.within_14_days gets populated, not just top 6.
+5. Congress trades: pull last 30 days of congressional trades. For each signal's ticker, attach {congress.any: bool, congress.buys: n, congress.sells: n, congress.net_side: "buy"|"sell"|null, congress.latest_name: "Pelosi", congress.latest_date: "2026-04-18"}.
+6. Insider activity: pull last 14 days insider transactions. For each signal's ticker, attach {insider.any: bool, insider.buys: n, insider.sells: n, insider.net_amount: number, insider.net_side: "buy"|"sell"|null}.
+7. News headlines: pull last 48h market news. For each signal's ticker, attach {news.any: bool, news.latest: "headline", news.catalyst_type: "earnings"|"upgrade"|"downgrade"|"approval"|"macro"|null, news.hours_ago: number}.
+8. FDA calendar: pull upcoming 30 days. For each biotech/pharma ticker, attach {fda.upcoming: bool, fda.event_date: "2026-05-01", fda.event_type: "PDUFA"|"AdComm"|"Phase 3"|null}.
+9. For each unique non-macro ticker (up to 8): fetch darkpool/{ticker} last 7 days. Count consecutive days with DP prints at same price zone (±2%). count = staircase_days. Zone = staircase_zone.
+10. For top 6 tickers: fetch shorts/interest-float/v2, shorts/data (borrow_rate), shorts/ftds, options-volume (put_call_ratio), net-prem-ticks (trending up/down), greek-exposure (bias, wall, comment), volatility/term-structure (near%, far%, elevated bool), stock-price-levels.
 
 CLASSIFY sqType:
 staircase (3+ DP days, no call sweep yet), short_squeeze (call sweep si>10%), gamma_squeeze (short_gamma + calls), delta_squeeze (size/OI>3 call), liquidity_sq (float<20M), ftd_squeeze (ftds elevated), vol_squeeze (UVXY/VIX sweep), cap_flush (put sweep+dp sell), gamma_flush (long_gamma+puts), stop_hunt (near support), margin_flush (large dp sell no news), vix_flush (broad VIX spike), liq_flush (put only thin bids)
@@ -201,9 +206,9 @@ trade_day: 1=today, 2-3=yesterday, 4-7=this week
 MACRO set (SPY QQQ IWM DIA TLT GLD XLF XLE SQQQ TQQQ UVXY VIX): cat=macro
 
 SCHEMA (one object per signal):
-{"id":"str","ticker":"NVDA","cat":"squeeze","sig":"cs_dp","sqType":"short_squeeze","premium":500000,"size":2000,"oi":400,"strike":"$155c","expiry":"Apr 25","exchange":"CBOE","time":"09:32","trade_day":1,"day":1,"sweepOk":true,"dpOk":true,"sweep_count":2,"ask_pct":0.85,"is_otm":true,"staircase_days":5,"staircase_zone":"$148-152","short":{"si_pct":28,"days_to_cover":4.2,"borrow_rate":35,"short_vol_ratio":0.48,"ftds_elevated":false,"float_shares_outstanding":45000000},"options_vol":{"put_call_ratio":0.4},"net_prem":{"trending":"up"},"earnings":{"within_14_days":false,"next_date":"May 28","days_away":51},"gex":{"bias":"short_gamma","wall":"$160","comment":"Dealers short gamma above $155"},"iv":{"elevated":false,"near":38,"far":35},"levels":{"support":"$148","resistance":"$162","entry_zone":"$150-154","target":"$165"}}
+{"id":"str","ticker":"NVDA","cat":"squeeze","sig":"cs_dp","sqType":"short_squeeze","premium":500000,"size":2000,"oi":400,"strike":"$155c","expiry":"Apr 25","exchange":"CBOE","time":"09:32","trade_day":1,"day":1,"sweepOk":true,"dpOk":true,"sweep_count":2,"ask_pct":0.85,"is_otm":true,"staircase_days":5,"staircase_zone":"$148-152","short":{"si_pct":28,"days_to_cover":4.2,"borrow_rate":35,"short_vol_ratio":0.48,"ftds_elevated":false,"float_shares_outstanding":45000000},"options_vol":{"put_call_ratio":0.4},"net_prem":{"trending":"up"},"earnings":{"within_14_days":false,"next_date":"May 28","days_away":51},"gex":{"bias":"short_gamma","wall":"$160","comment":"Dealers short gamma above $155"},"iv":{"elevated":false,"near":38,"far":35},"levels":{"support":"$148","resistance":"$162","entry_zone":"$150-154","target":"$165"},"congress":{"any":true,"buys":2,"sells":0,"net_side":"buy","latest_name":"Pelosi","latest_date":"2026-04-18"},"insider":{"any":true,"buys":1,"sells":0,"net_amount":350000,"net_side":"buy"},"news":{"any":true,"latest":"headline","catalyst_type":"upgrade","hours_ago":4},"fda":{"upcoming":false,"event_date":null,"event_type":null}}
 
-Use null for unavailable fields. Return [] if all fetches fail.`;
+Use null for unavailable fields. Return [] if all fetches fail. Aim for full ticker coverage on earnings/congress/insider/news — these should rarely be null on large-cap US tickers.`;
 
 // ── HELPERS ───────────────────────────────────────────────────────────────────
 const fmt  = n => !n ? "—" : +n >= 1e6 ? `$${(+n/1e6).toFixed(2)}M` : +n >= 1e3 ? `$${(+n/1e3).toFixed(0)}K` : `$${(+n).toFixed(2)}`;
@@ -243,6 +248,7 @@ function recordHist(prints, prev) {
       sweepOk: false, dpOk: false,
       latest_strike: "", latest_expiry: "",
       latest_staircase_days: 0,
+      congress: null, insider: null, news: null, fda: null, earnings: null,
     };
     if (!e.days_seen.includes(td)) e.days_seen.push(td);
     e.last_seen             = td;
@@ -254,9 +260,25 @@ function recordHist(prints, prev) {
     if (p.strike) e.latest_strike = p.strike;
     if (p.expiry) e.latest_expiry = p.expiry;
     e.latest_staircase_days = Math.max(e.latest_staircase_days||0, parseInt(p.staircase_days)||0);
+    // Persist confluence data (always keep the latest non-null snapshot)
+    if (p.congress) e.congress = p.congress;
+    if (p.insider)  e.insider  = p.insider;
+    if (p.news)     e.news     = p.news;
+    if (p.fda)      e.fda      = p.fda;
+    if (p.earnings) e.earnings = p.earnings;
     h[key] = e;
   });
   return pruneHist(h);
+}
+
+// ── POSITION SIZE HINT (discipline layer) ─────────────────────────────────────
+// Maps days-building to recommended account % per profile rules:
+// < 3d = wait, 3-4d = 1%, 5-6d = 2%, 7+d = 3% cap.
+function sizingHint(days) {
+  if (days >= 7) return { pct: "3%", color: "#00ff88", label: "MAX SIZE" };
+  if (days >= 5) return { pct: "2%", color: "#ffe033", label: "SIZE UP" };
+  if (days >= 3) return { pct: "1%", color: "#ff9955", label: "START" };
+  return             { pct: "0%", color: "#556677", label: "WAIT"    };
 }
 function topBuilds(h, cat, sortMode, n) {
   return Object.values(h||{})
@@ -356,15 +378,21 @@ function TopCard({ entry, rank, sortMode }) {
   const days   = entry.days_seen?.length || 0;
   const barPct = Math.min(100, (days / 15) * 100);
   const daysC  = days >= 7 ? "#00ff88" : days >= 4 ? "#ffe033" : days >= 2 ? "#ff9955" : "#556677";
+  const size   = sizingHint(days);
   return (
     <div style={{ padding:"9px 12px", borderBottom:"1px solid #0e1a24" }}>
-      <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:5 }}>
+      <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:5, flexWrap:"wrap" }}>
         <span style={{ fontSize:9, color:"#2e4055", width:22, fontWeight:700 }}>#{rank}</span>
         <span style={{ fontSize:13 }}>{def.icon}</span>
         <span style={{ fontWeight:700, fontSize:12, color:"#ddeeff", minWidth:48 }}>{entry.ticker}</span>
         <span style={{ fontSize:8, color:def.color, border:`1px solid ${def.color}55`, padding:"1px 5px", letterSpacing:"0.08em" }}>{def.label}</span>
         {entry.sweepOk && <span style={{ fontSize:8, color:"#ffe033", border:"1px solid #ffe03344", padding:"1px 4px" }}>SW</span>}
         {entry.dpOk    && <span style={{ fontSize:8, color:"#44ffbb", border:"1px solid #44ffbb44", padding:"1px 4px" }}>DP</span>}
+        {entry.congress?.any && <span style={{ fontSize:8, color: entry.congress.net_side==="buy"?"#00ff88":entry.congress.net_side==="sell"?"#ff3355":"#66ccff", border:`1px solid ${entry.congress.net_side==="buy"?"#00ff8844":entry.congress.net_side==="sell"?"#ff335544":"#66ccff44"}`, padding:"1px 4px" }}>🏛</span>}
+        {entry.insider?.any  && <span style={{ fontSize:8, color: entry.insider.net_side==="buy"?"#00ff88":"#ff9955", border:`1px solid ${entry.insider.net_side==="buy"?"#00ff8844":"#ff995544"}`, padding:"1px 4px" }}>👤</span>}
+        {entry.news?.any     && <span style={{ fontSize:8, color:"#ff9955", border:"1px solid #ff995544", padding:"1px 4px" }}>📰</span>}
+        {entry.fda?.upcoming && <span style={{ fontSize:8, color:"#cc44ff", border:"1px solid #cc44ff44", padding:"1px 4px" }}>💊</span>}
+        {entry.earnings?.within_14_days && <span style={{ fontSize:8, color:"#ff4444", border:"1px solid #ff444444", padding:"1px 4px" }}>📅</span>}
         <span style={{ marginLeft:"auto", fontSize:10, color:"#7aaed0", fontWeight:700 }}>{fmt(entry.total_premium)}</span>
       </div>
       <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:5 }}>
@@ -373,6 +401,9 @@ function TopCard({ entry, rank, sortMode }) {
         </div>
         <span style={{ fontSize:9, color:daysC, fontWeight:700, minWidth:70, textAlign:"right" }}>
           {days}d building
+        </span>
+        <span style={{ fontSize:9, fontWeight:700, color:size.color, border:`1px solid ${size.color}55`, padding:"1px 6px", minWidth:54, textAlign:"center" }}>
+          {size.label} {size.pct}
         </span>
       </div>
       {rec && (
@@ -423,16 +454,20 @@ function Card({ p, open, onToggle, pos, onSave, isNew }) {
   const accent  = sqT?.color || sigDef.color;
 
   const [tab, setTab]   = useState("overview");
-  const [ep,  setEp]    = useState(pos?.entryPrice || "");
-  const [cp,  setCp]    = useState(pos?.currentPrice || "");
-  const [note,setNote]  = useState(pos?.note || "");
-  const [saved,setSaved]= useState(false);
+  const [ep,   setEp]    = useState(pos?.entryPrice || "");
+  const [cp,   setCp]    = useState(pos?.currentPrice || "");
+  const [stop, setStop]  = useState(pos?.stopPrice || "");
+  const [note, setNote]  = useState(pos?.note || "");
+  const [saved,setSaved] = useState(false);
 
   const entryN   = parseFloat(ep);
   const currentN = parseFloat(cp);
+  const stopN    = parseFloat(stop);
   const pnlPct   = (!isNaN(entryN) && !isNaN(currentN) && entryN > 0) ? ((currentN - entryN) / entryN * 100).toFixed(1) : null;
+  const stopHit  = (!isNaN(currentN) && !isNaN(stopN) && stopN > 0 && currentN <= stopN);
+  const lockNudge= (pnlPct !== null && parseFloat(pnlPct) >= 50);
 
-  const savePos = () => { onSave({ entryPrice:ep, currentPrice:cp, note }); setSaved(true); setTimeout(()=>setSaved(false),2000); };
+  const savePos = () => { onSave({ entryPrice:ep, currentPrice:cp, stopPrice:stop, note }); setSaved(true); setTimeout(()=>setSaved(false),2000); };
 
   const direction = (() => {
     if (p.cat==="macro") return { text:p.sqType==="macro_bull"?"Market flow BULLISH. Be more aggressive on squeeze setups.":"Market flow BEARISH. Size down everything. Don't fight the tape.", color:sigDef.color };
@@ -460,6 +495,10 @@ function Card({ p, open, onToggle, pos, onSave, isNew }) {
               {isEW && <span style={{ fontSize:9, color:"#00ddff", background:"#001418", border:"1px solid #00ddff33", padding:"1px 6px" }}>👀 EARLY</span>}
               {sc>=3 && !isEW && <span style={{ fontSize:9, color:"#00ddff" }}>📊{sc}d</span>}
               {p.sweepOk && p.dpOk && <span style={{ fontSize:9, color:"#ffe033" }}>⚡ BOTH</span>}
+              {p.congress?.any && (<span title={`${p.congress.latest_name||"Congress"} ${p.congress.net_side||""} ${p.congress.latest_date||""}`} style={{ fontSize:9, color: p.congress.net_side==="buy"?"#00ff88":p.congress.net_side==="sell"?"#ff3355":"#66ccff", border:`1px solid ${p.congress.net_side==="buy"?"#00ff8844":p.congress.net_side==="sell"?"#ff335544":"#66ccff44"}`, padding:"1px 5px", whiteSpace:"nowrap" }}>🏛 CONGRESS {p.congress.net_side==="buy"?"▲":p.congress.net_side==="sell"?"▼":""}{p.congress.buys||0}/{p.congress.sells||0}</span>)}
+              {p.insider?.any && (<span title={`Insider net ${p.insider.net_side||""}`} style={{ fontSize:9, color: p.insider.net_side==="buy"?"#00ff88":p.insider.net_side==="sell"?"#ff9955":"#7aaed0", border:`1px solid ${p.insider.net_side==="buy"?"#00ff8844":p.insider.net_side==="sell"?"#ff995544":"#7aaed044"}`, padding:"1px 5px", whiteSpace:"nowrap" }}>👤 INSIDER {p.insider.net_side==="buy"?"▲":p.insider.net_side==="sell"?"▼":""}</span>)}
+              {p.news?.any && (<span title={p.news.latest||""} style={{ fontSize:9, color:"#ff9955", border:"1px solid #ff995544", padding:"1px 5px", whiteSpace:"nowrap" }}>📰 {(p.news.catalyst_type||"news").toUpperCase()}{p.news.hours_ago!=null?` ${p.news.hours_ago}h`:""}</span>)}
+              {p.fda?.upcoming && (<span title={`${p.fda.event_type||"FDA"} ${p.fda.event_date||""}`} style={{ fontSize:9, color:"#cc44ff", border:"1px solid #cc44ff44", padding:"1px 5px", whiteSpace:"nowrap" }}>💊 FDA {p.fda.event_type||""}</span>)}
             </div>
             <div style={{ fontSize:9, color:"#2e4055", marginTop:3, display:"flex", gap:10, flexWrap:"wrap" }}>
               <span>{p.strike} · {p.expiry}</span>
@@ -638,21 +677,32 @@ function Card({ p, open, onToggle, pos, onSave, isNew }) {
             {tab==="position" && (
               <div>
                 <Sec label="YOUR POSITION"/>
-                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:12 }}>
-                  {[["ENTRY PRICE",ep,setEp,"e.g. 2.45"],["CURRENT PRICE",cp,setCp,"e.g. 3.60"]].map(([l,v,s,ph])=>(
+                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:10, marginBottom:12 }}>
+                  {[["ENTRY PRICE",ep,setEp,"e.g. 2.45"],["CURRENT PRICE",cp,setCp,"e.g. 3.60"],["STOP PRICE",stop,setStop,"e.g. 1.45"]].map(([l,v,s,ph])=>(
                     <div key={l}>
                       <div style={{ fontSize:9, color:"#2e4055", letterSpacing:"0.1em", marginBottom:5 }}>{l}</div>
                       <input value={v} onChange={e=>s(e.target.value)} placeholder={ph}
-                        style={{ width:"100%", background:"#060b10", border:"1px solid #111d28", color:"#c0d4e8", padding:"9px 11px", fontSize:12, outline:"none", fontFamily:"inherit", boxSizing:"border-box" }}/>
+                        style={{ width:"100%", background:"#060b10", border:`1px solid ${l==="STOP PRICE"&&stopHit?"#ff3355":"#111d28"}`, color: l==="STOP PRICE"&&stopHit?"#ff3355":"#c0d4e8", padding:"9px 11px", fontSize:12, outline:"none", fontFamily:"inherit", boxSizing:"border-box" }}/>
                     </div>
                   ))}
                 </div>
+                {stopHit && (
+                  <div className="urgent" style={{ padding:"10px 14px", marginBottom:12, background:"#1a0005", border:"1px solid #ff3355" }}>
+                    <span style={{ fontSize:11, fontWeight:700, color:"#ff3355", letterSpacing:"0.08em" }}>🛑 STOP HIT — Sell now. Don't negotiate with a loss.</span>
+                  </div>
+                )}
                 {pnlPct!==null && (
                   <div style={{ padding:"10px 14px", marginBottom:12, background:parseFloat(pnlPct)>=0?"#001a0e":"#1a0005", border:`1px solid ${parseFloat(pnlPct)>=0?"#00ff8833":"#ff335533"}` }}>
                     <span style={{ fontSize:9, color:"#2e4055", letterSpacing:"0.1em" }}>P&L: </span>
                     <span style={{ fontSize:18, fontWeight:700, color:parseFloat(pnlPct)>=0?"#00ff88":"#ff3355" }}>{parseFloat(pnlPct)>=0?"+":""}{pnlPct}%</span>
                     {parseFloat(pnlPct)>=50  && <span style={{ fontSize:9, color:"#00ff88", marginLeft:12 }}>→ Consider taking partial profits</span>}
                     {parseFloat(pnlPct)<=-50 && <span style={{ fontSize:9, color:"#ff3355", marginLeft:12 }}>→ Stop level hit — review exit</span>}
+                  </div>
+                )}
+                {lockNudge && (
+                  <div style={{ padding:"10px 14px", marginBottom:12, background:"#001a0e", border:"1px solid #00ff8855" }}>
+                    <div style={{ fontSize:10, color:"#00ff88", fontWeight:700, letterSpacing:"0.08em", marginBottom:4 }}>💰 LOCK THE WIN — +50% reached</div>
+                    <div style={{ fontSize:10, color:"#4a7080", lineHeight:1.7 }}>Rule: trim 50% now, move stop to entry, let the rest ride. Don't give back a booked win chasing more upside.</div>
                   </div>
                 )}
                 <div style={{ marginBottom:12 }}>
@@ -931,6 +981,14 @@ function App() {
   const topFl    = topBuilds(history, "flush",   sortMode, 10);
   const topMc    = topBuilds(history, "macro",   sortMode, 10);
   const trackedCount = Object.keys(history||{}).length;
+  const stopHits = Object.entries(positions).filter(([,pp]) => {
+    const c = parseFloat(pp?.currentPrice), s = parseFloat(pp?.stopPrice);
+    return !isNaN(c) && !isNaN(s) && s > 0 && c <= s;
+  }).map(([id]) => feed.find(p=>p.id===id)).filter(Boolean);
+  const winLocks = Object.entries(positions).filter(([,pp]) => {
+    const e = parseFloat(pp?.entryPrice), c = parseFloat(pp?.currentPrice);
+    return !isNaN(e) && !isNaN(c) && e > 0 && ((c-e)/e) >= 0.5;
+  }).map(([id]) => feed.find(p=>p.id===id)).filter(Boolean);
   const mBull = macros.filter(p=>p.sig==="macro_bull").length;
   const mBear = macros.filter(p=>p.sig==="macro_bear").length;
   const bias  = mBull>mBear?"BULLISH":mBear>mBull?"BEARISH":"NEUTRAL";
@@ -955,6 +1013,23 @@ function App() {
         <div style={{ background:"#0e0000", borderBottom:"1px solid #ff444422", padding:"6px 20px", display:"flex", gap:10, alignItems:"center", flexShrink:0 }}>
           <span style={{ fontSize:12 }}>📅</span>
           <div style={{ fontSize:9, color:"#cc3333" }}>{earnAlerts.map(p=>`${p?.ticker} earns ${p?.earnings?.next_date}`).join(" · ")} — Exit options before earnings.</div>
+        </div>
+      )}
+      {stopHits.length>0 && (
+        <div className="urgent" style={{ background:"#110005", borderBottom:"1px solid #ff3355", padding:"8px 20px", display:"flex", gap:12, alignItems:"center", flexShrink:0 }}>
+          <span style={{ fontSize:16 }}>🛑</span>
+          <div>
+            <div style={{ fontSize:11, color:"#ff3355", fontWeight:700 }}>STOP HIT — SELL NOW</div>
+            <div style={{ fontSize:10, color:"#663322" }}>{stopHits.map(p=>`${p?.ticker} @ stop $${positions[p?.id]?.stopPrice}`).join(" · ")}</div>
+          </div>
+        </div>
+      )}
+      {winLocks.length>0 && (
+        <div style={{ background:"#001a0e", borderBottom:"1px solid #00ff8844", padding:"6px 20px", display:"flex", gap:10, alignItems:"center", flexShrink:0 }}>
+          <span style={{ fontSize:12 }}>💰</span>
+          <div style={{ fontSize:9, color:"#00cc66" }}>
+            <b>LOCK THE WIN:</b> {winLocks.map(p=>p?.ticker).join(" · ")} at +50%+ — trim 50%, move stop to entry, let the rest ride.
+          </div>
         </div>
       )}
       <div style={{ background:"#060b10", borderBottom:"1px solid #0e1a24", flexShrink:0 }}>
@@ -1031,7 +1106,7 @@ function App() {
       </div>
 
       <div style={{ padding:"4px 20px", background:"#04080c", borderTop:"1px solid #0e1a24", fontSize:8, color:"#0e1a24", display:"flex", justifyContent:"space-between", flexShrink:0 }}>
-        <span>flow-alerts · darkpool/recent · darkpool/ticker(7d staircase) · market-tide · shorts · earnings · gex · vol/term-structure · price-levels</span>
+        <span>flow-alerts · darkpool · market-tide · earnings · congress · insider · news · fda · shorts · gex · vol · price-levels · 30d memory</span>
         <span>⚠ Education only · Not financial advice</span>
       </div>
     </div>
