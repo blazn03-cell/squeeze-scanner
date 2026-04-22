@@ -196,6 +196,7 @@ FETCH IN ORDER:
 8. FDA calendar: pull upcoming 30 days. For each biotech/pharma ticker, attach {fda.upcoming: bool, fda.event_date: "2026-05-01", fda.event_type: "PDUFA"|"AdComm"|"Phase 3"|null}.
 9. For each unique non-macro ticker (up to 8): fetch darkpool/{ticker} last 7 days. Count consecutive days with DP prints at same price zone (±2%). count = staircase_days. Zone = staircase_zone.
 10. For top 6 tickers: fetch shorts/interest-float/v2, shorts/data (borrow_rate), shorts/ftds, options-volume (put_call_ratio), net-prem-ticks (trending up/down), greek-exposure (bias, wall, comment), volatility/term-structure (near%, far%, elevated bool), stock-price-levels.
+11. Prediction markets: call get_prediction_smart_money and get_prediction_insiders (last 14 days). For EACH signal's ticker, scan prediction-market titles + descriptions for the ticker symbol OR company name. If there is a match, attach {predict.any: bool, predict.smart_money_side: "buy"|"sell"|null, predict.insider_side: "buy"|"sell"|null, predict.market: "short market title (<=60 chars)", predict.prob_pct: number|null}. Translate the prediction side to stock direction: if market is "will X go up / beat earnings / get approval" and smart money is YES, that = "buy"; NO = "sell". Leave null if no match. Do NOT fabricate matches — only attach if the ticker/company is explicitly in the prediction market.
 
 CLASSIFY sqType:
 staircase (3+ DP days, no call sweep yet), short_squeeze (call sweep si>10%), gamma_squeeze (short_gamma + calls), delta_squeeze (size/OI>3 call), liquidity_sq (float<20M), ftd_squeeze (ftds elevated), vol_squeeze (UVXY/VIX sweep), cap_flush (put sweep+dp sell), gamma_flush (long_gamma+puts), stop_hunt (near support), margin_flush (large dp sell no news), vix_flush (broad VIX spike), liq_flush (put only thin bids)
@@ -206,9 +207,9 @@ trade_day: 1=today, 2-3=yesterday, 4-7=this week
 MACRO set (SPY QQQ IWM DIA TLT GLD XLF XLE SQQQ TQQQ UVXY VIX): cat=macro
 
 SCHEMA (one object per signal):
-{"id":"str","ticker":"NVDA","cat":"squeeze","sig":"cs_dp","sqType":"short_squeeze","premium":500000,"size":2000,"oi":400,"strike":"$155c","expiry":"Apr 25","exchange":"CBOE","time":"09:32","trade_day":1,"day":1,"sweepOk":true,"dpOk":true,"sweep_count":2,"ask_pct":0.85,"is_otm":true,"staircase_days":5,"staircase_zone":"$148-152","short":{"si_pct":28,"days_to_cover":4.2,"borrow_rate":35,"short_vol_ratio":0.48,"ftds_elevated":false,"float_shares_outstanding":45000000},"options_vol":{"put_call_ratio":0.4},"net_prem":{"trending":"up"},"earnings":{"within_14_days":false,"next_date":"May 28","days_away":51},"gex":{"bias":"short_gamma","wall":"$160","comment":"Dealers short gamma above $155"},"iv":{"elevated":false,"near":38,"far":35},"levels":{"support":"$148","resistance":"$162","entry_zone":"$150-154","target":"$165"},"congress":{"any":true,"buys":2,"sells":0,"net_side":"buy","latest_name":"Pelosi","latest_date":"2026-04-18"},"insider":{"any":true,"buys":1,"sells":0,"net_amount":350000,"net_side":"buy"},"news":{"any":true,"latest":"headline","catalyst_type":"upgrade","hours_ago":4},"fda":{"upcoming":false,"event_date":null,"event_type":null}}
+{"id":"str","ticker":"NVDA","cat":"squeeze","sig":"cs_dp","sqType":"short_squeeze","premium":500000,"size":2000,"oi":400,"strike":"$155c","expiry":"Apr 25","exchange":"CBOE","time":"09:32","trade_day":1,"day":1,"sweepOk":true,"dpOk":true,"sweep_count":2,"ask_pct":0.85,"is_otm":true,"staircase_days":5,"staircase_zone":"$148-152","short":{"si_pct":28,"days_to_cover":4.2,"borrow_rate":35,"short_vol_ratio":0.48,"ftds_elevated":false,"float_shares_outstanding":45000000},"options_vol":{"put_call_ratio":0.4},"net_prem":{"trending":"up"},"earnings":{"within_14_days":false,"next_date":"May 28","days_away":51},"gex":{"bias":"short_gamma","wall":"$160","comment":"Dealers short gamma above $155"},"iv":{"elevated":false,"near":38,"far":35},"levels":{"support":"$148","resistance":"$162","entry_zone":"$150-154","target":"$165"},"congress":{"any":true,"buys":2,"sells":0,"net_side":"buy","latest_name":"Pelosi","latest_date":"2026-04-18"},"insider":{"any":true,"buys":1,"sells":0,"net_amount":350000,"net_side":"buy"},"news":{"any":true,"latest":"headline","catalyst_type":"upgrade","hours_ago":4},"fda":{"upcoming":false,"event_date":null,"event_type":null},"predict":{"any":false,"smart_money_side":null,"insider_side":null,"market":null,"prob_pct":null}}
 
-Use null for unavailable fields. Return [] if all fetches fail. Aim for full ticker coverage on earnings/congress/insider/news — these should rarely be null on large-cap US tickers.`;
+Use null for unavailable fields. Return [] if all fetches fail. Aim for full ticker coverage on earnings/congress/insider/news — these should rarely be null on large-cap US tickers. predict will often be null (most tickers don't have a prediction market) — that is expected.`;
 
 // ── HELPERS ───────────────────────────────────────────────────────────────────
 const fmt  = n => !n ? "—" : +n >= 1e6 ? `$${(+n/1e6).toFixed(2)}M` : +n >= 1e3 ? `$${(+n/1e3).toFixed(0)}K` : `$${(+n).toFixed(2)}`;
@@ -248,7 +249,7 @@ function recordHist(prints, prev) {
       sweepOk: false, dpOk: false,
       latest_strike: "", latest_expiry: "",
       latest_staircase_days: 0,
-      congress: null, insider: null, news: null, fda: null, earnings: null,
+      congress: null, insider: null, news: null, fda: null, earnings: null, predict: null,
     };
     if (!e.days_seen.includes(td)) e.days_seen.push(td);
     e.last_seen             = td;
@@ -266,6 +267,7 @@ function recordHist(prints, prev) {
     if (p.news)     e.news     = p.news;
     if (p.fda)      e.fda      = p.fda;
     if (p.earnings) e.earnings = p.earnings;
+    if (p.predict && p.predict.any) e.predict = p.predict;
     h[key] = e;
   });
   return pruneHist(h);
@@ -392,6 +394,7 @@ function TopCard({ entry, rank, sortMode }) {
         {entry.insider?.any  && <span style={{ fontSize:8, color: entry.insider.net_side==="buy"?"#00ff88":"#ff9955", border:`1px solid ${entry.insider.net_side==="buy"?"#00ff8844":"#ff995544"}`, padding:"1px 4px" }}>👤</span>}
         {entry.news?.any     && <span style={{ fontSize:8, color:"#ff9955", border:"1px solid #ff995544", padding:"1px 4px" }}>📰</span>}
         {entry.fda?.upcoming && <span style={{ fontSize:8, color:"#cc44ff", border:"1px solid #cc44ff44", padding:"1px 4px" }}>💊</span>}
+        {entry.predict?.any && (() => { const side = entry.predict.smart_money_side || entry.predict.insider_side; const col = side==="buy"?"#00ff88":side==="sell"?"#ff3355":"#aa88ff"; return <span title={entry.predict.market||""} style={{ fontSize:8, color:col, border:`1px solid ${col}66`, padding:"1px 4px" }}>🎯{entry.predict.prob_pct!=null?entry.predict.prob_pct+"%":""}</span>; })()}
         {entry.earnings?.within_14_days && <span style={{ fontSize:8, color:"#ff4444", border:"1px solid #ff444444", padding:"1px 4px" }}>📅</span>}
         <span style={{ marginLeft:"auto", fontSize:10, color:"#7aaed0", fontWeight:700 }}>{fmt(entry.total_premium)}</span>
       </div>
@@ -499,7 +502,15 @@ function Card({ p, open, onToggle, pos, onSave, isNew }) {
               {p.insider?.any && (<span title={`Insider net ${p.insider.net_side||""}`} style={{ fontSize:9, color: p.insider.net_side==="buy"?"#00ff88":p.insider.net_side==="sell"?"#ff9955":"#7aaed0", border:`1px solid ${p.insider.net_side==="buy"?"#00ff8844":p.insider.net_side==="sell"?"#ff995544":"#7aaed044"}`, padding:"1px 5px", whiteSpace:"nowrap" }}>👤 INSIDER {p.insider.net_side==="buy"?"▲":p.insider.net_side==="sell"?"▼":""}</span>)}
               {p.news?.any && (<span title={p.news.latest||""} style={{ fontSize:9, color:"#ff9955", border:"1px solid #ff995544", padding:"1px 5px", whiteSpace:"nowrap" }}>📰 {(p.news.catalyst_type||"news").toUpperCase()}{p.news.hours_ago!=null?` ${p.news.hours_ago}h`:""}</span>)}
               {p.fda?.upcoming && (<span title={`${p.fda.event_type||"FDA"} ${p.fda.event_date||""}`} style={{ fontSize:9, color:"#cc44ff", border:"1px solid #cc44ff44", padding:"1px 5px", whiteSpace:"nowrap" }}>💊 FDA {p.fda.event_type||""}</span>)}
+              {p.predict?.any && (() => { const sm=p.predict.smart_money_side, ins=p.predict.insider_side; const side = sm||ins; const col = side==="buy"?"#00ff88":side==="sell"?"#ff3355":"#aa88ff"; const bothAgree = sm && ins && sm===ins; return (<span title={`${p.predict.market||"Prediction market"}${p.predict.prob_pct!=null?` — ${p.predict.prob_pct}%`:""}`} style={{ fontSize:9, color:col, border:`1px solid ${col}66`, padding:"1px 5px", whiteSpace:"nowrap", background:bothAgree?col+"18":"transparent" }}>🎯 {bothAgree?"BOTH":(sm?"SMART":"INSIDE")} {side==="buy"?"▲":side==="sell"?"▼":""}{p.predict.prob_pct!=null?` ${p.predict.prob_pct}%`:""}</span>); })()}
             </div>
+            {p.news?.any && p.news.latest && (
+              <div style={{ fontSize:10, color:"#bbd2ea", marginTop:4, lineHeight:1.35, display:"flex", gap:5, alignItems:"flex-start" }}>
+                <span style={{color:"#ff9955", flexShrink:0}}>📰</span>
+                <span style={{overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", flex:1}}>{p.news.latest}</span>
+                {p.news.hours_ago!=null && <span style={{color:"#557088", fontSize:8, flexShrink:0}}>{p.news.hours_ago}h ago</span>}
+              </div>
+            )}
             <div style={{ fontSize:9, color:"#2e4055", marginTop:3, display:"flex", gap:10, flexWrap:"wrap" }}>
               <span>{p.strike} · {p.expiry}</span>
               <span>{fmt(p.premium)}</span>
