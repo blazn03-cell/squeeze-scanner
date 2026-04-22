@@ -210,6 +210,69 @@ const fmt  = n => !n ? "—" : +n >= 1e6 ? `$${(+n/1e6).toFixed(2)}M` : +n >= 1e
 const fmtP = n => !n ? "—" : parseFloat(n).toFixed(1) + "%";
 const beep = () => { try { const ac = new(window.AudioContext||window.webkitAudioContext)(); const o=ac.createOscillator(),g=ac.createGain(); o.connect(g); g.connect(ac.destination); o.frequency.value=900; g.gain.setValueAtTime(0.18,ac.currentTime); g.gain.exponentialRampToValueAtTime(0.001,ac.currentTime+0.5); o.start(); o.stop(ac.currentTime+0.5); } catch(_){} };
 
+// ── 30-DAY HISTORY (localStorage) ─────────────────────────────────────────────
+const HIST_KEY = "sfs_history_v1";
+const DAY_MS   = 86400000;
+const today    = () => new Date().toISOString().slice(0,10);
+
+function loadHist() {
+  try { const r = JSON.parse(localStorage.getItem(HIST_KEY)||"{}"); return r && typeof r === "object" ? r : {}; }
+  catch { return {}; }
+}
+function saveHist(h) { try { localStorage.setItem(HIST_KEY, JSON.stringify(h)); } catch(_){} }
+function pruneHist(h) {
+  const now = Date.now();
+  const out = {};
+  Object.entries(h).forEach(([k,v]) => {
+    const t = new Date(v.last_seen || today()).getTime();
+    if ((now - t)/DAY_MS <= 30) out[k] = v;
+  });
+  return out;
+}
+function recordHist(prints, prev) {
+  const h = { ...prev };
+  const td = today();
+  (prints||[]).forEach(p => {
+    if (!p.ticker || !p.sqType) return;
+    if (!ALL[p.sqType]) return;
+    const key = `${p.ticker}|${p.sqType}`;
+    const e = h[key] || {
+      ticker: p.ticker, sqType: p.sqType, cat: p.cat,
+      first_seen: td, last_seen: td, days_seen: [],
+      total_premium: 0, sighting_count: 0, max_win_prob: 0,
+      sweepOk: false, dpOk: false,
+      latest_strike: "", latest_expiry: "",
+      latest_staircase_days: 0,
+    };
+    if (!e.days_seen.includes(td)) e.days_seen.push(td);
+    e.last_seen             = td;
+    e.total_premium        += parseInt(p.premium)||0;
+    e.sighting_count       += 1;
+    e.max_win_prob          = Math.max(e.max_win_prob||0, p.winProb||0);
+    e.sweepOk               = e.sweepOk || !!p.sweepOk;
+    e.dpOk                  = e.dpOk    || !!p.dpOk;
+    if (p.strike) e.latest_strike = p.strike;
+    if (p.expiry) e.latest_expiry = p.expiry;
+    e.latest_staircase_days = Math.max(e.latest_staircase_days||0, parseInt(p.staircase_days)||0);
+    h[key] = e;
+  });
+  return pruneHist(h);
+}
+function topBuilds(h, cat, sortMode, n) {
+  return Object.values(h||{})
+    .filter(e => e.cat === cat)
+    .sort((a,b) => {
+      if (sortMode === "premium") {
+        if ((b.total_premium||0) !== (a.total_premium||0)) return (b.total_premium||0)-(a.total_premium||0);
+        return (b.days_seen?.length||0) - (a.days_seen?.length||0);
+      }
+      const da = a.days_seen?.length||0, db = b.days_seen?.length||0;
+      if (db !== da) return db - da;
+      return (b.total_premium||0) - (a.total_premium||0);
+    })
+    .slice(0, n||10);
+}
+
 // ── UI PRIMITIVES ─────────────────────────────────────────────────────────────
 const Sec = ({ label }) => (
   <div style={{ display:"flex", alignItems:"center", gap:8, margin:"16px 0 8px" }}>
@@ -281,6 +344,66 @@ function StaircaseViz({ days, zone }) {
           <div key={d} style={{ flex:1, textAlign:"center", fontSize:7, color:d<=days?"#00ddff":"#1e2e3e" }}>D{d}</div>
         ))}
       </div>
+    </div>
+  );
+}
+
+// ── TOP-10 LEADERBOARD ENTRY (30-day memory) ─────────────────────────────────
+function TopCard({ entry, rank, sortMode }) {
+  const def    = ALL[entry.sqType] || { label: entry.sqType, color: "#888", icon: "·" };
+  const strats = getBestStrats(entry.sqType, false);
+  const rec    = strats.length ? strats[0][1] : null;
+  const days   = entry.days_seen?.length || 0;
+  const barPct = Math.min(100, (days / 15) * 100);
+  const daysC  = days >= 7 ? "#00ff88" : days >= 4 ? "#ffe033" : days >= 2 ? "#ff9955" : "#556677";
+  return (
+    <div style={{ padding:"9px 12px", borderBottom:"1px solid #0e1a24" }}>
+      <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:5 }}>
+        <span style={{ fontSize:9, color:"#2e4055", width:22, fontWeight:700 }}>#{rank}</span>
+        <span style={{ fontSize:13 }}>{def.icon}</span>
+        <span style={{ fontWeight:700, fontSize:12, color:"#ddeeff", minWidth:48 }}>{entry.ticker}</span>
+        <span style={{ fontSize:8, color:def.color, border:`1px solid ${def.color}55`, padding:"1px 5px", letterSpacing:"0.08em" }}>{def.label}</span>
+        {entry.sweepOk && <span style={{ fontSize:8, color:"#ffe033", border:"1px solid #ffe03344", padding:"1px 4px" }}>SW</span>}
+        {entry.dpOk    && <span style={{ fontSize:8, color:"#44ffbb", border:"1px solid #44ffbb44", padding:"1px 4px" }}>DP</span>}
+        <span style={{ marginLeft:"auto", fontSize:10, color:"#7aaed0", fontWeight:700 }}>{fmt(entry.total_premium)}</span>
+      </div>
+      <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:5 }}>
+        <div style={{ flex:1, height:4, background:"#0e1a24", position:"relative", overflow:"hidden" }}>
+          <div style={{ position:"absolute", left:0, top:0, bottom:0, width:`${barPct}%`, background:daysC, opacity:0.85, transition:"width 0.4s" }}/>
+        </div>
+        <span style={{ fontSize:9, color:daysC, fontWeight:700, minWidth:70, textAlign:"right" }}>
+          {days}d building
+        </span>
+      </div>
+      {rec && (
+        <div style={{ fontSize:9, color:"#6080a0", lineHeight:1.5, background:"#050a10", border:"1px solid #0e1a24", padding:"5px 8px" }}>
+          <span style={{ color:rec.color, fontWeight:700 }}>{rec.emoji} {rec.name}</span>
+          <span style={{ color:"#3a5060" }}> · {rec.risk} · {(PROF[entry.sqType]||{}).dte||"—"} DTE</span>
+          {entry.latest_strike && <div style={{ color:"#2e4055", marginTop:2 }}>Last seen: {entry.latest_strike}{entry.latest_expiry?" "+entry.latest_expiry:""}</div>}
+        </div>
+      )}
+      <div style={{ display:"flex", gap:10, marginTop:4, fontSize:8, color:"#2e4055" }}>
+        <span>hits: <b style={{color:"#4a6070"}}>{entry.sighting_count}</b></span>
+        <span>first: <b style={{color:"#4a6070"}}>{entry.first_seen}</b></span>
+        <span>last: <b style={{color:"#4a6070"}}>{entry.last_seen}</b></span>
+        {entry.max_win_prob > 0 && <span>peak win: <b style={{color:"#4a6070"}}>{entry.max_win_prob}%</b></span>}
+      </div>
+    </div>
+  );
+}
+
+function TopList({ entries, sortMode, emptyLabel }) {
+  if (!entries || entries.length === 0) {
+    return (
+      <div style={{ padding:32, textAlign:"center" }}>
+        <div style={{ fontSize:11, color:"#1e2e3e" }}>No 30-day builds yet</div>
+        <div style={{ fontSize:9, color:"#0e1a24", marginTop:4 }}>{emptyLabel || "Run a scan to start recording."}</div>
+      </div>
+    );
+  }
+  return (
+    <div>
+      {entries.map((e,i) => <TopCard key={`${e.ticker}-${e.sqType}`} entry={e} rank={i+1} sortMode={sortMode}/>)}
     </div>
   );
 }
@@ -573,32 +696,43 @@ function Card({ p, open, onToggle, pos, onSave, isNew }) {
 }
 
 // ── COLUMN ────────────────────────────────────────────────────────────────────
-function Column({ title, color, items, openId, onToggle, positions, onSave, newIds }) {
+function Column({ title, color, items, openId, onToggle, positions, onSave, newIds, viewMode, topEntries, sortMode }) {
   const enter = items.filter(p=>(p.trade_day||1)<=1&&(p.winProb||0)>=50).length;
   const hold  = items.filter(p=>(p.trade_day||1)>1&&(p.trade_day||1)<=7).length;
   const early = items.filter(p=>(p.staircase_days||0)>=3&&!p.sweepOk&&p.cat!=="macro").length;
+
+  // Auto-fallback: when LIVE column is empty, show 30-day Top 10 so the column is never blank.
+  const showTop = viewMode === "top10" || items.length === 0;
+
   return (
     <div style={{ display:"flex", flexDirection:"column", borderRight:"1px solid #0e1a24", overflow:"hidden" }}>
       <div style={{ padding:"10px 14px", background:"#060b10", borderBottom:`1px solid ${color}33`, flexShrink:0 }}>
-        <div style={{ fontSize:11, color, fontWeight:700, letterSpacing:"0.1em", marginBottom:6 }}>{title}</div>
+        <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:6, flexWrap:"wrap" }}>
+          <div style={{ fontSize:11, color, fontWeight:700, letterSpacing:"0.1em" }}>{title}</div>
+          {showTop && (
+            <span style={{ fontSize:8, color:"#66ccff", border:"1px solid #66ccff44", padding:"1px 6px", letterSpacing:"0.1em" }}>
+              TOP {Math.min(10, topEntries?.length||0)} · 30D{sortMode==="premium"?" · BY $":" · BY DAYS"}
+            </span>
+          )}
+        </div>
         <div style={{ display:"flex", gap:4, flexWrap:"wrap" }}>
-          {enter>0 && <span style={{ fontSize:9, padding:"2px 8px", background:"#00ff8818", border:"1px solid #00ff8844", color:"#00ff88" }}>{enter} ENTER</span>}
-          {hold>0  && <span style={{ fontSize:9, padding:"2px 8px", background:"#ffe03318", border:"1px solid #ffe03344", color:"#ffe033" }}>{hold} HOLD</span>}
-          {early>0 && <span style={{ fontSize:9, padding:"2px 8px", background:"#00ddff18", border:"1px solid #00ddff44", color:"#00ddff" }}>{early} EARLY</span>}
-          <span style={{ fontSize:9, color:"#1a2a3a", marginLeft:"auto" }}>{items.length} total</span>
+          {!showTop && enter>0 && <span style={{ fontSize:9, padding:"2px 8px", background:"#00ff8818", border:"1px solid #00ff8844", color:"#00ff88" }}>{enter} ENTER</span>}
+          {!showTop && hold>0  && <span style={{ fontSize:9, padding:"2px 8px", background:"#ffe03318", border:"1px solid #ffe03344", color:"#ffe033" }}>{hold} HOLD</span>}
+          {!showTop && early>0 && <span style={{ fontSize:9, padding:"2px 8px", background:"#00ddff18", border:"1px solid #00ddff44", color:"#00ddff" }}>{early} EARLY</span>}
+          <span style={{ fontSize:9, color:"#1a2a3a", marginLeft:"auto" }}>
+            {showTop ? `${topEntries?.length||0} tracked` : `${items.length} live`}
+          </span>
         </div>
       </div>
-      <div style={{ overflowY:"auto", flex:1, padding:"6px" }}>
-        {items.length===0 && (
-          <div style={{ padding:32, textAlign:"center" }}>
-            <div style={{ fontSize:11, color:"#1e2e3e" }}>No signals</div>
-            <div style={{ fontSize:9, color:"#0e1a24", marginTop:4 }}>Hit ⟳ to scan</div>
-          </div>
+      <div style={{ overflowY:"auto", flex:1, padding: showTop ? 0 : "6px" }}>
+        {showTop ? (
+          <TopList entries={topEntries||[]} sortMode={sortMode} emptyLabel="Waiting for first hits — auto-records on every scan."/>
+        ) : (
+          items.map(p=>(
+            <Card key={p.id} p={p} open={openId===p.id} onToggle={()=>onToggle(p.id)}
+              pos={positions[p.id]} onSave={pos=>onSave(p.id,pos)} isNew={newIds.has(p.id)}/>
+          ))
         )}
-        {items.map(p=>(
-          <Card key={p.id} p={p} open={openId===p.id} onToggle={()=>onToggle(p.id)}
-            pos={positions[p.id]} onSave={pos=>onSave(p.id,pos)} isNew={newIds.has(p.id)}/>
-        ))}
       </div>
     </div>
   );
@@ -658,6 +792,9 @@ function App() {
   const [showLog,   setShowLog]   = useState(false);
   const [soundOn,   setSoundOn]   = useState(true);
   const [ticker,    setTicker]    = useState("");
+  const [history,   setHistory]   = useState(() => pruneHist(loadHist()));
+  const [viewMode,  setViewMode]  = useState("live");   // "live" | "top10"
+  const [sortMode,  setSortMode]  = useState("days");    // "days" | "premium"
 
   const seen       = useRef(new Set());
   const intv       = useRef(null);
@@ -738,9 +875,11 @@ function App() {
         if (soundOn&&fresh.some(p=>p.sweepOk&&p.dpOk&&(p.winProb||0)>=60)) beep();
         setNewIds(freshIds); setTimeout(()=>setNewIds(new Set()),12000);
         setFeed(prev=>[...fresh,...prev].slice(0,300));
+        // Record in 30-day localStorage memory
+        setHistory(prev => { const next = recordHist(fresh, prev); saveHist(next); return next; });
         const types=[...new Set(fresh.map(p=>p.sqType).filter(Boolean))];
         const sc=fresh.filter(p=>(p.staircase_days||0)>=3).length;
-        addLog(`✓ ${fresh.length} signals · ${types.join(", ")} · ${sc} staircase`);
+        addLog(`✓ ${fresh.length} signals · ${types.join(", ")} · ${sc} staircase · recorded to 30d memory`);
         setError("");
       } else addLog(`Got ${prints.length} items — none passed filters`);
     } catch(e) {
@@ -788,6 +927,10 @@ function App() {
   const squeezes = doFilter(feed.filter(p=>p.cat==="squeeze"));
   const flushes  = doFilter(feed.filter(p=>p.cat==="flush"));
   const macros   = doFilter(feed.filter(p=>p.cat==="macro"));
+  const topSq    = topBuilds(history, "squeeze", sortMode, 10);
+  const topFl    = topBuilds(history, "flush",   sortMode, 10);
+  const topMc    = topBuilds(history, "macro",   sortMode, 10);
+  const trackedCount = Object.keys(history||{}).length;
   const mBull = macros.filter(p=>p.sig==="macro_bull").length;
   const mBear = macros.filter(p=>p.sig==="macro_bear").length;
   const bias  = mBull>mBear?"BULLISH":mBear>mBull?"BEARISH":"NEUTRAL";
@@ -832,6 +975,7 @@ function App() {
           </div>
           {hcCount>0 && <div style={{ marginRight:8, padding:"3px 10px", background:"#ffe03318", border:"1px solid #ffe03333", fontSize:9, color:"#ffe033" }}>{hcCount} HIGH CONV</div>}
           {scCount>0 && <div style={{ marginRight:8, padding:"3px 10px", background:"#00ddff18", border:"1px solid #00ddff33", fontSize:9, color:"#00ddff" }}>📊 {scCount} STAIRCASE</div>}
+          {trackedCount>0 && <div style={{ marginRight:8, padding:"3px 10px", background:"#66ccff18", border:"1px solid #66ccff33", fontSize:9, color:"#66ccff" }}>🧠 {trackedCount} IN 30D MEMORY</div>}
           {error && <div style={{ padding:"3px 10px", background:"#ff000011", border:"1px solid #ff333322", fontSize:9, color:"#ff3355", maxWidth:200, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>✗ {error}</div>}
           <div style={{ marginLeft:"auto", display:"flex", alignItems:"center", gap:6 }}>
             <input value={ticker} onChange={e=>setTicker(e.target.value)} placeholder="TICKER…"
@@ -846,6 +990,10 @@ function App() {
               {[60,90,120,180].map(v=><option key={v} value={v} style={{background:"#080e16"}}>{v}s</option>)}
             </select>
             {[
+              { icon:"📡", label:"LIVE",   active:viewMode==="live",  onClick:()=>setViewMode("live"),  ac:"#00ff88" },
+              { icon:"🏆", label:"TOP 10", active:viewMode==="top10", onClick:()=>setViewMode("top10"), ac:"#66ccff" },
+              { icon: sortMode==="days"?"📅":"💰", label: sortMode==="days"?"DAYS":"PREM", active:true, onClick:()=>setSortMode(m=>m==="days"?"premium":"days"), ac:"#ffe033" },
+              { icon:"🗑", label:"30D", active:false, onClick:()=>{ if(confirm("Clear 30-day build history?")){ setHistory({}); saveHist({}); } }, ac:"#ff9955" },
               { icon:"⚡", label:"CONFIRMED", active:confirmed, onClick:()=>setConfirmed(p=>!p), ac:"#ffe033" },
               { icon:soundOn?"🔔":"🔕",  label:"",    active:soundOn, onClick:()=>setSoundOn(p=>!p), ac:"#00ff88" },
               { icon:"⟳",   label:"",     active:false, onClick:manualFetch, disabled:loading },
@@ -868,9 +1016,9 @@ function App() {
       </div>
 
       <div style={{ display:"grid", gridTemplateColumns:showLog?"1fr 1fr 0.7fr 200px":"1fr 1fr 0.7fr", flex:1, overflow:"hidden", background:"#05090e" }}>
-        <Column title="🚀 SQUEEZES" color="#00ff88" items={squeezes} openId={openId} onToggle={toggle} positions={positions} onSave={savePos} newIds={newIds}/>
-        <Column title="🩸 FLUSHES"  color="#ff3355" items={flushes}  openId={openId} onToggle={toggle} positions={positions} onSave={savePos} newIds={newIds}/>
-        <Column title="📊 MACRO"    color="#66ccff" items={macros}   openId={openId} onToggle={toggle} positions={positions} onSave={savePos} newIds={newIds}/>
+        <Column title="🚀 SQUEEZES" color="#00ff88" items={squeezes} openId={openId} onToggle={toggle} positions={positions} onSave={savePos} newIds={newIds} viewMode={viewMode} sortMode={sortMode} topEntries={topSq}/>
+        <Column title="🩸 FLUSHES"  color="#ff3355" items={flushes}  openId={openId} onToggle={toggle} positions={positions} onSave={savePos} newIds={newIds} viewMode={viewMode} sortMode={sortMode} topEntries={topFl}/>
+        <Column title="📊 MACRO/ETF" color="#66ccff" items={macros}  openId={openId} onToggle={toggle} positions={positions} onSave={savePos} newIds={newIds} viewMode={viewMode} sortMode={sortMode} topEntries={topMc}/>
         {showLog && (
           <div style={{ display:"flex", flexDirection:"column", background:"#04080c", borderLeft:"1px solid #0e1a24" }}>
             <div style={{ padding:"8px 12px", borderBottom:"1px solid #0e1a24", fontSize:9, color:"#2e4055", letterSpacing:"0.14em", fontWeight:700 }}>ACTIVITY LOG</div>
