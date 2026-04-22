@@ -273,18 +273,24 @@ function recordHist(prints, prev) {
   return pruneHist(h);
 }
 
+// ── WIN-PROB GATE ─────────────────────────────────────────────────────────────
+// Hard rule: setup must clear 70% win probability before it counts as actionable.
+const WIN_GATE = 70;
+
 // ── POSITION SIZE HINT (discipline layer) ─────────────────────────────────────
-// Maps days-building to recommended account % per profile rules:
-// < 3d = wait, 3-4d = 1%, 5-6d = 2%, 7+d = 3% cap.
-function sizingHint(days) {
+// Maps days-building + win-prob to recommended account % per profile rules:
+// <70% win prob = WAIT (gate). < 3d = wait, 3-4d = 1%, 5-6d = 2%, 7+d = 3% cap.
+function sizingHint(days, winProb) {
+  if ((winProb||0) < WIN_GATE) return { pct: "0%", color: "#556677", label: "WAIT <70%" };
   if (days >= 7) return { pct: "3%", color: "#00ff88", label: "MAX SIZE" };
   if (days >= 5) return { pct: "2%", color: "#ffe033", label: "SIZE UP" };
   if (days >= 3) return { pct: "1%", color: "#ff9955", label: "START" };
-  return             { pct: "0%", color: "#556677", label: "WAIT"    };
+  return             { pct: "0%", color: "#556677", label: "BUILD"   };
 }
-function topBuilds(h, cat, sortMode, n) {
+function topBuilds(h, cat, sortMode, n, gateOn) {
   return Object.values(h||{})
     .filter(e => e.cat === cat)
+    .filter(e => !gateOn || (e.max_win_prob||0) >= WIN_GATE)
     .sort((a,b) => {
       if (sortMode === "premium") {
         if ((b.total_premium||0) !== (a.total_premium||0)) return (b.total_premium||0)-(a.total_premium||0);
@@ -380,7 +386,9 @@ function TopCard({ entry, rank, sortMode }) {
   const days   = entry.days_seen?.length || 0;
   const barPct = Math.min(100, (days / 15) * 100);
   const daysC  = days >= 7 ? "#00ff88" : days >= 4 ? "#ffe033" : days >= 2 ? "#ff9955" : "#556677";
-  const size   = sizingHint(days);
+  const mwp    = entry.max_win_prob || 0;
+  const size   = sizingHint(days, mwp);
+  const verified = mwp >= 70;
   return (
     <div style={{ padding:"9px 12px", borderBottom:"1px solid #0e1a24" }}>
       <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:5, flexWrap:"wrap" }}>
@@ -396,6 +404,7 @@ function TopCard({ entry, rank, sortMode }) {
         {entry.fda?.upcoming && <span style={{ fontSize:8, color:"#cc44ff", border:"1px solid #cc44ff44", padding:"1px 4px" }}>💊</span>}
         {entry.predict?.any && (() => { const side = entry.predict.smart_money_side || entry.predict.insider_side; const col = side==="buy"?"#00ff88":side==="sell"?"#ff3355":"#aa88ff"; return <span title={entry.predict.market||""} style={{ fontSize:8, color:col, border:`1px solid ${col}66`, padding:"1px 4px" }}>🎯{entry.predict.prob_pct!=null?entry.predict.prob_pct+"%":""}</span>; })()}
         {entry.earnings?.within_14_days && <span style={{ fontSize:8, color:"#ff4444", border:"1px solid #ff444444", padding:"1px 4px" }}>📅</span>}
+        {verified && <span style={{ fontSize:8, color:"#00ff88", background:"#00ff8818", border:"1px solid #00ff8866", padding:"1px 5px", fontWeight:700, letterSpacing:"0.06em" }}>✓ 70%+ VERIFIED</span>}
         <span style={{ marginLeft:"auto", fontSize:10, color:"#7aaed0", fontWeight:700 }}>{fmt(entry.total_premium)}</span>
       </div>
       <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:5 }}>
@@ -420,7 +429,7 @@ function TopCard({ entry, rank, sortMode }) {
         <span>hits: <b style={{color:"#4a6070"}}>{entry.sighting_count}</b></span>
         <span>first: <b style={{color:"#4a6070"}}>{entry.first_seen}</b></span>
         <span>last: <b style={{color:"#4a6070"}}>{entry.last_seen}</b></span>
-        {entry.max_win_prob > 0 && <span>peak win: <b style={{color:"#4a6070"}}>{entry.max_win_prob}%</b></span>}
+        {entry.max_win_prob > 0 && <span>peak win: <b style={{color:entry.max_win_prob>=70?"#00ff88":entry.max_win_prob>=55?"#ffe033":"#ff9955"}}>{entry.max_win_prob}%</b></span>}
       </div>
     </div>
   );
@@ -503,6 +512,7 @@ function Card({ p, open, onToggle, pos, onSave, isNew }) {
               {p.news?.any && (<span title={p.news.latest||""} style={{ fontSize:9, color:"#ff9955", border:"1px solid #ff995544", padding:"1px 5px", whiteSpace:"nowrap" }}>📰 {(p.news.catalyst_type||"news").toUpperCase()}{p.news.hours_ago!=null?` ${p.news.hours_ago}h`:""}</span>)}
               {p.fda?.upcoming && (<span title={`${p.fda.event_type||"FDA"} ${p.fda.event_date||""}`} style={{ fontSize:9, color:"#cc44ff", border:"1px solid #cc44ff44", padding:"1px 5px", whiteSpace:"nowrap" }}>💊 FDA {p.fda.event_type||""}</span>)}
               {p.predict?.any && (() => { const sm=p.predict.smart_money_side, ins=p.predict.insider_side; const side = sm||ins; const col = side==="buy"?"#00ff88":side==="sell"?"#ff3355":"#aa88ff"; const bothAgree = sm && ins && sm===ins; return (<span title={`${p.predict.market||"Prediction market"}${p.predict.prob_pct!=null?` — ${p.predict.prob_pct}%`:""}`} style={{ fontSize:9, color:col, border:`1px solid ${col}66`, padding:"1px 5px", whiteSpace:"nowrap", background:bothAgree?col+"18":"transparent" }}>🎯 {bothAgree?"BOTH":(sm?"SMART":"INSIDE")} {side==="buy"?"▲":side==="sell"?"▼":""}{p.predict.prob_pct!=null?` ${p.predict.prob_pct}%`:""}</span>); })()}
+              {(p.winProb||0) >= WIN_GATE && (<span title="Cleared 70% win-probability gate — actionable" style={{ fontSize:9, color:"#00ff88", background:"#00ff8818", border:"1px solid #00ff8866", padding:"1px 5px", fontWeight:700, letterSpacing:"0.06em", whiteSpace:"nowrap" }}>✓ {p.winProb}% VERIFIED</span>)}
             </div>
             {p.news?.any && p.news.latest && (
               <div style={{ fontSize:10, color:"#bbd2ea", marginTop:4, lineHeight:1.35, display:"flex", gap:5, alignItems:"flex-start" }}>
@@ -847,7 +857,8 @@ function App() {
   const [error,     setError]     = useState("");
   const [paused,    setPaused]    = useState(false);
   const [pollSec,   setPollSec]   = useState(60);
-  const [minProb,   setMinProb]   = useState(0);
+  const [minProb,   setMinProb]   = useState(70);
+  const [gateOn,    setGateOn]    = useState(true);
   const [minPrem,   setMinPrem]   = useState(0);
   const [confirmed, setConfirmed] = useState(false);
   const [showLog,   setShowLog]   = useState(false);
@@ -967,9 +978,10 @@ function App() {
   const manualFetch = () => { isFetching.current=false; setTimeout(()=>fetchRef.current?.(),100); };
   const savePos = (id,pos) => setPositions(p=>({...p,[id]:pos}));
   const toggle  = id => setOpenId(p=>p===id?null:id);
+  const effMinProb = gateOn ? Math.max(minProb, WIN_GATE) : minProb;
   const doFilter = items => items
     .filter(p =>
-      (p.winProb===null||p.winProb>=minProb) &&
+      (p.winProb===null||p.winProb>=effMinProb) &&
       (!confirmed||(p.sweepOk&&p.dpOk)) &&
       (!ticker.trim()||p.ticker.includes(ticker.trim().toUpperCase()))
     )
@@ -988,9 +1000,9 @@ function App() {
   const squeezes = doFilter(feed.filter(p=>p.cat==="squeeze"));
   const flushes  = doFilter(feed.filter(p=>p.cat==="flush"));
   const macros   = doFilter(feed.filter(p=>p.cat==="macro"));
-  const topSq    = topBuilds(history, "squeeze", sortMode, 10);
-  const topFl    = topBuilds(history, "flush",   sortMode, 10);
-  const topMc    = topBuilds(history, "macro",   sortMode, 10);
+  const topSq    = topBuilds(history, "squeeze", sortMode, 10, gateOn);
+  const topFl    = topBuilds(history, "flush",   sortMode, 10, gateOn);
+  const topMc    = topBuilds(history, "macro",   sortMode, 10, gateOn);
   const trackedCount = Object.keys(history||{}).length;
   const stopHits = Object.entries(positions).filter(([,pp]) => {
     const c = parseFloat(pp?.currentPrice), s = parseFloat(pp?.stopPrice);
@@ -1070,7 +1082,7 @@ function App() {
               {[0,50000,100000,250000,500000].map(v=><option key={v} value={v} style={{background:"#080e16"}}>{v===0?"ANY PREM":v>=1e6?`$${v/1e6}M+`:`$${v/1e3}K+`}</option>)}
             </select>
             <select value={minProb} onChange={e=>setMinProb(+e.target.value)} style={{ background:"#080e16", border:"1px solid #0e1a24", color:"#6080a0", padding:"4px 6px", fontSize:9, outline:"none", cursor:"pointer" }}>
-              {[0,30,40,50,60,70].map(v=><option key={v} value={v} style={{background:"#080e16"}}>{v===0?"ALL WIN%":v+"%+"}</option>)}
+              {[70,60,50,40,30,0].map(v=><option key={v} value={v} style={{background:"#080e16"}}>{v===0?"ALL WIN%":v+"%+"}</option>)}
             </select>
             <select value={pollSec} onChange={e=>setPollSec(+e.target.value)} style={{ background:"#080e16", border:"1px solid #0e1a24", color:"#6080a0", padding:"4px 6px", fontSize:9, outline:"none", cursor:"pointer" }}>
               {[60,90,120,180].map(v=><option key={v} value={v} style={{background:"#080e16"}}>{v}s</option>)}
@@ -1078,6 +1090,7 @@ function App() {
             {[
               { icon:"📡", label:"LIVE",   active:viewMode==="live",  onClick:()=>setViewMode("live"),  ac:"#00ff88" },
               { icon:"🏆", label:"TOP 10", active:viewMode==="top10", onClick:()=>setViewMode("top10"), ac:"#66ccff" },
+              { icon:"🎯", label: gateOn?"70% GATE":"GATE OFF", active:gateOn, onClick:()=>setGateOn(g=>!g), ac:"#00ff88" },
               { icon: sortMode==="days"?"📅":"💰", label: sortMode==="days"?"DAYS":"PREM", active:true, onClick:()=>setSortMode(m=>m==="days"?"premium":"days"), ac:"#ffe033" },
               { icon:"🗑", label:"30D", active:false, onClick:()=>{ if(confirm("Clear 30-day build history?")){ setHistory({}); saveHist({}); } }, ac:"#ff9955" },
               { icon:"⚡", label:"CONFIRMED", active:confirmed, onClick:()=>setConfirmed(p=>!p), ac:"#ffe033" },
