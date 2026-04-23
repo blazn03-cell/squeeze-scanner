@@ -1,0 +1,30 @@
+The error "✗ Failed to fetch" with "Connected · scan starting…" means the MCP connection opened but the Anthropic Messages API call died mid-flight. Four likely causes, ranked by probability:
+
+Tool-call overflow (most likely) — You already learned this one. If your scanner is calling more than 3 UW tools per scan (flow + dark pool + staircase + enrichment = 4+), you're back in JSON parse / timeout territory.
+UW MCP server timeout — api.unusualwhales.com/api/mcp hanging on one of the tools
+Anthropic API transient 529/500 — overloaded or rate-limited
+CORS / network — less likely since you were connected
+
+EXECUTION — triage in order
+Step 1 — check browser console right now. Open DevTools → Network tab → find the failed /v1/messages request. Look at:
+
+Status code (529 = Anthropic overload, 408/504 = timeout, 400 = your payload, 401 = auth)
+Response body (Anthropic returns JSON with an error.type and error.message)
+
+That one field tells you which of the 4 causes it is. No guessing after that.
+Step 2 — enforce the 3-tool limit you already know works. Your memory explicitly flags this: "Limiting the MCP prompt to three fetches (flow alerts, dark pool recent, market tide) prevents JSON parse failures and timeouts." If your scan prompt is asking Claude to also do "staircase detection + enrichment" as additional tool calls, you violated your own rule. Fold staircase detection into post-processing on the returned flow/DP data — it's pattern matching on data you already have, not a separate fetch.
+Step 3 — add retry + backoff. One failed fetch shouldn't kill the scan. Wrap the API call:
+javascriptasync function scanWithRetry(attempt = 1) {
+  try {
+    return await fetch('https://api.anthropic.com/v1/messages', {...});
+  } catch (err) {
+    if (attempt >= 3) throw err;
+    await new Promise(r => setTimeout(r, 2000 * attempt));
+    return scanWithRetry(attempt + 1);
+  }
+}
+Step 4 — check your poll interval. Your memory confirms Math.max(pollSec, 60). If something overrode that and you're hitting every 15s, Anthropic's rate limits will fail you fast.
+RISK
+If this is Anthropic API overload (529s), retries won't help — back off to 2-minute polls until it clears. Check status.anthropic.com.
+If it's UW MCP hanging, your API call is waiting on them. Add AbortController with a 30s timeout so failed MCP calls don't block the next scan cycle.
+WHAT I NEED FROM YOU

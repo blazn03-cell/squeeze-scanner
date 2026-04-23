@@ -905,41 +905,69 @@ function App() {
     isFetching.current=true; setLoading(true); setError("");
     addLog("Scanning: flow + dark pool + staircase detection + enrichment…");
     try {
-      let res;
-      try {
-        res = await fetch("https://api.anthropic.com/v1/messages", {
-          method:"POST",
-          headers:{
-            "Content-Type":"application/json",
-            "x-api-key":akRef.current,
-            "anthropic-version":"2023-06-01",
-            "anthropic-beta":"mcp-client-2025-04-04",
-            "anthropic-dangerous-direct-browser-access":"true"
-          },
-          body:JSON.stringify({
-            model:"claude-opus-4-5",
-            max_tokens:5000,
-            system: buildSystem(ukRef.current),
-            messages:[{ role:"user", content:"Run full scan now. Return only the JSON array starting with [" }],
-            mcp_servers:[{ type:"url", url:"https://api.unusualwhales.com/api/mcp", name:"unusual-whales", authorization_token:ukRef.current }]
-          })
-        });
-      } catch (netErr) {
-        // Browser-level failure (CORS, offline, DNS). Surface a useful hint instead of "Failed to fetch".
-        const hint = !navigator.onLine
-          ? "You appear to be offline."
-          : "Browser blocked the request (CORS / network). Check that your Anthropic key is valid and that the page is served over http(s).";
-        throw new Error(`Network: ${netErr.message}. ${hint}`);
+      // Retry with exponential backoff. AbortController guards each attempt so a hung
+      // MCP tool call can't tie up the next scan cycle.
+      const SCAN_TIMEOUT_MS = 90000;
+      const MAX_ATTEMPTS    = 3;
+      let res, lastErr;
+      for (let attempt=1; attempt<=MAX_ATTEMPTS; attempt++) {
+        const ctrl = new AbortController();
+        const timer = setTimeout(()=>ctrl.abort(), SCAN_TIMEOUT_MS);
+        try {
+          res = await fetch("https://api.anthropic.com/v1/messages", {
+            method:"POST",
+            signal: ctrl.signal,
+            headers:{
+              "Content-Type":"application/json",
+              "x-api-key":akRef.current,
+              "anthropic-version":"2023-06-01",
+              "anthropic-beta":"mcp-client-2025-04-04",
+              "anthropic-dangerous-direct-browser-access":"true"
+            },
+            body:JSON.stringify({
+              model:"claude-opus-4-5",
+              max_tokens:5000,
+              system: buildSystem(ukRef.current),
+              messages:[{ role:"user", content:"Run full scan now. Return only the JSON array starting with [" }],
+              mcp_servers:[{ type:"url", url:"https://api.unusualwhales.com/api/mcp", name:"unusual-whales", authorization_token:ukRef.current }]
+            })
+          });
+          clearTimeout(timer);
+          break;
+        } catch (netErr) {
+          clearTimeout(timer);
+          lastErr = netErr;
+          const aborted = netErr.name === "AbortError";
+          const why = aborted
+            ? `timed out after ${SCAN_TIMEOUT_MS/1000}s (MCP tool call probably hung)`
+            : !navigator.onLine
+              ? "you appear to be offline"
+              : `browser blocked the request — ${netErr.message} (likely CORS or invalid Anthropic key)`;
+          if (attempt < MAX_ATTEMPTS) {
+            const wait = 2000 * attempt;
+            addLog(`⏳ Attempt ${attempt}/${MAX_ATTEMPTS} failed (${why}) — retrying in ${wait/1000}s…`);
+            await new Promise(r=>setTimeout(r, wait));
+            continue;
+          }
+          throw new Error(`Network after ${MAX_ATTEMPTS} attempts: ${why}`);
+        }
       }
+      if (!res) throw lastErr || new Error("No response");
       if (!res.ok) {
         const e = await res.json().catch(()=>({}));
         const msg = e?.error?.message || `HTTP ${res.status}`;
-        if (msg.includes("concurrents")||msg.includes("exceeded_limit")) {
+        if (msg.includes("concurrents")||msg.includes("exceeded_limit")||res.status===429) {
           addLog("⏳ Rate limit — waiting 45s…"); setError("Rate limited…");
           await new Promise(r=>setTimeout(r,45000));
           setError(""); isFetching.current=false; setLoading(false); return;
         }
-        throw new Error(msg.slice(0,150));
+        if (res.status===529 || res.status===503 || res.status===500) {
+          addLog(`⏳ Anthropic overloaded (HTTP ${res.status}) — waiting 60s…`); setError(`Anthropic ${res.status}…`);
+          await new Promise(r=>setTimeout(r,60000));
+          setError(""); isFetching.current=false; setLoading(false); return;
+        }
+        if (res.status===401) throw new Error("Invalid Anthropic API key (401)");
+        throw new Error(`HTTP ${res.status}: ${msg.slice(0,150)}`);
       }
       const data = await res.json();
       const tools = (data.content||[]).filter(b=>b.type==="mcp_tool_use");
