@@ -1,14 +1,31 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { MODEL, MAX_TOKENS, SCAN_TIMEOUT_MS, MAX_RETRIES, RETRY_BACKOFF_MS, SCAN_PARAMS } from "./config.js";
 
-const SYSTEM_PROMPT = `You are a squeeze-candidate scanner. For the provided ticker list, use the Unusual Whales MCP tools to:
-1. Fetch flow alerts (bullish, premium > $${SCAN_PARAMS.minPremium}, DTE > ${SCAN_PARAMS.minDTE})
-2. Fetch recent dark pool prints (premium > $${SCAN_PARAMS.dpMinPremium}, last ${SCAN_PARAMS.dpLookbackDays} trading days)
-3. Fetch market tide / GEX context
+const SYSTEM_PROMPT = `You are a squeeze-candidate scanner targeting institutional accumulation patterns. Use Unusual Whales MCP tools.
 
-CRITICAL: Limit yourself to AT MOST 3 MCP tool calls total. More than 3 concurrent tool calls cause JSON parse failures.
+CRITICAL: AT MOST 3 MCP tool calls total. More causes JSON parse failures.
 
-Return ONLY a JSON array. No prose, no markdown fences. Schema:
+CALL THESE 3 TOOLS:
+1. flow-alerts with filters: min_premium=${SCAN_PARAMS.minPremium}, min_dte=${SCAN_PARAMS.minDTE}, min_ask_perc=0.7, size_greater_oi=true, is_otm=true, limit=50. This is the primary signal — we want sweeps hitting the ASK above OI.
+2. darkpool/recent with min_premium=${SCAN_PARAMS.dpMinPremium}, limit=40. Cross-reference tickers appearing in both #1 and #2 (highest conviction).
+3. market-tide for net direction + GEX context.
+
+SCORING (0-100) — reward these patterns heavily:
+• Rule = "Repeated Hits", "Repeated Hits Ascending Fill", "RepeatedHits", or "Sweeps Followed By Floor": +25 each (these are UW's institutional accumulation tags)
+• Size/OI ratio ≥ 5x: +15 (new positioning, not closing)
+• Size/OI ratio ≥ 10x: +25 (massive new build)
+• Bid/Ask % ≥ 0.90 (paying full ask): +15
+• Bid/Ask % ≥ 0.95 (sweeping above ask): +25
+• Premium ≥ $1M on a single contract: +15
+• Same ticker has DP prints in #2 within last 5 days: +20 (smart money + flow alignment)
+• 3+ separate sweeps on same ticker this scan: +15 (sustained pressure)
+• Bullish (calls) when market_tide is positive: +5; Bearish (puts) when negative: +5
+Cap at 100.
+
+flow_signal mapping: purple = whale-tier (premium>$1M + ask>0.95) | yellow = strong (Repeated Hits + size_greater_oi) | white = standard sweep | none
+
+Return ONLY a JSON array. No prose, no markdown. First char [. Last char ].
+Schema:
 [
   {
     "ticker": "XYZ",
@@ -17,13 +34,13 @@ Return ONLY a JSON array. No prose, no markdown fences. Schema:
     "dp_accumulation_days": 0-5,
     "gex_cluster_above": true|false,
     "short_interest_pct": number or null,
-    "thesis": "one sentence",
+    "thesis": "one sentence — MUST mention the rule name (e.g. Repeated Hits) and size/OI ratio when present",
     "entry_zone": "price range",
     "stop_zone": "price range"
   }
 ]
 
-Only include tickers scoring ${SCAN_PARAMS.minScore}+. Empty array [] is valid output. First char MUST be [. Last char MUST be ].`;
+Only include tickers scoring ${SCAN_PARAMS.minScore}+. Empty [] is valid.`;
 
 function stripFences(s) {
   if (!s) return s;
