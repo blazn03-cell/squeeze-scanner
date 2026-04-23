@@ -1,0 +1,188 @@
+Here's both options formatted as clean spec docs for Replit AI. Copy-paste each section as a separate prompt.
+
+OPTION 1 — UW WEB PLATFORM WORKFLOW (no code needed)
+This isn't a Replit task — it's a daily routine. I'm including it so you have the full picture. Skip to Option 2 if you just want the build spec.
+Pre-Market Monitoring Checklist (8:00–9:30 AM ET) — UW Web Only
+
+Log into unusualwhales.com
+Open these tabs in order:
+
+Dark Pool → Heatmap — filter last 5 days, look for tickers with 3+ day price-level clusters
+Dark Pool → Recent Prints — filter: premium > $5M, side = ask (accumulation)
+Flow → Flow Alerts — filter: bullish sweeps, premium > $100K, DTE > 7
+Stocks → Hottest Contracts — sort by premium, calls only
+Stocks → Screener — your saved "squeeze candidates" preset (high SI %, low float)
+
+
+Build a pre-market watchlist of 3–5 tickers that hit multiple filters
+At 9:30 AM, load those tickers into your scanner for the 10:00 AM ORB window
+
+This is what UW was built for. Use it as your background tracker, your scanner as the trigger-time synthesizer.
+
+OPTION 2 — REPLIT AI BUILD SPEC (automated pre-market scanning)
+Copy everything below this line into Replit AI as one prompt.
+
+BUILD SPEC: Automated Pre-Market Squeeze Scanner with Logging
+Project Goal
+Deploy my existing React scanner (scanner-onsteriods.jsx) to run automatically on a schedule during pre-market hours, capturing squeeze candidates and logging results to a Google Sheet so I can review them when I sit down to trade at 9:20 AM ET.
+Tech Stack
+
+Runtime: Node.js (latest LTS)
+Hosting: Replit (Always-On or Deployments)
+Scheduler: Replit Scheduled Deployments (cron)
+Anthropic SDK: @anthropic-ai/sdk (latest)
+Storage: Google Sheets via service account
+Secrets: Replit Secrets tab (never hardcode keys)
+
+Required Secrets (set in Replit Secrets tab)
+
+ANTHROPIC_API_KEY — my Anthropic console key
+UW_API_TOKEN — my Unusual Whales API token
+GOOGLE_SERVICE_ACCOUNT_JSON — full JSON from Google Cloud service account
+GOOGLE_SHEET_ID — the ID from my Google Sheet URL
+
+File Structure
+/
+├── index.js              (entry point, runs one scan and exits)
+├── scanner.js            (Anthropic + UW MCP call logic)
+├── sheets.js             (Google Sheets append logic)
+├── config.js             (ticker watchlist, scan params)
+├── package.json
+└── .replit               (Replit config)
+Core Logic — scanner.js
+Make a single Anthropic Messages API call with:
+
+Model: claude-sonnet-4-5-20250929 (or latest Sonnet available)
+Max tokens: 4000
+MCP servers: UW at https://api.unusualwhales.com/api/mcp with bearer token UW_API_TOKEN
+System prompt:
+
+You are a squeeze-candidate scanner. For the provided ticker list, use the Unusual Whales MCP tools to:
+1. Fetch flow alerts (bullish, premium > $100K, DTE > 7)
+2. Fetch recent dark pool prints (premium > $5M, last 5 trading days)
+3. Fetch market tide / GEX context
+
+Return ONLY a JSON array. No prose. Schema:
+[
+  {
+    "ticker": "XYZ",
+    "score": 0-100,
+    "flow_signal": "purple|yellow|white|none",
+    "dp_accumulation_days": 0-5,
+    "gex_cluster_above": true|false,
+    "short_interest_pct": number or null,
+    "thesis": "one sentence",
+    "entry_zone": "price range",
+    "stop_zone": "price range"
+  }
+]
+
+Only include tickers scoring 60+. Empty array is valid output.
+
+User prompt: Scan these tickers: ${watchlist.join(", ")}
+
+CRITICAL: Limit to 3 MCP tool calls per scan. My existing scanner has documented issues with more than 3 concurrent tool calls causing JSON parse failures.
+Parse the JSON response (strip any markdown code fences first). Return the array.
+Logging — sheets.js
+Use googleapis package. Append each scan's results as rows to the sheet with columns:
+timestamp | ticker | score | flow_signal | dp_days | gex_cluster | short_int | thesis | entry_zone | stop_zone
+If the scan returns empty, still log one row: timestamp | NO_CANDIDATES | — | — | — | — | — | — | — | — so I can confirm the scan ran.
+Config — config.js
+Export:
+javascriptexport const WATCHLIST = [
+  "SPY", "QQQ", "IWM",  // market context
+  // user to add squeeze candidates here
+];
+
+export const SCAN_PARAMS = {
+  minPremium: 100000,
+  minDTE: 7,
+  dpMinPremium: 5000000,
+  dpLookbackDays: 5,
+  minScore: 60
+};
+Entry Point — index.js
+javascriptimport { runScan } from './scanner.js';
+import { logToSheet } from './sheets.js';
+import { WATCHLIST } from './config.js';
+
+async function main() {
+  const timestamp = new Date().toISOString();
+  console.log(`[${timestamp}] Scan starting for ${WATCHLIST.length} tickers`);
+  
+  try {
+    const results = await runScan(WATCHLIST);
+    await logToSheet(timestamp, results);
+    console.log(`[${timestamp}] Logged ${results.length} candidates`);
+  } catch (err) {
+    console.error(`[${timestamp}] SCAN FAILED:`, err.message);
+    await logToSheet(timestamp, [{ 
+      ticker: 'ERROR', 
+      score: 0, 
+      thesis: err.message 
+    }]).catch(() => {});
+    process.exit(1);
+  }
+}
+
+main();
+Error Handling Requirements
+
+Wrap Anthropic call in try/catch with 30-second timeout via AbortController
+Retry failed API calls 2x with 3-second backoff before giving up
+Always log errors to the Google Sheet so I can see if the scan silently died
+Exit cleanly with process.exit(0) on success, process.exit(1) on failure
+
+Replit Scheduled Deployment Config
+Set up three scheduled runs (ET timezone — configure in cron as UTC):
+PurposeET timeUTC cronDescriptionEarly pre-market8:30 AM30 13 * * 1-5First signal checkLate pre-market9:00 AM0 14 * * 1-5Updated flow 30 min before openFinal pre-open9:25 AM25 14 * * 1-5Last read before bell
+Each run executes node index.js and exits. No persistent server needed.
+Note: UTC cron values above assume ET is currently EDT (UTC-4). Adjust to * 14 * * 1-5 and * 15 * * 1-5 during EST (UTC-5, winter months) or use a timezone-aware scheduler.
+Google Sheets Setup (I need to do this before code runs)
+
+Create new Google Sheet named "UW Scanner Log"
+First row: timestamp | ticker | score | flow_signal | dp_days | gex_cluster | short_int | thesis | entry_zone | stop_zone
+Go to console.cloud.google.com → create project → enable Google Sheets API
+Create service account → download JSON key
+Share the Google Sheet with the service account email (Editor access)
+Paste JSON contents into Replit Secret GOOGLE_SERVICE_ACCOUNT_JSON
+Copy sheet ID from URL (between /d/ and /edit) → paste into Replit Secret GOOGLE_SHEET_ID
+
+Cost Control
+Each scan ≈ 3 tool calls + ~2000 tokens out ≈ $0.05–0.15. Three scans per trading day ≈ $0.15–0.45/day ≈ $3–9/month. Confirm my Anthropic monthly spend cap is set to $50 in console.anthropic.com before deploying.
+Deliverables I Need From Replit AI
+
+All four files above, working and tested
+package.json with exact dependency versions
+Instructions for setting up the three scheduled deployments in Replit UI
+A test command I can run manually (npm run scan) to verify before scheduling
+Clear error messages in console if any secret is missing
+
+Do NOT
+
+Hardcode any API keys or tokens
+Add features I didn't ask for (no web UI, no email alerts, no Slack integration)
+Use more than 3 UW tool calls per scan
+Skip error handling "to keep it simple"
+
+Build this exactly as specified. Ask me clarifying questions before writing code if anything is ambiguous.
+
+AFTER REPLIT AI BUILDS IT
+Your manual steps:
+
+Create the Google Sheet + service account (spec includes instructions)
+Add all 4 secrets to Replit Secrets tab
+Run npm install then npm run scan manually — confirm it writes to the sheet
+Set up the 3 scheduled deployments in Replit → Deployments tab
+Add your squeeze candidates to config.js WATCHLIST each Sunday night for the upcoming week
+
+First-week verification:
+
+Check the sheet at 9:30 AM Monday
+Should see 3 rows (8:30, 9:00, 9:25) with either candidates or NO_CANDIDATES
+If any rows are missing, the scheduled run failed — check Replit deployment logs
+
+RISK WATCH
+Replit's scheduled deployments have a small cold-start cost. If the 8:30 scan takes 45s to spin up, you might see 8:30:45 timestamps. Fine for your use case, but don't expect millisecond precision.
+Don't let this replace your discipline. Pre-market scans surface candidates. The 13-point checklist and the 10 AM ORB rule still run the trades.
+Want me to also write the Google Sheet formulas that highlight scores 80+ in green and flag tickers appearing in all 3 scans? That's the "review dashboard" layer — useful but optional.

@@ -1,0 +1,174 @@
+Here's the Replit AI prompt to add automated sheet setup. Copy-paste as a follow-up message to Replit AI after it's finished the main build.
+
+FOLLOW-UP TASK: Auto-Provision Dashboard Tabs & Formulas
+Context
+You just built the scanner that writes to Raw Log tab. Now add a one-time setup script that creates the Today and Repeat Hits tabs, applies all formulas, and sets conditional formatting rules — so I never touch the Google Sheet manually.
+New File: setup-sheet.js
+This runs once to provision the sheet. After it runs successfully, it should never need to run again (but should be idempotent — safe to re-run without breaking anything).
+Requirements
+1. Entry command
+Add to package.json:
+json"scripts": {
+  "scan": "node index.js",
+  "setup": "node setup-sheet.js"
+}
+I run npm run setup once after creating the sheet. Done.
+2. What setup-sheet.js must do
+Use the googleapis package with the same service account credentials from GOOGLE_SERVICE_ACCOUNT_JSON. Perform these steps in order:
+Step A — Verify/create Raw Log tab
+
+Check if a sheet named Raw Log exists
+If not, create it
+Ensure row 1 has headers: timestamp | ticker | score | flow_signal | dp_days | gex_cluster | short_int | thesis | entry_zone | stop_zone
+If headers don't match exactly, overwrite row 1
+
+Step B — Create Today tab
+
+If tab named Today exists, delete it first (ensures clean slate on re-run)
+Create new tab Today
+Set row 1 summary strip:
+
+A1: Today's Scan Summary (bold, font size 14, merged A1:H1)
+
+
+Set row 2 summary formulas:
+
+A2: Total Candidates: (bold)
+B2: =COUNTA(B5:B1000)-COUNTBLANK(B5:B1000)
+C2: Score 80+: (bold)
+D2: =COUNTIF(C5:C1000,">=80")
+E2: Triple Hits: (bold)
+F2: =COUNTIF(K5:K1000,3)
+G2: Top Ticker: (bold)
+H2: =IFERROR(INDEX(B5:B1000,MATCH(MAX(C5:C1000),C5:C1000,0)),"—")
+
+
+Set row 4 as headers (bold, background color #1a1a1a, white text):
+
+Scan Time | Ticker | Score | Flow | DP Days | GEX ↑ | SI % | Thesis | Entry | Stop | Hit Count
+
+
+Set A5 formula (the QUERY that auto-pulls today's data):
+
+  =QUERY('Raw Log'!A:J, "SELECT A,B,C,D,E,F,G,H,I,J WHERE A >= date '"&TEXT(TODAY(),"yyyy-mm-dd")&"' AND B <> 'NO_CANDIDATES' AND B <> 'ERROR' ORDER BY C DESC", 0)
+
+Set K5 formula:
+
+  =ARRAYFORMULA(IF(B5:B="","",COUNTIF(B:B,B5:B)))
+Use ARRAYFORMULA so it auto-fills without dragging.
+Step C — Apply conditional formatting to Today tab
+Apply these 6 rules programmatically via the Sheets API addConditionalFormatRule method:
+RuleRange (A1 notation)Custom formulaBackgroundText color1C5:C1000=$C5>=80#0d9f4f#ffffff2C5:C1000=AND($C5>=60,$C5<80)#fbbf24#0000003K5:K1000=$K5>=3#0d9f4f#ffffff4K5:K1000=$K5=2#86efac#0000005D5:D1000=$D5="purple"#a855f7#ffffff6F5:F1000=$F5=TRUE#93c5fd#000000
+Clear any existing conditional format rules on the tab before adding these (idempotency).
+Step D — Create Repeat Hits tab
+
+If tab named Repeat Hits exists, delete it first
+Create new tab Repeat Hits
+Row 1 headers (bold, background #1a1a1a, white text):
+
+Ticker | Hit Count | Best Score | Latest Thesis
+
+
+A2 formula:
+
+  =UNIQUE(FILTER('Today'!B5:B, 'Today'!K5:K >= 2))
+
+B2 formula (use ARRAYFORMULA to auto-fill):
+
+  =ARRAYFORMULA(IF(A2:A="","",COUNTIF('Today'!B:B,A2:A)))
+
+C2 formula:
+
+  =ARRAYFORMULA(IF(A2:A="","",IFERROR(MAXIFS('Today'!C:C,'Today'!B:B,A2:A),"")))
+
+D2 formula (latest thesis lookup):
+
+  =ARRAYFORMULA(IF(A2:A="","",IFERROR(VLOOKUP(A2:A,SORT('Today'!B5:H,1,TRUE,7,FALSE),7,FALSE),"")))
+If this VLOOKUP approach doesn't return the latest thesis correctly, fall back to an INDEX/MATCH per row — acceptable tradeoff.
+Step E — Column widths & frozen rows (Today tab)
+
+Freeze first 4 rows (so summary + header stay visible on scroll)
+Set column widths:
+
+A (Scan Time): 160px
+B (Ticker): 80px
+C (Score): 70px
+D (Flow): 80px
+E (DP Days): 80px
+F (GEX ↑): 70px
+G (SI %): 70px
+H (Thesis): 350px
+I (Entry): 120px
+J (Stop): 120px
+K (Hit Count): 90px
+
+
+
+Step F — Column widths & frozen rows (Repeat Hits tab)
+
+Freeze first row
+Column widths: A=80, B=90, C=100, D=400
+
+3. Logging & Error Handling
+
+Log each step to console: ✓ Raw Log verified, ✓ Today tab created, ✓ Conditional formatting applied, etc.
+If any step fails, log the error with the step name and exit with process.exit(1)
+If the sheet doesn't exist or the service account lacks permissions, give a clear error: Sheet not found or service account lacks Editor access. Share the sheet with: <service-account-email>
+
+4. Idempotency Rules
+
+Running npm run setup twice should not duplicate tabs, formulas, or conditional format rules
+Existing Raw Log data must never be deleted — only check/fix headers
+Today and Repeat Hits tabs get fully rebuilt on each run (safe because they contain only formulas, no data)
+
+5. Dependencies
+Add to package.json:
+
+googleapis (latest)
+google-auth-library (latest)
+
+Deliverables
+
+setup-sheet.js — fully working, tested
+Updated package.json with setup script
+Console output that clearly shows which step succeeded/failed
+A README section explaining:
+
+Run npm run setup once after first deploy
+Re-run anytime the dashboard breaks or you want to reset formatting
+What each tab does
+
+
+
+Do NOT
+
+Auto-run setup on every scan (that's wasteful and risks hitting Sheets API quotas)
+Modify the scanner's write behavior — it still writes to Raw Log only
+Add more tabs or features I didn't ask for
+Hardcode the sheet ID or service account — read from env vars
+
+Build this exactly as specified. If anything is ambiguous, ask me before writing code.
+
+AFTER REPLIT AI BUILDS IT
+Your one-time execution:
+
+Confirm your sheet is shared with the service account (Editor access)
+In Replit shell: npm run setup
+Watch the console — should see ✓ marks for each step
+Open the Google Sheet — all 3 tabs should exist, properly formatted, empty of data but with formulas in place
+Run npm run scan manually to generate one row of real data
+Confirm data appears in Raw Log and auto-populates Today with conditional formatting applied
+
+If setup fails with permission error:
+The error message will include the service account email (something like uw-scanner@project-name.iam.gserviceaccount.com). Share the Google Sheet with that exact email, give Editor access, re-run npm run setup.
+
+THE FULL PICTURE — WHAT YOU NOW HAVE
+ComponentStatusYour effortScanner codeReplit AI built itZero — runs automaticallySheet tabs + formulasSetup script creates themnpm run setup oncePre-market scansScheduled deploymentsRuns daily at 8:30 / 9:00 / 9:25 ETDashboard viewAuto-populatedOpen sheet at 9:20 AMTrade executionTradingView + your brain10:00 AM ORB discipline
+Total build time if Replit AI behaves: ~2 hours.
+Total daily maintenance after deployment: 0 minutes (until you want to edit the watchlist).
+
+RISK LAYER
+Don't let automation turn into complacency. The scanner surfaces candidates. The dashboard filters them. Your discipline still runs every trade. The 13-point checklist exists for a reason — it catches the ones where flow looks bullish but earnings are Monday, or GEX says target $450 but macro is about to shred everything. Scanner + dashboard = faster prep, not a pass on rigor.
+PSYCHOLOGICAL EDGE
+A fully automated pre-market pipeline changes how you show up to the open. Instead of spending 9:00–9:30 AM frantically pulling up charts and flow, you're reading a 3-line summary and already running scenario trees in your head. That mental space is the actual edge — not the scanner, not the dashboard. Those are just tools that buy you time to think clearly when the bell rings.
+Build it this weekend. Run it Monday morning. Report back after one trading week with real data and we'll tune the scoring thresholds based on what the sheet actually captured.

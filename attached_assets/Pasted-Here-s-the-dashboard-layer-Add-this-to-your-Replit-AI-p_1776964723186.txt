@@ -1,0 +1,86 @@
+Here's the dashboard layer. Add this to your Replit AI prompt as a follow-up task, or set it up manually in the sheet — it's all Google Sheets native, no code.
+
+DASHBOARD SPEC — Google Sheet Formulas + Conditional Formatting
+Sheet Structure
+You'll end up with 3 tabs in the same Google Sheet:
+TabPurposeRaw LogThe scanner writes here. Never edit.TodayAuto-filtered view of today's scans only. Dashboard.Repeat HitsTickers that appeared in 2+ of today's scans. Highest conviction.
+
+TAB 1: Raw Log (the scanner writes here)
+Headers in row 1:
+A: timestamp | B: ticker | C: score | D: flow_signal | E: dp_days | F: gex_cluster | G: short_int | H: thesis | I: entry_zone | J: stop_zone
+No formulas on this tab. Leave it raw.
+
+TAB 2: Today (your morning dashboard)
+Row 1 — Headers (copy exactly):
+A1: Scan Time
+B1: Ticker
+C1: Score
+D1: Flow
+E1: DP Days
+F1: GEX ↑
+G1: SI %
+H1: Thesis
+I1: Entry
+J1: Stop
+K1: Hit Count
+Row 2 — Paste this single formula in A2:
+=QUERY('Raw Log'!A:J, "SELECT A,B,C,D,E,F,G,H,I,J WHERE A >= date '"&TEXT(TODAY(),"yyyy-mm-dd")&"' AND B <> 'NO_CANDIDATES' AND B <> 'ERROR' ORDER BY C DESC", 0)
+This auto-pulls today's candidates sorted by score, highest first.
+Column K (Hit Count) — paste in K2 and drag down:
+=IF(B2="","",COUNTIF(B:B,B2))
+Shows how many times each ticker appeared across today's 3 scans. A ticker with "3" in this column hit every scan = strongest signal.
+
+TAB 3: Repeat Hits (conviction filter)
+Row 1 — Headers:
+A1: Ticker | B1: Hit Count | C1: Best Score | D1: Latest Thesis
+Row 2 — paste these 4 formulas:
+A2 (unique tickers from today with 2+ hits):
+=UNIQUE(FILTER('Today'!B2:B, 'Today'!K2:K >= 2))
+B2 (drag down):
+=IF(A2="","",COUNTIF('Today'!B:B,A2))
+C2 (drag down):
+=IF(A2="","",MAXIFS('Today'!C:C,'Today'!B:B,A2))
+D2 (drag down — pulls the most recent thesis for that ticker):
+=IF(A2="","",INDEX('Today'!H:H,MATCH(1,('Today'!B:B=A2)*('Today'!A:A=MAXIFS('Today'!A:A,'Today'!B:B,A2)),0)))
+D2 is an array formula — after pasting, press Ctrl+Shift+Enter (or Cmd+Shift+Enter on Mac) to lock it in.
+
+CONDITIONAL FORMATTING RULES
+On the Today tab, set up these 4 rules:
+Steps for each rule:
+
+Select the range (specified below)
+Format → Conditional formatting → Add rule
+Use "Custom formula is"
+Paste the formula
+Set fill color
+
+#RangeCustom FormulaFill ColorMeaning1C2:C1000=$C2>=80Dark green #0d9f4f white textScore 80+ = high conviction2C2:C1000=AND($C2>=60,$C2<80)Yellow #fbbf24Score 60–79 = watch3K2:K1000=$K2>=3Dark green #0d9f4f white textHit all 3 scans4K2:K1000=$K2=2Light green #86efacHit 2 of 3 scans5D2:D1000=$D2="purple"Purple #a855f7 white textHighest flow quality6F2:F1000=$F2=TRUELight blue #93c5fdGEX cluster above = magnet target
+
+OPTIONAL — Summary strip at the top of Today tab
+Insert 2 rows above your dashboard. Put these at the top so you see the overview instantly when the sheet opens.
+A1: Today's Scan Summary
+A2: Total Candidates: → B2: =COUNTA(B4:B1000)-COUNTBLANK(B4:B1000)
+C2: Score 80+: → D2: =COUNTIF(C4:C1000,">=80")
+E2: Triple Hits: → F2: =COUNTIF(K4:K1000,3)
+G2: Top Ticker: → H2: =IFERROR(INDEX(B4:B1000,MATCH(MAX(C4:C1000),C4:C1000,0)),"—")
+Then shift your QUERY formula down to A4 (not A2) and the conditional formatting ranges down to C4:C1000 and K4:K1000.
+
+HOW YOU USE THIS AT 9:20 AM
+
+Open the sheet
+Click Today tab
+Look at the summary strip — how many candidates, any triple hits, top ticker
+Scan column C (scores) — anything 80+ in dark green goes on your trade radar
+Scan column K (hit count) — any 3s are priority (appeared in all 3 scans = sustained signal, not a one-time print)
+Click Repeat Hits tab for the filtered conviction list
+Cross-reference top candidates against your 13-point checklist in TradingView
+
+Total time from sheet-open to trade-ready watchlist: under 3 minutes.
+
+MOBILE ACCESS (bonus)
+Install the Google Sheets app on your phone. Open the sheet from bed at 8:45 AM, see what the 8:30 scan caught, decide if you're even getting out of bed for today's tape. Conditional formatting renders correctly on mobile.
+
+RISK
+Don't trade directly from this dashboard. It's a watchlist generator, not a signal. Your 13-point checklist + 10 AM ORB discipline still run every entry. The dashboard filters 500 possible tickers down to 3–5 real candidates. Those candidates still need ORB confirmation to trade.
+PSYCHOLOGICAL EDGE
+A triple-hit ticker (hit all 3 pre-market scans) with score 80+ and purple flow is a statistically different animal than a single-scan hit at score 65. The dashboard makes that distinction visible at a glance, so you stop treating all candidates equally. That's the whole point — not more alerts, better-weighted ones.

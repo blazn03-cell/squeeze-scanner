@@ -1,0 +1,17 @@
+{
+  "name": "uw-premarket-scanner",
+  "version": "1.0.0",
+  "description": "Automated pre-market squeeze scanner — runs on cron, logs candidates to Google Sheets",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "scan": "node index.js"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.32.1",
+    "@replit/connectors-sdk": "^1.0.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
