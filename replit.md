@@ -24,3 +24,4 @@ The "Start application" workflow runs: `python3 -m http.server 5000`
 - Dark theme (#04080c base) with brightened mid-grey palette (#7591a8 / #9bb3c6 / #a7c0d4 / #eaf2ff) for readable contrast
 - Minimum text size is 9–10px; no 7–8px microtype in active UI
 - "30D BACKUP" label/tooltip clarifies the 30-day tracker is a fallback view of pre-squeeze builds when nothing has fired live
+- GEX (Gamma Exposure) is surfaced in three places: header summary badge "🔥 N GEX ↑X ↓Y" (counts amplified squeezes/flushes), per-row chips "γ↑ SHORT · $wall" / "γ↓ LONG · $wall" on live cards, and γ↑/γ↓ chips on 30D backup cards. GEX bias is also persisted into the 30-day history.

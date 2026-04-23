@@ -274,6 +274,7 @@ function recordHist(prints, prev) {
     if (p.fda)      e.fda      = p.fda;
     if (p.earnings) e.earnings = p.earnings;
     if (p.predict && p.predict.any) e.predict = p.predict;
+    if (p.gex?.bias) { e.gex_bias = p.gex.bias; e.gex_wall = p.gex.wall || e.gex_wall; }
     h[key] = e;
   });
   return pruneHist(h);
@@ -404,6 +405,8 @@ function TopCard({ entry, rank, sortMode }) {
         <span style={{ fontSize:10, color:def.color, border:`1px solid ${def.color}55`, padding:"1px 5px", letterSpacing:"0.08em" }}>{def.label}</span>
         {entry.sweepOk && <span style={{ fontSize:10, color:"#ffe033", border:"1px solid #ffe03344", padding:"1px 4px" }}>SW</span>}
         {entry.dpOk    && <span style={{ fontSize:10, color:"#44ffbb", border:"1px solid #44ffbb44", padding:"1px 4px" }}>DP</span>}
+        {entry.gex_bias==="short_gamma" && <span title={`Dealers short gamma — squeezes amplified${entry.gex_wall?` · wall ${entry.gex_wall}`:""}`} style={{ fontSize:10, color:"#ff88cc", border:"1px solid #ff88cc55", padding:"1px 5px", fontWeight:700 }}>γ↑{entry.gex_wall?` ${entry.gex_wall}`:""}</span>}
+        {entry.gex_bias==="long_gamma"  && <span title={`Dealers long gamma — flushes amplified${entry.gex_wall?` · wall ${entry.gex_wall}`:""}`} style={{ fontSize:10, color:"#ff6600", border:"1px solid #ff660055", padding:"1px 5px", fontWeight:700 }}>γ↓{entry.gex_wall?` ${entry.gex_wall}`:""}</span>}
         {entry.congress?.any && <span style={{ fontSize:10, color: entry.congress.net_side==="buy"?"#00ff88":entry.congress.net_side==="sell"?"#ff3355":"#66ccff", border:`1px solid ${entry.congress.net_side==="buy"?"#00ff8844":entry.congress.net_side==="sell"?"#ff335544":"#66ccff44"}`, padding:"1px 4px" }}>🏛</span>}
         {entry.insider?.any  && <span style={{ fontSize:10, color: entry.insider.net_side==="buy"?"#00ff88":"#ff9955", border:`1px solid ${entry.insider.net_side==="buy"?"#00ff8844":"#ff995544"}`, padding:"1px 4px" }}>👤</span>}
         {entry.news?.any     && <span style={{ fontSize:10, color:"#ff9955", border:"1px solid #ff995544", padding:"1px 4px" }}>📰</span>}
@@ -513,6 +516,8 @@ function Card({ p, open, onToggle, pos, onSave, isNew }) {
               {isEW && <span style={{ fontSize:9, color:"#00ddff", background:"#001418", border:"1px solid #00ddff33", padding:"1px 6px" }}>👀 EARLY</span>}
               {sc>=3 && !isEW && <span style={{ fontSize:9, color:"#00ddff" }}>📊{sc}d</span>}
               {p.sweepOk && p.dpOk && <span style={{ fontSize:9, color:"#ffe033" }}>⚡ BOTH</span>}
+              {p.gex?.bias==="short_gamma" && (<span title={`Dealers SHORT gamma${p.gex.wall?` — wall at ${p.gex.wall}`:""}${p.gex.comment?` — ${p.gex.comment}`:""}`} style={{ fontSize:9, color:"#ff88cc", border:"1px solid #ff88cc55", background:p.cat==="squeeze"?"#ff88cc18":"transparent", padding:"1px 5px", fontWeight:700, whiteSpace:"nowrap" }}>γ↑ SHORT{p.gex.wall?` · ${p.gex.wall}`:""}</span>)}
+              {p.gex?.bias==="long_gamma"  && (<span title={`Dealers LONG gamma${p.gex.wall?` — wall at ${p.gex.wall}`:""}${p.gex.comment?` — ${p.gex.comment}`:""}`} style={{ fontSize:9, color:"#ff6600", border:"1px solid #ff660055", background:p.cat==="flush"?"#ff660018":"transparent", padding:"1px 5px", fontWeight:700, whiteSpace:"nowrap" }}>γ↓ LONG{p.gex.wall?` · ${p.gex.wall}`:""}</span>)}
               {p.congress?.any && (<span title={`${p.congress.latest_name||"Congress"} ${p.congress.net_side||""} ${p.congress.latest_date||""}`} style={{ fontSize:9, color: p.congress.net_side==="buy"?"#00ff88":p.congress.net_side==="sell"?"#ff3355":"#66ccff", border:`1px solid ${p.congress.net_side==="buy"?"#00ff8844":p.congress.net_side==="sell"?"#ff335544":"#66ccff44"}`, padding:"1px 5px", whiteSpace:"nowrap" }}>🏛 CONGRESS {p.congress.net_side==="buy"?"▲":p.congress.net_side==="sell"?"▼":""}{p.congress.buys||0}/{p.congress.sells||0}</span>)}
               {p.insider?.any && (<span title={`Insider net ${p.insider.net_side||""}`} style={{ fontSize:9, color: p.insider.net_side==="buy"?"#00ff88":p.insider.net_side==="sell"?"#ff9955":"#7aaed0", border:`1px solid ${p.insider.net_side==="buy"?"#00ff8844":p.insider.net_side==="sell"?"#ff995544":"#7aaed044"}`, padding:"1px 5px", whiteSpace:"nowrap" }}>👤 INSIDER {p.insider.net_side==="buy"?"▲":p.insider.net_side==="sell"?"▼":""}</span>)}
               {p.news?.any && (<span title={p.news.latest||""} style={{ fontSize:9, color:"#ff9955", border:"1px solid #ff995544", padding:"1px 5px", whiteSpace:"nowrap" }}>📰 {(p.news.catalyst_type||"news").toUpperCase()}{p.news.hours_ago!=null?` ${p.news.hours_ago}h`:""}</span>)}
@@ -1026,6 +1031,9 @@ function App() {
   const earnAlerts = Object.entries(positions).filter(([,p])=>p?.entryPrice).map(([id])=>feed.find(p=>p.id===id)).filter(p=>p?.earnings?.within_14_days);
   const hcCount = feed.filter(p=>p.sweepOk&&p.dpOk&&(p.winProb||0)>=65).length;
   const scCount = feed.filter(p=>(p.staircase_days||0)>=3).length;
+  const gexShort = feed.filter(p=>p.gex?.bias==="short_gamma" && p.cat==="squeeze").length;
+  const gexLong  = feed.filter(p=>p.gex?.bias==="long_gamma"  && p.cat==="flush").length;
+  const gexAmp   = gexShort + gexLong;
 
   return (
     <div style={{ fontFamily:"'Inter','Segoe UI',system-ui,sans-serif", background:"#05090e", height:"100vh", display:"flex", flexDirection:"column", overflow:"hidden", color:"#b0c4d8" }}>
@@ -1079,6 +1087,7 @@ function App() {
           </div>
           {hcCount>0 && <div style={{ marginRight:8, padding:"4px 10px", background:"#ffe03318", border:"1px solid #ffe03344", fontSize:10, fontWeight:600, color:"#ffe033", borderRadius:3 }}>{hcCount} HIGH CONV</div>}
           {scCount>0 && <div style={{ marginRight:8, padding:"4px 10px", background:"#00ddff18", border:"1px solid #00ddff44", fontSize:10, fontWeight:600, color:"#00ddff", borderRadius:3 }}>📊 {scCount} STAIRCASE</div>}
+          {gexAmp>0 && <div title={`GEX amplifying ${gexAmp} setup${gexAmp>1?"s":""} — dealers ${gexShort?"short gamma on "+gexShort+" squeeze"+(gexShort>1?"s":""):""}${gexShort&&gexLong?", ":""}${gexLong?"long gamma on "+gexLong+" flush"+(gexLong>1?"es":""):""}`} style={{ marginRight:8, padding:"4px 10px", background:"#ff88cc18", border:"1px solid #ff88cc55", fontSize:10, fontWeight:600, color:"#ff88cc", borderRadius:3 }}>🔥 {gexAmp} GEX{gexShort>0?` ↑${gexShort}`:""}{gexLong>0?` ↓${gexLong}`:""}</div>}
           {trackedCount>0 && <div title="30-day backup list — pre-squeeze builds tracked across days, in case the move hasn't fired yet" style={{ marginRight:8, padding:"4px 10px", background:"#66ccff18", border:"1px solid #66ccff44", fontSize:10, fontWeight:600, color:"#66ccff", borderRadius:3 }}>🧠 {trackedCount} TRACKED · 30D BACKUP</div>}
           {error && <div style={{ padding:"3px 10px", background:"#ff000011", border:"1px solid #ff333322", fontSize:9, color:"#ff3355", maxWidth:200, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>✗ {error}</div>}
           <div style={{ marginLeft:"auto", display:"flex", alignItems:"center", gap:6 }}>
@@ -1113,7 +1122,7 @@ function App() {
           </div>
         </div>
         <div style={{ display:"flex", gap:18, padding:"6px 20px", borderTop:"1px solid #0e1a24", background:"#04080c", flexWrap:"wrap" }}>
-          {[{i:"📊",t:"Staircase = 3+ day DP accumulation",c:"#00ddff"},{i:"👀",t:"Early = staircase, no sweep yet",c:"#22aacc"},{i:"⚡",t:"Both = sweep + DP confirmed",c:"#ffe033"},{i:"🔥γ",t:"Short/long gamma = amplified",c:"#ff88cc"},{i:"⚠",t:"High IV = use spread",c:"#ffaa44"}].map(({i,t,c})=>(
+          {[{i:"📊",t:"Staircase = 3+ day DP accumulation",c:"#00ddff"},{i:"👀",t:"Early = staircase, no sweep yet",c:"#22aacc"},{i:"⚡",t:"Both = sweep + DP confirmed",c:"#ffe033"},{i:"γ↑",t:"Short gamma = squeeze amplified",c:"#ff88cc"},{i:"γ↓",t:"Long gamma = flush amplified",c:"#ff6600"},{i:"⚠",t:"High IV = use spread",c:"#ffaa44"}].map(({i,t,c})=>(
             <span key={i} style={{ fontSize:10, display:"flex", gap:6, alignItems:"center" }}><span style={{color:c, fontWeight:700}}>{i}</span><span style={{color:"#7591a8"}}>{t}</span></span>
           ))}
           <span style={{ marginLeft:"auto", fontSize:10, color:"#5a7a92" }}>{feed.length} signals · staircase → tier → win prob</span>
