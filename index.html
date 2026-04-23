@@ -877,6 +877,7 @@ function App() {
   const [history,   setHistory]   = useState(() => pruneHist(loadHist()));
   const [viewMode,  setViewMode]  = useState("live");   // "live" | "top10"
   const [sortMode,  setSortMode]  = useState("days");    // "days" | "premium"
+  const [usage,     setUsage]     = useState({ in:0, out:0, scans:0 });  // cumulative this session
 
   const seen       = useRef(new Set());
   const intv       = useRef(null);
@@ -925,7 +926,7 @@ function App() {
             },
             body:JSON.stringify({
               model:"claude-opus-4-5",
-              max_tokens:5000,
+              max_tokens:2000,
               system: buildSystem(ukRef.current),
               messages:[{ role:"user", content:"Run full scan now. Return only the JSON array starting with [" }],
               mcp_servers:[{ type:"url", url:"https://api.unusualwhales.com/api/mcp", name:"unusual-whales", authorization_token:ukRef.current }]
@@ -969,6 +970,14 @@ function App() {
         throw new Error(`HTTP ${res.status}: ${msg.slice(0,150)}`);
       }
       const data = await res.json();
+      const u = data.usage || {};
+      const inTok  = (u.input_tokens||0) + (u.cache_creation_input_tokens||0) + (u.cache_read_input_tokens||0);
+      const outTok = u.output_tokens||0;
+      if (inTok || outTok) {
+        setUsage(prev => ({ in: prev.in + inTok, out: prev.out + outTok, scans: prev.scans + 1 }));
+        const cost = (inTok*15 + outTok*75) / 1e6;
+        addLog(`Tokens: ${inTok} in / ${outTok} out · ~$${cost.toFixed(3)} this scan`);
+      }
       const tools = (data.content||[]).filter(b=>b.type==="mcp_tool_use");
       if (tools.length) addLog(`Tools used: ${[...new Set(tools.map(t=>t.name))].join(", ")}`);
       const raw = ((data.content||[]).find(b=>b.type==="text")?.text)||"";
@@ -1131,6 +1140,11 @@ function App() {
           {scCount>0 && <div style={{ marginRight:8, padding:"4px 10px", background:"#00ddff18", border:"1px solid #00ddff44", fontSize:10, fontWeight:600, color:"#00ddff", borderRadius:3 }}>📊 {scCount} STAIRCASE</div>}
           {gexAmp>0 && <div title={`GEX amplifying ${gexAmp} setup${gexAmp>1?"s":""} — dealers ${gexShort?"short gamma on "+gexShort+" squeeze"+(gexShort>1?"s":""):""}${gexShort&&gexLong?", ":""}${gexLong?"long gamma on "+gexLong+" flush"+(gexLong>1?"es":""):""}`} style={{ marginRight:8, padding:"4px 10px", background:"#ff88cc18", border:"1px solid #ff88cc55", fontSize:10, fontWeight:600, color:"#ff88cc", borderRadius:3 }}>🔥 {gexAmp} GEX{gexShort>0?` ↑${gexShort}`:""}{gexLong>0?` ↓${gexLong}`:""}</div>}
           {trackedCount>0 && <div title="30-day backup list — pre-squeeze builds tracked across days, in case the move hasn't fired yet" style={{ marginRight:8, padding:"4px 10px", background:"#66ccff18", border:"1px solid #66ccff44", fontSize:10, fontWeight:600, color:"#66ccff", borderRadius:3 }}>🧠 {trackedCount} TRACKED · 30D BACKUP</div>}
+          {usage.scans>0 && (() => {
+            const cost = (usage.in*15 + usage.out*75) / 1e6;
+            const perScan = cost / usage.scans;
+            return <div title={`Session: ${usage.scans} scan${usage.scans>1?"s":""} · ${usage.in.toLocaleString()} in / ${usage.out.toLocaleString()} out tokens · ~$${perScan.toFixed(3)}/scan · model: claude-opus-4-5 ($15/M in, $75/M out)`} style={{ marginRight:8, padding:"4px 10px", background:"#ffcc6618", border:"1px solid #ffcc6644", fontSize:10, fontWeight:600, color:"#ffcc66", borderRadius:3 }}>💰 ${cost.toFixed(2)} · {usage.scans} scan{usage.scans>1?"s":""}</div>;
+          })()}
           {error && <div style={{ padding:"3px 10px", background:"#ff000011", border:"1px solid #ff333322", fontSize:9, color:"#ff3355", maxWidth:200, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>✗ {error}</div>}
           <div style={{ marginLeft:"auto", display:"flex", alignItems:"center", gap:6 }}>
             <input value={ticker} onChange={e=>setTicker(e.target.value)} placeholder="TICKER…"
