@@ -191,18 +191,14 @@ const buildSystem = (uwKey) => `You connect to Unusual Whales MCP (paid). Return
 
 UW Bearer token: ${uwKey}
 
-FETCH IN ORDER:
+FETCH IN ORDER (KEEP IT TIGHT — at most 5 MCP calls total to avoid timeouts):
 1. Flow alerts: size_greater_oi=true, is_otm=true, min_ask_perc=0.7, limit=50. Both calls AND puts.
 2. Dark pool recent: limit=40. Cross-reference tickers in both sweeps AND dark pool (higher conviction).
 3. Market tide: net direction.
-4. Earnings calendar: pull next 14 days premarket + afterhours. Build a map {ticker -> {next_date, days_away}} so EVERY signal's earnings.within_14_days gets populated, not just top 6.
-5. Congress trades: pull last 30 days of congressional trades. For each signal's ticker, attach {congress.any: bool, congress.buys: n, congress.sells: n, congress.net_side: "buy"|"sell"|null, congress.latest_name: "Pelosi", congress.latest_date: "2026-04-18"}.
-6. Insider activity: pull last 14 days insider transactions. For each signal's ticker, attach {insider.any: bool, insider.buys: n, insider.sells: n, insider.net_amount: number, insider.net_side: "buy"|"sell"|null}.
-7. News headlines: pull last 48h market news. For each signal's ticker, attach {news.any: bool, news.latest: "headline", news.catalyst_type: "earnings"|"upgrade"|"downgrade"|"approval"|"macro"|null, news.hours_ago: number}.
-8. FDA calendar: pull upcoming 30 days. For each biotech/pharma ticker, attach {fda.upcoming: bool, fda.event_date: "2026-05-01", fda.event_type: "PDUFA"|"AdComm"|"Phase 3"|null}.
-9. For each unique non-macro ticker (up to 8): fetch darkpool/{ticker} last 7 days. Count consecutive days with DP prints at same price zone (±2%). count = staircase_days. Zone = staircase_zone.
-10. For top 6 tickers: fetch shorts/interest-float/v2, shorts/data (borrow_rate), shorts/ftds, options-volume (put_call_ratio), net-prem-ticks (trending up/down), greek-exposure (bias, wall, comment), volatility/term-structure (near%, far%, elevated bool), stock-price-levels.
-11. Prediction markets: call get_prediction_smart_money and get_prediction_insiders (last 14 days). For EACH signal's ticker, scan prediction-market titles + descriptions for the ticker symbol OR company name. If there is a match, attach {predict.any: bool, predict.smart_money_side: "buy"|"sell"|null, predict.insider_side: "buy"|"sell"|null, predict.market: "short market title (<=60 chars)", predict.prob_pct: number|null}. Translate the prediction side to stock direction: if market is "will X go up / beat earnings / get approval" and smart money is YES, that = "buy"; NO = "sell". Leave null if no match. Do NOT fabricate matches — only attach if the ticker/company is explicitly in the prediction market.
+4. For each unique non-macro ticker (up to 6 — TOP TICKERS BY PREMIUM ONLY): fetch darkpool/{ticker} last 7 days. Count consecutive days with DP prints at same price zone (±2%). count = staircase_days. Zone = staircase_zone.
+5. For the SAME top 6 tickers: fetch greek-exposure (bias, wall, comment). This populates gex.{bias, wall, comment} which drives the gamma squeeze/flush classification.
+
+Do NOT call any other tools this scan. Set the following enrichment fields to null and they will be filled in by a future enrichment pass: short, options_vol, net_prem, earnings, iv, levels, congress, insider, news, fda, predict.
 
 CLASSIFY sqType:
 staircase (3+ DP days, no call sweep yet), short_squeeze (call sweep si>10%), gamma_squeeze (short_gamma + calls), delta_squeeze (size/OI>3 call), liquidity_sq (float<20M), ftd_squeeze (ftds elevated), vol_squeeze (UVXY/VIX sweep), cap_flush (put sweep+dp sell), gamma_flush (long_gamma+puts), stop_hunt (near support), margin_flush (large dp sell no news), vix_flush (broad VIX spike), liq_flush (put only thin bids)
