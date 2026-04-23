@@ -5,11 +5,12 @@
   "type": "module",
   "main": "index.js",
   "scripts": {
-    "scan": "node index.js"
+    "scan": "node index.js",
+    "setup": "node setup-sheet.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.32.1",
-    "@replit/connectors-sdk": "^1.0.0"
+    "@replit/connectors-sdk": "^0.4.0"
   },
   "engines": {
     "node": ">=20"
