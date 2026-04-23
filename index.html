@@ -905,17 +905,32 @@ function App() {
     isFetching.current=true; setLoading(true); setError("");
     addLog("Scanning: flow + dark pool + staircase detection + enrichment…");
     try {
-      const res = await fetch("https://api.anthropic.com/v1/messages", {
-        method:"POST",
-        headers:{ "Content-Type":"application/json", "x-api-key":akRef.current, "anthropic-version":"2023-06-01", "anthropic-beta":"mcp-client-2025-04-04" },
-        body:JSON.stringify({
-          model:"claude-opus-4-5",
-          max_tokens:5000,
-          system: buildSystem(ukRef.current),
-          messages:[{ role:"user", content:"Run full scan now. Return only the JSON array starting with [" }],
-          mcp_servers:[{ type:"url", url:"https://api.unusualwhales.com/api/mcp", name:"unusual-whales", authorization_token:ukRef.current }]
-        })
-      });
+      let res;
+      try {
+        res = await fetch("https://api.anthropic.com/v1/messages", {
+          method:"POST",
+          headers:{
+            "Content-Type":"application/json",
+            "x-api-key":akRef.current,
+            "anthropic-version":"2023-06-01",
+            "anthropic-beta":"mcp-client-2025-04-04",
+            "anthropic-dangerous-direct-browser-access":"true"
+          },
+          body:JSON.stringify({
+            model:"claude-opus-4-5",
+            max_tokens:5000,
+            system: buildSystem(ukRef.current),
+            messages:[{ role:"user", content:"Run full scan now. Return only the JSON array starting with [" }],
+            mcp_servers:[{ type:"url", url:"https://api.unusualwhales.com/api/mcp", name:"unusual-whales", authorization_token:ukRef.current }]
+          })
+        });
+      } catch (netErr) {
+        // Browser-level failure (CORS, offline, DNS). Surface a useful hint instead of "Failed to fetch".
+        const hint = !navigator.onLine
+          ? "You appear to be offline."
+          : "Browser blocked the request (CORS / network). Check that your Anthropic key is valid and that the page is served over http(s).";
+        throw new Error(`Network: ${netErr.message}. ${hint}`);
+      }
       if (!res.ok) {
         const e = await res.json().catch(()=>({}));
         const msg = e?.error?.message || `HTTP ${res.status}`;
