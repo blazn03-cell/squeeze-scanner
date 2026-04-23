@@ -14,5 +14,13 @@ The "Start application" workflow runs: `python3 -m http.server 5000`
 
 ## Notes
 
-- The app uses an Unusual Whales API key entered by the user at runtime (stored client-side only)
+- The app uses an Unusual Whales API key and an Anthropic API key entered by the user at runtime (stored client-side only)
 - All logic runs in the browser; no server-side secrets required
+- Deployment: autoscale, run command `python3 -m http.server 5000`
+
+## UI
+
+- Inter (sans) for UI text, JetBrains Mono for numerics/log lines
+- Dark theme (#04080c base) with brightened mid-grey palette (#7591a8 / #9bb3c6 / #a7c0d4 / #eaf2ff) for readable contrast
+- Minimum text size is 9–10px; no 7–8px microtype in active UI
+- "30D BACKUP" label/tooltip clarifies the 30-day tracker is a fallback view of pre-squeeze builds when nothing has fired live

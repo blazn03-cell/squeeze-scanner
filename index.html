@@ -7,13 +7,19 @@
   <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet"/>
   <style>
     *{box-sizing:border-box;margin:0;padding:0}
-    body{background:#05090e;overflow:hidden}
-    ::-webkit-scrollbar{width:3px}
-    ::-webkit-scrollbar-thumb{background:#1a2a3a}
-    @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.12}}
-    @keyframes urgent{0%,100%{opacity:1}50%{opacity:0.35}}
+    body{background:#05090e;overflow:hidden;font-family:'Inter','Segoe UI',system-ui,-apple-system,sans-serif;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;color:#cfdcec}
+    code,kbd,.mono{font-family:'JetBrains Mono','SF Mono',Menlo,Consolas,monospace}
+    ::-webkit-scrollbar{width:6px;height:6px}
+    ::-webkit-scrollbar-track{background:transparent}
+    ::-webkit-scrollbar-thumb{background:#243648;border-radius:3px}
+    ::-webkit-scrollbar-thumb:hover{background:#33526b}
+    @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.18}}
+    @keyframes urgent{0%,100%{opacity:1}50%{opacity:0.4}}
     .live{animation:pulse 1.8s ease-in-out infinite}
     .urgent{animation:urgent 0.9s ease-in-out infinite}
   </style>
@@ -306,7 +312,7 @@ function topBuilds(h, cat, sortMode, n, gateOn) {
 // ── UI PRIMITIVES ─────────────────────────────────────────────────────────────
 const Sec = ({ label }) => (
   <div style={{ display:"flex", alignItems:"center", gap:8, margin:"16px 0 8px" }}>
-    <div style={{ fontSize:9, color:"#2e4055", letterSpacing:"0.2em", fontWeight:700, whiteSpace:"nowrap" }}>{label}</div>
+    <div style={{ fontSize:9, color:"#6e88a0", letterSpacing:"0.2em", fontWeight:700, whiteSpace:"nowrap" }}>{label}</div>
     <div style={{ flex:1, height:1, background:"#111d28" }}/>
   </div>
 );
@@ -324,7 +330,7 @@ function WinCircle({ prob }) {
       </svg>
       <div style={{ position:"absolute", inset:0, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center" }}>
         <span style={{ fontSize:11, fontWeight:700, color:c, lineHeight:1 }}>{prob}%</span>
-        <span style={{ fontSize:7, color:c, opacity:0.7, letterSpacing:"0.05em" }}>WIN</span>
+        <span style={{ fontSize:9, color:c, opacity:0.7, letterSpacing:"0.05em" }}>WIN</span>
       </div>
     </div>
   );
@@ -333,10 +339,10 @@ function WinCircle({ prob }) {
 function DataRow({ label, value, color, sub }) {
   return (
     <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"7px 0", borderBottom:"1px solid #0e1a24" }}>
-      <span style={{ fontSize:10, color:"#3a5060", letterSpacing:"0.05em" }}>{label}</span>
+      <span style={{ fontSize:10, color:"#7591a8", letterSpacing:"0.05em" }}>{label}</span>
       <div style={{ textAlign:"right" }}>
         <span style={{ fontSize:11, fontWeight:700, color:color || "#c0d4e8" }}>{value || "—"}</span>
-        {sub && <div style={{ fontSize:9, color:"#2e4055", marginTop:1 }}>{sub}</div>}
+        {sub && <div style={{ fontSize:9, color:"#6e88a0", marginTop:1 }}>{sub}</div>}
       </div>
     </div>
   );
@@ -358,7 +364,7 @@ function StaircaseViz({ days, zone }) {
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-end", marginBottom:10 }}>
         <div>
           <div style={{ fontSize:11, fontWeight:700, color:"#00ddff" }}>{days}-DAY DARK POOL STAIRCASE</div>
-          {zone && <div style={{ fontSize:10, color:"#2e5060", marginTop:2 }}>Accumulation zone: {zone}</div>}
+          {zone && <div style={{ fontSize:10, color:"#7595a8", marginTop:2 }}>Accumulation zone: {zone}</div>}
         </div>
         <div style={{ fontSize:9, fontWeight:700, color:days>=5?"#00ff88":days>=3?"#ffe033":"#445566" }}>
           {days >= 5 ? "STRONG" : days >= 3 ? "BUILDING" : "EARLY"}
@@ -371,7 +377,7 @@ function StaircaseViz({ days, zone }) {
       </div>
       <div style={{ display:"flex", justifyContent:"space-between", marginTop:5 }}>
         {[1,2,3,4,5,6,7].map(d => (
-          <div key={d} style={{ flex:1, textAlign:"center", fontSize:7, color:d<=days?"#00ddff":"#1e2e3e" }}>D{d}</div>
+          <div key={d} style={{ flex:1, textAlign:"center", fontSize:9, fontWeight:600, color:d<=days?"#00ddff":"#3a5468" }}>D{d}</div>
         ))}
       </div>
     </div>
@@ -392,19 +398,19 @@ function TopCard({ entry, rank, sortMode }) {
   return (
     <div style={{ padding:"9px 12px", borderBottom:"1px solid #0e1a24" }}>
       <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:5, flexWrap:"wrap" }}>
-        <span style={{ fontSize:9, color:"#2e4055", width:22, fontWeight:700 }}>#{rank}</span>
+        <span style={{ fontSize:9, color:"#6e88a0", width:22, fontWeight:700 }}>#{rank}</span>
         <span style={{ fontSize:13 }}>{def.icon}</span>
         <span style={{ fontWeight:700, fontSize:12, color:"#ddeeff", minWidth:48 }}>{entry.ticker}</span>
-        <span style={{ fontSize:8, color:def.color, border:`1px solid ${def.color}55`, padding:"1px 5px", letterSpacing:"0.08em" }}>{def.label}</span>
-        {entry.sweepOk && <span style={{ fontSize:8, color:"#ffe033", border:"1px solid #ffe03344", padding:"1px 4px" }}>SW</span>}
-        {entry.dpOk    && <span style={{ fontSize:8, color:"#44ffbb", border:"1px solid #44ffbb44", padding:"1px 4px" }}>DP</span>}
-        {entry.congress?.any && <span style={{ fontSize:8, color: entry.congress.net_side==="buy"?"#00ff88":entry.congress.net_side==="sell"?"#ff3355":"#66ccff", border:`1px solid ${entry.congress.net_side==="buy"?"#00ff8844":entry.congress.net_side==="sell"?"#ff335544":"#66ccff44"}`, padding:"1px 4px" }}>🏛</span>}
-        {entry.insider?.any  && <span style={{ fontSize:8, color: entry.insider.net_side==="buy"?"#00ff88":"#ff9955", border:`1px solid ${entry.insider.net_side==="buy"?"#00ff8844":"#ff995544"}`, padding:"1px 4px" }}>👤</span>}
-        {entry.news?.any     && <span style={{ fontSize:8, color:"#ff9955", border:"1px solid #ff995544", padding:"1px 4px" }}>📰</span>}
-        {entry.fda?.upcoming && <span style={{ fontSize:8, color:"#cc44ff", border:"1px solid #cc44ff44", padding:"1px 4px" }}>💊</span>}
-        {entry.predict?.any && (() => { const side = entry.predict.smart_money_side || entry.predict.insider_side; const col = side==="buy"?"#00ff88":side==="sell"?"#ff3355":"#aa88ff"; return <span title={entry.predict.market||""} style={{ fontSize:8, color:col, border:`1px solid ${col}66`, padding:"1px 4px" }}>🎯{entry.predict.prob_pct!=null?entry.predict.prob_pct+"%":""}</span>; })()}
-        {entry.earnings?.within_14_days && <span style={{ fontSize:8, color:"#ff4444", border:"1px solid #ff444444", padding:"1px 4px" }}>📅</span>}
-        {verified && <span style={{ fontSize:8, color:"#00ff88", background:"#00ff8818", border:"1px solid #00ff8866", padding:"1px 5px", fontWeight:700, letterSpacing:"0.06em" }}>✓ 70%+ VERIFIED</span>}
+        <span style={{ fontSize:10, color:def.color, border:`1px solid ${def.color}55`, padding:"1px 5px", letterSpacing:"0.08em" }}>{def.label}</span>
+        {entry.sweepOk && <span style={{ fontSize:10, color:"#ffe033", border:"1px solid #ffe03344", padding:"1px 4px" }}>SW</span>}
+        {entry.dpOk    && <span style={{ fontSize:10, color:"#44ffbb", border:"1px solid #44ffbb44", padding:"1px 4px" }}>DP</span>}
+        {entry.congress?.any && <span style={{ fontSize:10, color: entry.congress.net_side==="buy"?"#00ff88":entry.congress.net_side==="sell"?"#ff3355":"#66ccff", border:`1px solid ${entry.congress.net_side==="buy"?"#00ff8844":entry.congress.net_side==="sell"?"#ff335544":"#66ccff44"}`, padding:"1px 4px" }}>🏛</span>}
+        {entry.insider?.any  && <span style={{ fontSize:10, color: entry.insider.net_side==="buy"?"#00ff88":"#ff9955", border:`1px solid ${entry.insider.net_side==="buy"?"#00ff8844":"#ff995544"}`, padding:"1px 4px" }}>👤</span>}
+        {entry.news?.any     && <span style={{ fontSize:10, color:"#ff9955", border:"1px solid #ff995544", padding:"1px 4px" }}>📰</span>}
+        {entry.fda?.upcoming && <span style={{ fontSize:10, color:"#cc44ff", border:"1px solid #cc44ff44", padding:"1px 4px" }}>💊</span>}
+        {entry.predict?.any && (() => { const side = entry.predict.smart_money_side || entry.predict.insider_side; const col = side==="buy"?"#00ff88":side==="sell"?"#ff3355":"#aa88ff"; return <span title={entry.predict.market||""} style={{ fontSize:10, color:col, border:`1px solid ${col}66`, padding:"1px 4px" }}>🎯{entry.predict.prob_pct!=null?entry.predict.prob_pct+"%":""}</span>; })()}
+        {entry.earnings?.within_14_days && <span style={{ fontSize:10, color:"#ff4444", border:"1px solid #ff444444", padding:"1px 4px" }}>📅</span>}
+        {verified && <span style={{ fontSize:10, color:"#00ff88", background:"#00ff8818", border:"1px solid #00ff8866", padding:"1px 5px", fontWeight:700, letterSpacing:"0.06em" }}>✓ 70%+ VERIFIED</span>}
         <span style={{ marginLeft:"auto", fontSize:10, color:"#7aaed0", fontWeight:700 }}>{fmt(entry.total_premium)}</span>
       </div>
       <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:5 }}>
@@ -421,15 +427,15 @@ function TopCard({ entry, rank, sortMode }) {
       {rec && (
         <div style={{ fontSize:9, color:"#6080a0", lineHeight:1.5, background:"#050a10", border:"1px solid #0e1a24", padding:"5px 8px" }}>
           <span style={{ color:rec.color, fontWeight:700 }}>{rec.emoji} {rec.name}</span>
-          <span style={{ color:"#3a5060" }}> · {rec.risk} · {(PROF[entry.sqType]||{}).dte||"—"} DTE</span>
-          {entry.latest_strike && <div style={{ color:"#2e4055", marginTop:2 }}>Last seen: {entry.latest_strike}{entry.latest_expiry?" "+entry.latest_expiry:""}</div>}
+          <span style={{ color:"#7591a8" }}> · {rec.risk} · {(PROF[entry.sqType]||{}).dte||"—"} DTE</span>
+          {entry.latest_strike && <div style={{ color:"#6e88a0", marginTop:2 }}>Last seen: {entry.latest_strike}{entry.latest_expiry?" "+entry.latest_expiry:""}</div>}
         </div>
       )}
-      <div style={{ display:"flex", gap:10, marginTop:4, fontSize:8, color:"#2e4055" }}>
-        <span>hits: <b style={{color:"#4a6070"}}>{entry.sighting_count}</b></span>
-        <span>first: <b style={{color:"#4a6070"}}>{entry.first_seen}</b></span>
-        <span>last: <b style={{color:"#4a6070"}}>{entry.last_seen}</b></span>
-        {entry.max_win_prob > 0 && <span>peak win: <b style={{color:entry.max_win_prob>=70?"#00ff88":entry.max_win_prob>=55?"#ffe033":"#ff9955"}}>{entry.max_win_prob}%</b></span>}
+      <div style={{ display:"flex", gap:12, marginTop:6, fontSize:10, color:"#7591a8", flexWrap:"wrap" }}>
+        <span>hits <b style={{color:"#a7c0d4"}}>{entry.sighting_count}</b></span>
+        <span>first <b style={{color:"#a7c0d4"}}>{entry.first_seen}</b></span>
+        <span>last <b style={{color:"#a7c0d4"}}>{entry.last_seen}</b></span>
+        {entry.max_win_prob > 0 && <span>peak win <b style={{color:entry.max_win_prob>=70?"#00ff88":entry.max_win_prob>=55?"#ffe033":"#ff9955"}}>{entry.max_win_prob}%</b></span>}
       </div>
     </div>
   );
@@ -518,14 +524,14 @@ function Card({ p, open, onToggle, pos, onSave, isNew }) {
               <div style={{ fontSize:10, color:"#bbd2ea", marginTop:4, lineHeight:1.35, display:"flex", gap:5, alignItems:"flex-start" }}>
                 <span style={{color:"#ff9955", flexShrink:0}}>📰</span>
                 <span style={{overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", flex:1}}>{p.news.latest}</span>
-                {p.news.hours_ago!=null && <span style={{color:"#557088", fontSize:8, flexShrink:0}}>{p.news.hours_ago}h ago</span>}
+                {p.news.hours_ago!=null && <span style={{color:"#557088", fontSize:10, flexShrink:0}}>{p.news.hours_ago}h ago</span>}
               </div>
             )}
-            <div style={{ fontSize:9, color:"#2e4055", marginTop:3, display:"flex", gap:10, flexWrap:"wrap" }}>
+            <div style={{ fontSize:11, color:"#8aa3b8", marginTop:5, display:"flex", gap:12, flexWrap:"wrap", fontFamily:"'JetBrains Mono','SF Mono',Menlo,Consolas,monospace" }}>
               <span>{p.strike} · {p.expiry}</span>
-              <span>{fmt(p.premium)}</span>
+              <span style={{color:"#a7c0d4"}}>{fmt(p.premium)}</span>
               <span>{p.time}</span>
-              {pos?.entryPrice && <span style={{color:"#44ffbb"}}>IN @ ${pos.entryPrice}</span>}
+              {pos?.entryPrice && <span style={{color:"#44ffbb", fontWeight:600}}>IN @ ${pos.entryPrice}</span>}
             </div>
           </div>
         </div>
@@ -533,11 +539,11 @@ function Card({ p, open, onToggle, pos, onSave, isNew }) {
           <WinCircle prob={p.winProb}/>
           <div style={{ textAlign:"right" }}>
             <div style={{ fontSize:9, fontWeight:700, color:hs.color, letterSpacing:"0.1em" }}>{hs.label}</div>
-            <div style={{ fontSize:8, color:"#2e4055", marginTop:2 }}>Day {td} of {prof.holdDays}</div>
-            {p.iv?.elevated && <div style={{ fontSize:8, color:"#ffaa44", marginTop:1 }}>⚠ HIGH IV</div>}
-            {p.earnings?.within_14_days && <div style={{ fontSize:8, color:"#ff4444", marginTop:1 }}>📅 EARN</div>}
+            <div style={{ fontSize:10, color:"#6e88a0", marginTop:2 }}>Day {td} of {prof.holdDays}</div>
+            {p.iv?.elevated && <div style={{ fontSize:10, color:"#ffaa44", marginTop:1 }}>⚠ HIGH IV</div>}
+            {p.earnings?.within_14_days && <div style={{ fontSize:10, color:"#ff4444", marginTop:1 }}>📅 EARN</div>}
           </div>
-          <span style={{ fontSize:10, color:"#2e4055" }}>{open?"▲":"▼"}</span>
+          <span style={{ fontSize:10, color:"#6e88a0" }}>{open?"▲":"▼"}</span>
         </div>
       </div>
 
@@ -551,12 +557,12 @@ function Card({ p, open, onToggle, pos, onSave, isNew }) {
               <div style={{ fontSize:10, color:direction.color, fontWeight:700, letterSpacing:"0.1em", marginBottom:4 }}>
                 {hs.action==="exit"?"⏰ EXIT NOW":hs.action==="prepare"?"⚠ PREPARE TO EXIT":isEW?"👀 EARLY WARNING":p.sweepOk&&p.dpOk?"✅ ACTION REQUIRED":"📋 DIRECTION"}
               </div>
-              <div style={{ fontSize:11, color:"#7090a8", lineHeight:1.85 }}>{direction.text}</div>
+              <div style={{ fontSize:11, color:"#a7c0d4", lineHeight:1.85 }}>{direction.text}</div>
             </div>
             {p.winProb!==null && (
               <div style={{ textAlign:"right", flexShrink:0 }}>
                 <div style={{ fontSize:18, fontWeight:700, color:p.winProb>=65?"#00ff88":p.winProb>=45?"#ffe033":"#ff9955" }}>{p.winProb}%</div>
-                <div style={{ fontSize:8, color:"#2e4055" }}>WIN PROB</div>
+                <div style={{ fontSize:10, color:"#6e88a0" }}>WIN PROB</div>
               </div>
             )}
           </div>
@@ -574,7 +580,7 @@ function Card({ p, open, onToggle, pos, onSave, isNew }) {
               <div>
                 {sc>=2 && <StaircaseViz days={sc} zone={p.staircase_zone}/>}
                 <Sec label="WHAT IS THIS SETUP"/>
-                <div style={{ fontSize:11, color:"#5a7585", lineHeight:1.9, marginBottom:4 }}>
+                <div style={{ fontSize:11, color:"#9bb3c6", lineHeight:1.9, marginBottom:4 }}>
                   {p.sqType==="staircase"     && `Institutions quietly buying ${p.ticker} through dark pools for ${sc} consecutive days at ${p.staircase_zone||"the same zone"}. #1 pre-squeeze signal — smart money building before a catalyst. When call sweeps appear on top, the squeeze is imminent.`}
                   {p.sqType==="short_squeeze" && "Shorts are trapped. High short interest + institutional accumulation = explosive forced covering. The bigger the staircase and SI%, the more powerful the move."}
                   {p.sqType==="gamma_squeeze" && "Dealers SHORT gamma. As price rises they must buy more stock to hedge — their buying accelerates the move. Violent and fast, days not weeks."}
@@ -610,13 +616,13 @@ function Card({ p, open, onToggle, pos, onSave, isNew }) {
                     return (
                       <div key={d} style={{ flex:1, minWidth:0 }}>
                         <div style={{ height:4, background:isCur?ds.color:isPast?"#1e3040":"#0e1a24", marginBottom:3 }}/>
-                        <div style={{ fontSize:7, color:isCur?ds.color:"#1a2a3a", textAlign:"center" }}>{d===1?"IN":d===prof.holdDays?"OUT":d===Math.round(prof.holdDays*0.5)?"ADD":""}</div>
+                        <div style={{ fontSize:9, color:isCur?ds.color:"#4a6478", textAlign:"center" }}>{d===1?"IN":d===prof.holdDays?"OUT":d===Math.round(prof.holdDays*0.5)?"ADD":""}</div>
                       </div>
                     );
                   })}
                 </div>
                 <Sec label="STOP LOSS — GET OUT IF"/>
-                <div style={{ fontSize:11, color:"#6a3040", lineHeight:1.85, background:"#0e0812", padding:"10px 12px", border:"1px solid #ff335518" }}>
+                <div style={{ fontSize:11, color:"#d68095", lineHeight:1.85, background:"#0e0812", padding:"10px 12px", border:"1px solid #ff335518" }}>
                   {p.cat==="squeeze"?`Put sweeps appear on ${p.ticker}. Staircase zone breaks (${p.staircase_zone||"support"}). Day ${prof.holdDays} with no acceleration. Earnings approaching.`:p.cat==="flush"?`Call sweeps appear. Market bounces strong. DP buy prints at lows. Price reclaims ${p.levels?.resistance||"resistance"}.`:"Macro flow reverses. Re-check at every session open."}
                 </div>
               </div>
@@ -630,7 +636,7 @@ function Card({ p, open, onToggle, pos, onSave, isNew }) {
                   <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr 1fr", gap:6, marginBottom:6 }}>
                     {[["SUPPORT","#00ff88",p.levels.support],["ENTRY ZONE","#66ccff",p.levels.entry_zone],["RESISTANCE","#ff9955",p.levels.resistance],["TARGET","#ffe033",p.levels.target]].map(([l,c,v])=>(
                       <div key={l} style={{ padding:"10px", background:"#060b10", border:`1px solid ${c}22`, textAlign:"center" }}>
-                        <div style={{ fontSize:9, color:"#2e4055", marginBottom:4 }}>{l}</div>
+                        <div style={{ fontSize:9, color:"#6e88a0", marginBottom:4 }}>{l}</div>
                         <div style={{ fontSize:14, fontWeight:700, color:c }}>{v||"—"}</div>
                       </div>
                     ))}
@@ -664,7 +670,7 @@ function Card({ p, open, onToggle, pos, onSave, isNew }) {
             {tab==="strategy" && (
               <div>
                 <Sec label="RECOMMENDED STRATEGIES"/>
-                <div style={{ fontSize:10, color:"#2e4055", marginBottom:14, lineHeight:1.7 }}>
+                <div style={{ fontSize:10, color:"#6e88a0", marginBottom:14, lineHeight:1.7 }}>
                   Setup: <b style={{color:accent}}>{sqT?.label||"—"}</b>  ·  DTE: <b style={{color:"#c0d4e8"}}>{prof.dte}</b>  ·  Hold: <b style={{color:"#c0d4e8"}}>{prof.hold}</b>  ·  IV: <b style={{color:p.iv?.elevated?"#ffaa44":"#44ffbb"}}>{p.iv?.elevated?"HIGH — use spread":"Normal — calls ok"}</b>
                 </div>
                 {strats.map(([key, s], i) => (
@@ -675,8 +681,8 @@ function Card({ p, open, onToggle, pos, onSave, isNew }) {
                         <div>
                           <div style={{ display:"flex", alignItems:"center", gap:8 }}>
                             <span style={{ fontSize:12, fontWeight:700, color:s.color }}>{s.name}</span>
-                            {i===0 && <span style={{ fontSize:8, color:"#ffe033", background:"#14100a", border:"1px solid #ffe03333", padding:"1px 6px" }}>★ BEST FIT</span>}
-                            <span style={{ fontSize:8, color:"#3a5060", background:"#080c12", border:"1px solid #1a2030", padding:"1px 6px" }}>{s.risk} RISK</span>
+                            {i===0 && <span style={{ fontSize:10, color:"#ffe033", background:"#14100a", border:"1px solid #ffe03333", padding:"1px 6px" }}>★ BEST FIT</span>}
+                            <span style={{ fontSize:10, color:"#7591a8", background:"#080c12", border:"1px solid #1a2030", padding:"1px 6px" }}>{s.risk} RISK</span>
                           </div>
                         </div>
                       </div>
@@ -685,7 +691,7 @@ function Card({ p, open, onToggle, pos, onSave, isNew }) {
                       {[["→ ENTER",s.how,"#66ccff"],["← EXIT",s.exit,"#00ff88"],["⛔ STOP",s.stop,"#ff3355"],["✓ PROS / ✗ CONS",`${s.pros}  |  ${s.cons}`,"#7090a8"]].map(([l,v,c])=>(
                         <div key={l} style={{ gridColumn:l.includes("PROS")?"1/-1":"auto" }}>
                           <div style={{ fontSize:9, color:c, fontWeight:700, letterSpacing:"0.1em", marginBottom:4 }}>{l}</div>
-                          <div style={{ fontSize:10, color:"#4a6070", lineHeight:1.75 }}>{v}</div>
+                          <div style={{ fontSize:10, color:"#8aa3b8", lineHeight:1.75 }}>{v}</div>
                         </div>
                       ))}
                     </div>
@@ -701,7 +707,7 @@ function Card({ p, open, onToggle, pos, onSave, isNew }) {
                 <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:10, marginBottom:12 }}>
                   {[["ENTRY PRICE",ep,setEp,"e.g. 2.45"],["CURRENT PRICE",cp,setCp,"e.g. 3.60"],["STOP PRICE",stop,setStop,"e.g. 1.45"]].map(([l,v,s,ph])=>(
                     <div key={l}>
-                      <div style={{ fontSize:9, color:"#2e4055", letterSpacing:"0.1em", marginBottom:5 }}>{l}</div>
+                      <div style={{ fontSize:9, color:"#6e88a0", letterSpacing:"0.1em", marginBottom:5 }}>{l}</div>
                       <input value={v} onChange={e=>s(e.target.value)} placeholder={ph}
                         style={{ width:"100%", background:"#060b10", border:`1px solid ${l==="STOP PRICE"&&stopHit?"#ff3355":"#111d28"}`, color: l==="STOP PRICE"&&stopHit?"#ff3355":"#c0d4e8", padding:"9px 11px", fontSize:12, outline:"none", fontFamily:"inherit", boxSizing:"border-box" }}/>
                     </div>
@@ -714,7 +720,7 @@ function Card({ p, open, onToggle, pos, onSave, isNew }) {
                 )}
                 {pnlPct!==null && (
                   <div style={{ padding:"10px 14px", marginBottom:12, background:parseFloat(pnlPct)>=0?"#001a0e":"#1a0005", border:`1px solid ${parseFloat(pnlPct)>=0?"#00ff8833":"#ff335533"}` }}>
-                    <span style={{ fontSize:9, color:"#2e4055", letterSpacing:"0.1em" }}>P&L: </span>
+                    <span style={{ fontSize:9, color:"#6e88a0", letterSpacing:"0.1em" }}>P&L: </span>
                     <span style={{ fontSize:18, fontWeight:700, color:parseFloat(pnlPct)>=0?"#00ff88":"#ff3355" }}>{parseFloat(pnlPct)>=0?"+":""}{pnlPct}%</span>
                     {parseFloat(pnlPct)>=50  && <span style={{ fontSize:9, color:"#00ff88", marginLeft:12 }}>→ Consider taking partial profits</span>}
                     {parseFloat(pnlPct)<=-50 && <span style={{ fontSize:9, color:"#ff3355", marginLeft:12 }}>→ Stop level hit — review exit</span>}
@@ -727,7 +733,7 @@ function Card({ p, open, onToggle, pos, onSave, isNew }) {
                   </div>
                 )}
                 <div style={{ marginBottom:12 }}>
-                  <div style={{ fontSize:9, color:"#2e4055", letterSpacing:"0.1em", marginBottom:5 }}>NOTES — SI, chart, news, what you see</div>
+                  <div style={{ fontSize:9, color:"#6e88a0", letterSpacing:"0.1em", marginBottom:5 }}>NOTES — SI, chart, news, what you see</div>
                   <textarea value={note} onChange={e=>setNote(e.target.value)} rows={4}
                     placeholder="e.g. 35% SI. Breaking wedge on 4h. Holding $155c Apr 25. CEO bought $2M. Float only 8M shares. Short seller report disputed."
                     style={{ width:"100%", background:"#060b10", border:"1px solid #111d28", color:"#6080a0", padding:"9px 11px", fontSize:11, outline:"none", fontFamily:"inherit", resize:"vertical", lineHeight:1.7, boxSizing:"border-box" }}/>
@@ -737,12 +743,12 @@ function Card({ p, open, onToggle, pos, onSave, isNew }) {
                     style={{ padding:"9px 22px", background:ep?"#001a0e":"#060b10", border:`1px solid ${ep?"#00ff8855":"#111d28"}`, color:ep?"#00ff88":"#2e4055", fontSize:10, letterSpacing:"0.1em", cursor:ep?"pointer":"default", fontFamily:"inherit" }}>
                     {saved?"✓ SAVED":"SAVE POSITION"}
                   </button>
-                  {pos?.entryPrice && <span style={{ fontSize:10, color:"#3a5060" }}>Saved · In @ <b style={{color:"#00ff88"}}>${pos.entryPrice}</b></span>}
+                  {pos?.entryPrice && <span style={{ fontSize:10, color:"#7591a8" }}>Saved · In @ <b style={{color:"#00ff88"}}>${pos.entryPrice}</b></span>}
                 </div>
                 {pos?.note && (
                   <div style={{ background:"#060b10", border:"1px solid #ffe03322", padding:"12px 14px" }}>
                     <div style={{ fontSize:9, color:"#ffe033", letterSpacing:"0.14em", marginBottom:8, fontWeight:700 }}>🤖 READING YOUR NOTES</div>
-                    <div style={{ fontSize:11, color:"#5a7585", lineHeight:1.95 }}>
+                    <div style={{ fontSize:11, color:"#9bb3c6", lineHeight:1.95 }}>
                       {pos.note.toLowerCase().includes("short")    && "📌 High SI noted — hold with more conviction. "}
                       {pos.note.toLowerCase().includes("earn")     && "⚠️ Earnings mentioned — hard exit 2 days before. "}
                       {pos.note.toLowerCase().includes("float")    && "📌 Small float — bigger moves, stay in longer. "}
@@ -781,16 +787,16 @@ function Column({ title, color, items, openId, onToggle, positions, onSave, newI
         <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:6, flexWrap:"wrap" }}>
           <div style={{ fontSize:11, color, fontWeight:700, letterSpacing:"0.1em" }}>{title}</div>
           {showTop && (
-            <span style={{ fontSize:8, color:"#66ccff", border:"1px solid #66ccff44", padding:"1px 6px", letterSpacing:"0.1em" }}>
-              TOP {Math.min(10, topEntries?.length||0)} · 30D{sortMode==="premium"?" · BY $":" · BY DAYS"}
+            <span title="Backup view: 30-day pre-squeeze tracker — what's been building when nothing has fired live yet" style={{ fontSize:9, color:"#66ccff", border:"1px solid #66ccff55", padding:"2px 7px", letterSpacing:"0.08em", borderRadius:3, fontWeight:600 }}>
+              30D BACKUP · TOP {Math.min(10, topEntries?.length||0)}{sortMode==="premium"?" · BY $":" · BY DAYS"}
             </span>
           )}
         </div>
-        <div style={{ display:"flex", gap:4, flexWrap:"wrap" }}>
-          {!showTop && enter>0 && <span style={{ fontSize:9, padding:"2px 8px", background:"#00ff8818", border:"1px solid #00ff8844", color:"#00ff88" }}>{enter} ENTER</span>}
-          {!showTop && hold>0  && <span style={{ fontSize:9, padding:"2px 8px", background:"#ffe03318", border:"1px solid #ffe03344", color:"#ffe033" }}>{hold} HOLD</span>}
-          {!showTop && early>0 && <span style={{ fontSize:9, padding:"2px 8px", background:"#00ddff18", border:"1px solid #00ddff44", color:"#00ddff" }}>{early} EARLY</span>}
-          <span style={{ fontSize:9, color:"#1a2a3a", marginLeft:"auto" }}>
+        <div style={{ display:"flex", gap:5, flexWrap:"wrap" }}>
+          {!showTop && enter>0 && <span style={{ fontSize:10, padding:"2px 9px", background:"#00ff8818", border:"1px solid #00ff8855", color:"#00ff88", fontWeight:600, borderRadius:2 }}>{enter} ENTER</span>}
+          {!showTop && hold>0  && <span style={{ fontSize:10, padding:"2px 9px", background:"#ffe03318", border:"1px solid #ffe03355", color:"#ffe033", fontWeight:600, borderRadius:2 }}>{hold} HOLD</span>}
+          {!showTop && early>0 && <span style={{ fontSize:10, padding:"2px 9px", background:"#00ddff18", border:"1px solid #00ddff55", color:"#00ddff", fontWeight:600, borderRadius:2 }}>{early} EARLY</span>}
+          <span style={{ fontSize:10, color:"#7591a8", marginLeft:"auto", fontWeight:500 }}>
             {showTop ? `${topEntries?.length||0} tracked` : `${items.length} live`}
           </span>
         </div>
@@ -817,29 +823,29 @@ function Setup({ onConnect }) {
   return (
     <div style={{ display:"flex", alignItems:"center", justifyContent:"center", flex:1, background:"#060b10" }}>
       <div style={{ width:520, border:"1px solid #0f1a24", background:"#080c12", padding:40 }}>
-        <div style={{ fontSize:9, color:"#1e3040", letterSpacing:"0.22em", marginBottom:4 }}>UNUSUAL WHALES · PAID SUBSCRIPTION</div>
-        <div style={{ fontSize:20, fontWeight:700, color:"#ddeeff", marginBottom:8 }}>⚡ Squeeze & Flush Scanner</div>
-        <div style={{ fontSize:11, color:"#2e4055", lineHeight:1.9, marginBottom:28 }}>
-          14 signal types · Staircase detection · Win probability engine · IV-aware strategies · Position tracker with P&L
+        <div style={{ fontSize:11, color:"#7591a8", letterSpacing:"0.22em", marginBottom:6, fontWeight:500 }}>UNUSUAL WHALES · PAID SUBSCRIPTION</div>
+        <div style={{ fontSize:22, fontWeight:700, color:"#eaf2ff", marginBottom:10, letterSpacing:"-0.01em" }}>⚡ Squeeze &amp; Flush Scanner</div>
+        <div style={{ fontSize:13, color:"#9bb3c6", lineHeight:1.7, marginBottom:30 }}>
+          14 signal types · Staircase detection · Win probability engine · IV-aware strategies · Position tracker with P&amp;L
         </div>
         {[
-          { l:"ANTHROPIC API KEY",      h:"console.anthropic.com → API Keys",         p:"sk-ant-api03-…",         v:ak, s:setAk },
-          { l:"UNUSUAL WHALES API KEY", h:"unusualwhales.com/settings/api-dashboard",  p:"Your paid bearer token", v:uk, s:setUk },
+          { l:"ANTHROPIC API KEY",      h:"Get one at console.anthropic.com → API Keys",         p:"sk-ant-api03-…",         v:ak, s:setAk },
+          { l:"UNUSUAL WHALES API KEY", h:"Get one at unusualwhales.com/settings/api-dashboard",  p:"Your paid bearer token", v:uk, s:setUk },
         ].map(({ l, h, p, v, s }) => (
-          <div key={l} style={{ marginBottom:18 }}>
-            <div style={{ fontSize:9, color:"#1e3040", letterSpacing:"0.16em", marginBottom:6 }}>{l}</div>
+          <div key={l} style={{ marginBottom:20 }}>
+            <div style={{ fontSize:11, color:"#a7c0d4", letterSpacing:"0.14em", marginBottom:7, fontWeight:600 }}>{l}</div>
             <input type="password" value={v} onChange={e=>s(e.target.value)}
               onKeyDown={e=>e.key==="Enter"&&ok&&onConnect(ak.trim(),uk.trim())}
               placeholder={p}
-              style={{ width:"100%", background:"#07090d", border:"1px solid #0f1a24", color:"#c0d4e8", padding:"10px 12px", fontSize:12, outline:"none", fontFamily:"inherit", boxSizing:"border-box" }}/>
-            <div style={{ fontSize:9, color:"#141e28", marginTop:4 }}>{h}</div>
+              style={{ width:"100%", background:"#07090d", border:"1px solid #1a2a3a", color:"#eaf2ff", padding:"11px 13px", fontSize:13, outline:"none", fontFamily:"inherit", boxSizing:"border-box", borderRadius:3 }}/>
+            <div style={{ fontSize:11, color:"#7591a8", marginTop:6 }}>{h}</div>
           </div>
         ))}
         <button onClick={()=>ok&&onConnect(ak.trim(),uk.trim())}
-          style={{ width:"100%", padding:"13px 0", background:ok?"#001a0e":"#070a0e", border:`1px solid ${ok?"#00ff8866":"#0f1a24"}`, color:ok?"#00ff88":"#1e3040", fontSize:11, letterSpacing:"0.16em", cursor:ok?"pointer":"default", transition:"all 0.2s", fontFamily:"inherit" }}>
-          CONNECT & SCAN
+          style={{ width:"100%", padding:"14px 0", background:ok?"#002817":"#0a1219", border:`1px solid ${ok?"#00ff8888":"#1a2a3a"}`, color:ok?"#00ff88":"#5a7a92", fontSize:12, fontWeight:600, letterSpacing:"0.18em", cursor:ok?"pointer":"default", transition:"all 0.2s", fontFamily:"inherit", borderRadius:3 }}>
+          CONNECT &amp; SCAN
         </button>
-        <div style={{ fontSize:9, color:"#0e1624", marginTop:14, textAlign:"center" }}>Keys stored in memory only — never sent anywhere except Anthropic API</div>
+        <div style={{ fontSize:11, color:"#7591a8", marginTop:18, textAlign:"center", lineHeight:1.5 }}>🔒 Keys stored in memory only — never sent anywhere except Anthropic API</div>
       </div>
     </div>
   );
@@ -992,7 +998,7 @@ function App() {
     });
 
   if (!ready) return (
-    <div style={{ display:"flex", flexDirection:"column", height:"100vh", fontFamily:"'Courier New',monospace", background:"#060b10" }}>
+    <div style={{ display:"flex", flexDirection:"column", height:"100vh", fontFamily:"'Inter','Segoe UI',system-ui,sans-serif", background:"#060b10" }}>
       <Setup onConnect={connect}/>
     </div>
   );
@@ -1022,7 +1028,7 @@ function App() {
   const scCount = feed.filter(p=>(p.staircase_days||0)>=3).length;
 
   return (
-    <div style={{ fontFamily:"'Courier New',monospace", background:"#05090e", height:"100vh", display:"flex", flexDirection:"column", overflow:"hidden", color:"#b0c4d8" }}>
+    <div style={{ fontFamily:"'Inter','Segoe UI',system-ui,sans-serif", background:"#05090e", height:"100vh", display:"flex", flexDirection:"column", overflow:"hidden", color:"#b0c4d8" }}>
       {exitAlerts.length>0 && (
         <div className="urgent" style={{ background:"#110600", borderBottom:"1px solid #ff335533", padding:"8px 20px", display:"flex", gap:12, alignItems:"center", flexShrink:0 }}>
           <span style={{ fontSize:16 }}>⏰</span>
@@ -1058,22 +1064,22 @@ function App() {
       <div style={{ background:"#060b10", borderBottom:"1px solid #0e1a24", flexShrink:0 }}>
         <div style={{ display:"flex", alignItems:"center", gap:0, padding:"0 20px", height:50 }}>
           <div style={{ marginRight:20 }}>
-            <div style={{ fontSize:9, color:"#1e3040", letterSpacing:"0.2em" }}>UNUSUAL WHALES · PAID</div>
-            <div style={{ fontSize:15, fontWeight:700, color:"#ddeeff", letterSpacing:"0.02em" }}>⚡ Squeeze & Flush Scanner</div>
+            <div style={{ fontSize:10, color:"#7591a8", letterSpacing:"0.2em", fontWeight:500 }}>UNUSUAL WHALES · PAID</div>
+            <div style={{ fontSize:16, fontWeight:700, color:"#eaf2ff", letterSpacing:"-0.005em" }}>⚡ Squeeze &amp; Flush Scanner</div>
           </div>
-          <div style={{ width:1, height:30, background:"#0e1a24", marginRight:20 }}/>
-          <div style={{ display:"flex", alignItems:"center", gap:7, marginRight:20 }}>
-            <div className={loading?"":"live"} style={{ width:6, height:6, borderRadius:"50%", background:error?"#ff3355":loading?"#ffe033":paused?"#2e4055":"#00ff88" }}/>
-            <span style={{ fontSize:9, color:error?"#ff3355":loading?"#ffe033":paused?"#2e4055":"#00cc66", letterSpacing:"0.12em" }}>{error?"ERROR":loading?"SCANNING…":paused?"PAUSED":"LIVE"}</span>
+          <div style={{ width:1, height:30, background:"#1a2a3a", marginRight:20 }}/>
+          <div style={{ display:"flex", alignItems:"center", gap:8, marginRight:20 }}>
+            <div className={loading?"":"live"} style={{ width:8, height:8, borderRadius:"50%", background:error?"#ff3355":loading?"#ffe033":paused?"#6e88a0":"#00ff88", boxShadow:`0 0 8px ${error?"#ff3355":loading?"#ffe033":paused?"#6e88a0":"#00ff88"}66` }}/>
+            <span style={{ fontSize:11, fontWeight:600, color:error?"#ff3355":loading?"#ffe033":paused?"#8aa3b8":"#00ff88", letterSpacing:"0.1em" }}>{error?"ERROR":loading?"SCANNING…":paused?"PAUSED":"LIVE"}</span>
           </div>
-          <div style={{ width:1, height:30, background:"#0e1a24", marginRight:20 }}/>
+          <div style={{ width:1, height:30, background:"#1a2a3a", marginRight:20 }}/>
           <div style={{ marginRight:20 }}>
-            <div style={{ fontSize:8, color:"#2e4055", letterSpacing:"0.15em" }}>MARKET</div>
-            <div style={{ fontSize:12, fontWeight:700, color:biasC }}>{bias}</div>
+            <div style={{ fontSize:10, color:"#7591a8", letterSpacing:"0.15em", fontWeight:500 }}>MARKET</div>
+            <div style={{ fontSize:13, fontWeight:700, color:biasC, letterSpacing:"0.03em" }}>{bias}</div>
           </div>
-          {hcCount>0 && <div style={{ marginRight:8, padding:"3px 10px", background:"#ffe03318", border:"1px solid #ffe03333", fontSize:9, color:"#ffe033" }}>{hcCount} HIGH CONV</div>}
-          {scCount>0 && <div style={{ marginRight:8, padding:"3px 10px", background:"#00ddff18", border:"1px solid #00ddff33", fontSize:9, color:"#00ddff" }}>📊 {scCount} STAIRCASE</div>}
-          {trackedCount>0 && <div style={{ marginRight:8, padding:"3px 10px", background:"#66ccff18", border:"1px solid #66ccff33", fontSize:9, color:"#66ccff" }}>🧠 {trackedCount} IN 30D MEMORY</div>}
+          {hcCount>0 && <div style={{ marginRight:8, padding:"4px 10px", background:"#ffe03318", border:"1px solid #ffe03344", fontSize:10, fontWeight:600, color:"#ffe033", borderRadius:3 }}>{hcCount} HIGH CONV</div>}
+          {scCount>0 && <div style={{ marginRight:8, padding:"4px 10px", background:"#00ddff18", border:"1px solid #00ddff44", fontSize:10, fontWeight:600, color:"#00ddff", borderRadius:3 }}>📊 {scCount} STAIRCASE</div>}
+          {trackedCount>0 && <div title="30-day backup list — pre-squeeze builds tracked across days, in case the move hasn't fired yet" style={{ marginRight:8, padding:"4px 10px", background:"#66ccff18", border:"1px solid #66ccff44", fontSize:10, fontWeight:600, color:"#66ccff", borderRadius:3 }}>🧠 {trackedCount} TRACKED · 30D BACKUP</div>}
           {error && <div style={{ padding:"3px 10px", background:"#ff000011", border:"1px solid #ff333322", fontSize:9, color:"#ff3355", maxWidth:200, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>✗ {error}</div>}
           <div style={{ marginLeft:"auto", display:"flex", alignItems:"center", gap:6 }}>
             <input value={ticker} onChange={e=>setTicker(e.target.value)} placeholder="TICKER…"
@@ -1106,11 +1112,11 @@ function App() {
             ))}
           </div>
         </div>
-        <div style={{ display:"flex", gap:16, padding:"4px 20px", borderTop:"1px solid #0e1a24", background:"#04080c" }}>
-          {[{i:"📊",t:"Staircase = 3+ day DP accumulation",c:"#00ddff"},{i:"👀",t:"Early = staircase no sweep",c:"#0088aa"},{i:"⚡",t:"Both = sweep + DP confirmed",c:"#ffe033"},{i:"🔥γ",t:"Short/long gamma = amplified",c:"#ff88cc"},{i:"⚠",t:"High IV = use spread",c:"#ffaa44"}].map(({i,t,c})=>(
-            <span key={i} style={{ fontSize:8, display:"flex", gap:5, alignItems:"center" }}><span style={{color:c}}>{i}</span><span style={{color:"#1e3040"}}>{t}</span></span>
+        <div style={{ display:"flex", gap:18, padding:"6px 20px", borderTop:"1px solid #0e1a24", background:"#04080c", flexWrap:"wrap" }}>
+          {[{i:"📊",t:"Staircase = 3+ day DP accumulation",c:"#00ddff"},{i:"👀",t:"Early = staircase, no sweep yet",c:"#22aacc"},{i:"⚡",t:"Both = sweep + DP confirmed",c:"#ffe033"},{i:"🔥γ",t:"Short/long gamma = amplified",c:"#ff88cc"},{i:"⚠",t:"High IV = use spread",c:"#ffaa44"}].map(({i,t,c})=>(
+            <span key={i} style={{ fontSize:10, display:"flex", gap:6, alignItems:"center" }}><span style={{color:c, fontWeight:700}}>{i}</span><span style={{color:"#7591a8"}}>{t}</span></span>
           ))}
-          <span style={{ marginLeft:"auto", fontSize:8, color:"#0e1a24" }}>{feed.length} signals · staircase → tier → win prob</span>
+          <span style={{ marginLeft:"auto", fontSize:10, color:"#5a7a92" }}>{feed.length} signals · staircase → tier → win prob</span>
         </div>
       </div>
 
@@ -1120,18 +1126,18 @@ function App() {
         <Column title="📊 MACRO/ETF" color="#66ccff" items={macros}  openId={openId} onToggle={toggle} positions={positions} onSave={savePos} newIds={newIds} viewMode={viewMode} sortMode={sortMode} topEntries={topMc}/>
         {showLog && (
           <div style={{ display:"flex", flexDirection:"column", background:"#04080c", borderLeft:"1px solid #0e1a24" }}>
-            <div style={{ padding:"8px 12px", borderBottom:"1px solid #0e1a24", fontSize:9, color:"#2e4055", letterSpacing:"0.14em", fontWeight:700 }}>ACTIVITY LOG</div>
-            <div style={{ overflowY:"auto", flex:1, padding:"8px 12px" }}>
-              {logs.map((l,i)=><div key={i} style={{ fontSize:8, color:l.includes("✓")?"#1a4a2a":l.includes("✗")?"#4a1a1a":"#1a2a3a", marginBottom:5, lineHeight:1.6, paddingLeft:8, borderLeft:`2px solid ${l.includes("✓")?"#00ff8820":l.includes("✗")?"#ff335520":"#0e1a24"}` }}>{l}</div>)}
-              {!logs.length && <div style={{ fontSize:9, color:"#0e1a24" }}>Waiting…</div>}
+            <div style={{ padding:"10px 14px", borderBottom:"1px solid #1a2a3a", fontSize:11, color:"#a7c0d4", letterSpacing:"0.14em", fontWeight:700 }}>ACTIVITY LOG</div>
+            <div style={{ overflowY:"auto", flex:1, padding:"10px 12px" }}>
+              {logs.map((l,i)=><div key={i} style={{ fontSize:11, color:l.includes("✓")?"#44ddaa":l.includes("✗")?"#ff7799":"#9bb3c6", marginBottom:5, lineHeight:1.6, paddingLeft:10, borderLeft:`2px solid ${l.includes("✓")?"#00ff8866":l.includes("✗")?"#ff335566":"#1a2a3a"}`, fontFamily:"'JetBrains Mono','SF Mono',Menlo,Consolas,monospace" }}>{l}</div>)}
+              {!logs.length && <div style={{ fontSize:11, color:"#7591a8", fontStyle:"italic" }}>Waiting for first scan…</div>}
             </div>
           </div>
         )}
       </div>
 
-      <div style={{ padding:"4px 20px", background:"#04080c", borderTop:"1px solid #0e1a24", fontSize:8, color:"#0e1a24", display:"flex", justifyContent:"space-between", flexShrink:0 }}>
-        <span>flow-alerts · darkpool · market-tide · earnings · congress · insider · news · fda · shorts · gex · vol · price-levels · 30d memory</span>
-        <span>⚠ Education only · Not financial advice</span>
+      <div style={{ padding:"6px 20px", background:"#04080c", borderTop:"1px solid #0e1a24", fontSize:10, color:"#7591a8", display:"flex", justifyContent:"space-between", flexShrink:0, gap:12 }}>
+        <span>flow-alerts · darkpool · market-tide · earnings · congress · insider · news · fda · shorts · gex · vol · price-levels · 30d backup</span>
+        <span style={{whiteSpace:"nowrap", color:"#8aa3b8"}}>⚠ Education only · Not financial advice</span>
       </div>
     </div>
   );
