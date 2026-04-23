@@ -866,7 +866,7 @@ function App() {
   const [loading,   setLoading]   = useState(false);
   const [error,     setError]     = useState("");
   const [paused,    setPaused]    = useState(false);
-  const [pollSec,   setPollSec]   = useState(60);
+  const [pollSec,   setPollSec]   = useState(120);
   const [minProb,   setMinProb]   = useState(70);
   const [gateOn,    setGateOn]    = useState(true);
   const [minPrem,   setMinPrem]   = useState(0);
@@ -925,7 +925,7 @@ function App() {
               "anthropic-dangerous-direct-browser-access":"true"
             },
             body:JSON.stringify({
-              model:"claude-opus-4-5",
+              model:"claude-sonnet-4-5",
               max_tokens:2000,
               system: buildSystem(ukRef.current),
               messages:[{ role:"user", content:"Run full scan now. Return only the JSON array starting with [" }],
@@ -975,7 +975,7 @@ function App() {
       const outTok = u.output_tokens||0;
       if (inTok || outTok) {
         setUsage(prev => ({ in: prev.in + inTok, out: prev.out + outTok, scans: prev.scans + 1 }));
-        const cost = (inTok*15 + outTok*75) / 1e6;
+        const cost = (inTok*3 + outTok*15) / 1e6;
         addLog(`Tokens: ${inTok} in / ${outTok} out · ~$${cost.toFixed(3)} this scan`);
       }
       const tools = (data.content||[]).filter(b=>b.type==="mcp_tool_use");
@@ -1141,9 +1141,9 @@ function App() {
           {gexAmp>0 && <div title={`GEX amplifying ${gexAmp} setup${gexAmp>1?"s":""} — dealers ${gexShort?"short gamma on "+gexShort+" squeeze"+(gexShort>1?"s":""):""}${gexShort&&gexLong?", ":""}${gexLong?"long gamma on "+gexLong+" flush"+(gexLong>1?"es":""):""}`} style={{ marginRight:8, padding:"4px 10px", background:"#ff88cc18", border:"1px solid #ff88cc55", fontSize:10, fontWeight:600, color:"#ff88cc", borderRadius:3 }}>🔥 {gexAmp} GEX{gexShort>0?` ↑${gexShort}`:""}{gexLong>0?` ↓${gexLong}`:""}</div>}
           {trackedCount>0 && <div title="30-day backup list — pre-squeeze builds tracked across days, in case the move hasn't fired yet" style={{ marginRight:8, padding:"4px 10px", background:"#66ccff18", border:"1px solid #66ccff44", fontSize:10, fontWeight:600, color:"#66ccff", borderRadius:3 }}>🧠 {trackedCount} TRACKED · 30D BACKUP</div>}
           {usage.scans>0 && (() => {
-            const cost = (usage.in*15 + usage.out*75) / 1e6;
+            const cost = (usage.in*3 + usage.out*15) / 1e6;
             const perScan = cost / usage.scans;
-            return <div title={`Session: ${usage.scans} scan${usage.scans>1?"s":""} · ${usage.in.toLocaleString()} in / ${usage.out.toLocaleString()} out tokens · ~$${perScan.toFixed(3)}/scan · model: claude-opus-4-5 ($15/M in, $75/M out)`} style={{ marginRight:8, padding:"4px 10px", background:"#ffcc6618", border:"1px solid #ffcc6644", fontSize:10, fontWeight:600, color:"#ffcc66", borderRadius:3 }}>💰 ${cost.toFixed(2)} · {usage.scans} scan{usage.scans>1?"s":""}</div>;
+            return <div title={`Session: ${usage.scans} scan${usage.scans>1?"s":""} · ${usage.in.toLocaleString()} in / ${usage.out.toLocaleString()} out tokens · ~$${perScan.toFixed(3)}/scan · model: claude-sonnet-4-5 ($3/M in, $15/M out)`} style={{ marginRight:8, padding:"4px 10px", background:"#ffcc6618", border:"1px solid #ffcc6644", fontSize:10, fontWeight:600, color:"#ffcc66", borderRadius:3 }}>💰 ${cost.toFixed(2)} · {usage.scans} scan{usage.scans>1?"s":""}</div>;
           })()}
           {error && <div style={{ padding:"3px 10px", background:"#ff000011", border:"1px solid #ff333322", fontSize:9, color:"#ff3355", maxWidth:200, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>✗ {error}</div>}
           <div style={{ marginLeft:"auto", display:"flex", alignItems:"center", gap:6 }}>
