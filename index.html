@@ -216,6 +216,63 @@ SCHEMA (one object per signal):
 
 Use null for unavailable fields. Return [] if all fetches fail. Aim for full ticker coverage on earnings/congress/insider/news — these should rarely be null on large-cap US tickers. predict will often be null (most tickers don't have a prediction market) — that is expected.`;
 
+// ── DIRECT MODE — bypass MCP, fetch UW REST in browser, classify with Claude ──
+// MCP server has been hanging at peak hours. UW REST responds in ~100ms.
+const buildSystemDirect = () => `You will receive pre-fetched UW data. Classify into the trader's signal schema. Return ONE raw JSON array ONLY. First char [, last char ]. No prose.
+
+CLASSIFY sqType:
+staircase (3+ DP days same zone, no call sweep yet), short_squeeze (call sweep + si>10%), gamma_squeeze (short_gamma + calls), delta_squeeze (size/OI>3 call), liquidity_sq (float<20M), ftd_squeeze (ftds elevated), vol_squeeze (UVXY/VIX sweep), cap_flush (put sweep+dp sell), gamma_flush (long_gamma+puts), stop_hunt (near support), margin_flush (large dp sell no news), vix_flush (broad VIX spike), liq_flush (put only thin bids).
+
+sig: cs_dp | call_sweep | dp_buy | ps_dp | put_sweep | dp_sell | macro_bull | macro_bear
+cat: squeeze | flush | macro
+trade_day: 1=today, 2-3=yesterday, 4-7=this week
+MACRO set (SPY QQQ IWM DIA TLT GLD XLF XLE SQQQ TQQQ UVXY VIX): cat=macro
+
+ENRICHMENT FROM PROVIDED DATA:
+- per_ticker[T].dp_history → count consecutive days (group executed_at by YYYY-MM-DD) with prints in same price zone (±2%). count = staircase_days. Zone = "$low-$high".
+- per_ticker[T].gex_snapshot → infer bias from net gamma sign (use call_gex/put_gex or call_gamma/put_gamma fields). bias="short_gamma" if net negative, "long_gamma" if positive. Estimate wall from largest absolute gamma strike if visible. Otherwise comment="dealers neutral".
+- market_tide → set sig=macro_bull if net_call_premium >> net_put_premium aggregated, macro_bear if reverse.
+
+OUTPUT SCHEMA (one object per signal):
+{"id":"str","ticker":"NVDA","cat":"squeeze","sig":"cs_dp","sqType":"short_squeeze","premium":500000,"size":2000,"oi":400,"strike":"$155c","expiry":"Apr 25","exchange":"CBOE","time":"09:32","trade_day":1,"sweepOk":true,"dpOk":true,"sweep_count":2,"ask_pct":0.85,"is_otm":true,"staircase_days":5,"staircase_zone":"$148-152","gex":{"bias":"short_gamma","wall":"$160","comment":"..."},"short":null,"options_vol":null,"net_prem":null,"earnings":null,"iv":null,"levels":null,"congress":null,"insider":null,"news":null,"fda":null,"predict":null}
+
+Set enrichment fields (short, options_vol, earnings, iv, levels, congress, insider, news, fda, predict) to null — not in this scan's data. Use null wherever a field can't be derived. Return [] only if no signals classify.`;
+
+const MACRO_TICKERS = new Set(["SPY","QQQ","IWM","DIA","TLT","GLD","XLF","XLE","SQQQ","TQQQ","UVXY","VIX"]);
+async function fetchUWDirect(uwKey, signal) {
+  const H = { Authorization: `Bearer ${uwKey}` };
+  const get = (path) => fetch(`https://api.unusualwhales.com/api${path}`, { headers: H, signal })
+    .then(r => r.ok ? r.json() : { data: [] }).catch(() => ({ data: [] }));
+
+  // Phase 1: parallel-fetch the broad data (3 calls, ~150ms total)
+  const [flow, dp, tide] = await Promise.all([
+    get(`/option-trades/flow-alerts?limit=30&size_greater_oi=true&is_otm=true&min_ask_perc=0.7`),
+    get(`/darkpool/recent?limit=25`),
+    get(`/market/market-tide`),
+  ]);
+
+  // Phase 2: pick top 6 unique non-macro tickers by total premium
+  const premBy = {};
+  (flow.data||[]).forEach(r => { const t = r.ticker; if (!t || MACRO_TICKERS.has(t)) return; premBy[t] = (premBy[t]||0) + (+r.total_premium||0); });
+  (dp.data||[]).forEach(r   => { const t = r.ticker; if (!t || MACRO_TICKERS.has(t)) return; premBy[t] = (premBy[t]||0) + (+r.premium||0); });
+  const topTickers = Object.entries(premBy).sort((a,b) => b[1]-a[1]).slice(0, 6).map(x => x[0]);
+
+  // Phase 3: parallel per-ticker enrichment (DP history for staircase + GEX for gamma bias)
+  const enrichments = await Promise.all(topTickers.flatMap(t => [
+    get(`/darkpool/${t}?limit=30`),
+    get(`/stock/${t}/greek-exposure`),
+  ]));
+  const per_ticker = {};
+  topTickers.forEach((t, i) => {
+    per_ticker[t] = {
+      dp_history:   (enrichments[i*2]?.data || []).slice(0, 30),
+      gex_snapshot:  enrichments[i*2+1]?.data?.[0] || null,  // most recent only
+    };
+  });
+
+  return { flow_alerts: flow.data || [], dark_pool_recent: dp.data || [], market_tide: tide.data || [], per_ticker };
+}
+
 // ── HELPERS ───────────────────────────────────────────────────────────────────
 const fmt  = n => !n ? "—" : +n >= 1e6 ? `$${(+n/1e6).toFixed(2)}M` : +n >= 1e3 ? `$${(+n/1e3).toFixed(0)}K` : `$${(+n).toFixed(2)}`;
 const fmtP = n => !n ? "—" : parseFloat(n).toFixed(1) + "%";
@@ -916,6 +973,7 @@ function App() {
   const [nowMin,    setNowMin]    = useState(() => nowETMin());          // minutes since midnight ET, ticks every 30s
   const [pbOpen,    setPbOpen]    = useState(false);                     // playbook expanded panel
   const [showLegend,setShowLegend]= useState(false);                     // legend strip hidden by default
+  const [directMode,setDirectMode]= useState(true);                      // true = REST direct (fast), false = MCP (slower)
 
   const seen       = useRef(new Set());
   const intv       = useRef(null);
@@ -945,13 +1003,33 @@ function App() {
     try {
       // Retry with exponential backoff. AbortController guards each attempt so a hung
       // MCP tool call can't tie up the next scan cycle.
-      const SCAN_TIMEOUT_MS = 150000;  // 2.5 min — UW MCP responses are heavy on cold start
+      const SCAN_TIMEOUT_MS = directMode ? 60000 : 150000;  // direct: 60s · MCP: 2.5min
       const MAX_ATTEMPTS    = 2;
       let res, lastErr;
       for (let attempt=1; attempt<=MAX_ATTEMPTS; attempt++) {
         const ctrl = new AbortController();
         const timer = setTimeout(()=>ctrl.abort(), SCAN_TIMEOUT_MS);
         try {
+          // Build the request body — DIRECT mode fetches UW REST first then sends compact data to Claude (no mcp_servers).
+          let body;
+          if (directMode) {
+            addLog("Fetching UW REST (flow + dark pool + tide + per-ticker)…");
+            const raw = await fetchUWDirect(ukRef.current, ctrl.signal);
+            const tnames = Object.keys(raw.per_ticker||{});
+            addLog(`✓ UW: ${raw.flow_alerts.length} flow · ${raw.dark_pool_recent.length} DP · ${tnames.length} top tickers (${tnames.join(", ")})`);
+            body = JSON.stringify({
+              model:"claude-sonnet-4-5", max_tokens:2500,
+              system: buildSystemDirect(),
+              messages:[{ role:"user", content:`Pre-fetched UW data:\n${JSON.stringify(raw)}\n\nClassify and return only the JSON array starting with [` }],
+            });
+          } else {
+            body = JSON.stringify({
+              model:"claude-sonnet-4-5", max_tokens:2000,
+              system: buildSystem(ukRef.current),
+              messages:[{ role:"user", content:"Run full scan now. Return only the JSON array starting with [" }],
+              mcp_servers:[{ type:"url", url:"https://api.unusualwhales.com/api/mcp", name:"unusual-whales", authorization_token:ukRef.current }],
+            });
+          }
           res = await fetch("https://api.anthropic.com/v1/messages", {
             method:"POST",
             signal: ctrl.signal,
@@ -959,16 +1037,10 @@ function App() {
               "Content-Type":"application/json",
               "x-api-key":akRef.current,
               "anthropic-version":"2023-06-01",
-              "anthropic-beta":"mcp-client-2025-04-04",
+              ...(directMode ? {} : {"anthropic-beta":"mcp-client-2025-04-04"}),
               "anthropic-dangerous-direct-browser-access":"true"
             },
-            body:JSON.stringify({
-              model:"claude-sonnet-4-5",
-              max_tokens:2000,
-              system: buildSystem(ukRef.current),
-              messages:[{ role:"user", content:"Run full scan now. Return only the JSON array starting with [" }],
-              mcp_servers:[{ type:"url", url:"https://api.unusualwhales.com/api/mcp", name:"unusual-whales", authorization_token:ukRef.current }]
-            })
+            body
           });
           clearTimeout(timer);
           break;
@@ -1207,6 +1279,7 @@ function App() {
             {[
               { icon:"📡", label:"LIVE",   active:viewMode==="live",  onClick:()=>setViewMode("live"),  ac:"#00ff88" },
               { icon:"🏆", label:"TOP 10", active:viewMode==="top10", onClick:()=>setViewMode("top10"), ac:"#66ccff" },
+              { icon: directMode?"⚡":"🔌", label: directMode?"DIRECT":"MCP", active:directMode, onClick:()=>setDirectMode(d=>!d), ac:"#00ff88" },
               { icon:"🎯", label: gateOn?"70% GATE":"GATE OFF", active:gateOn, onClick:()=>setGateOn(g=>!g), ac:"#00ff88" },
               { icon: sortMode==="days"?"📅":"💰", label: sortMode==="days"?"DAYS":"PREM", active:true, onClick:()=>setSortMode(m=>m==="days"?"premium":"days"), ac:"#ffe033" },
               { icon:"🗑", label:"30D", active:false, onClick:()=>{ if(confirm("Clear 30-day build history?")){ setHistory({}); saveHist({}); } }, ac:"#ff9955" },
