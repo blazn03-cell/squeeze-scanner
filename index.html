@@ -698,10 +698,8 @@ function TopCard({ entry, rank, sortMode }) {
   const mwp    = entry.max_win_prob || 0;
   const size   = sizingHint(days, mwp);
   const verified = mwp >= 70;
-  const prof   = PROF[entry.sqType] || PROF.short_squeeze;
-  const [open, setOpen] = useState(false);
   return (
-    <div style={{ padding:"9px 12px", borderBottom:"1px solid #0e1a24", cursor:"pointer", background:open?"#070d15":"transparent" }} onClick={()=>setOpen(o=>!o)}>
+    <div style={{ padding:"9px 12px", borderBottom:"1px solid #0e1a24" }}>
       <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:5, flexWrap:"wrap" }}>
         <span style={{ fontSize:9, color:"#6e88a0", width:22, fontWeight:700 }}>#{rank}</span>
         <span style={{ fontSize:13 }}>{def.icon}</span>
@@ -1507,7 +1505,7 @@ function App() {
           {hcCount>0 && <div style={{ marginRight:8, padding:"4px 10px", background:"#ffe03318", border:"1px solid #ffe03344", fontSize:10, fontWeight:600, color:"#ffe033", borderRadius:3 }}>{hcCount} HIGH CONV</div>}
           {scCount>0 && <div style={{ marginRight:8, padding:"4px 10px", background:"#00ddff18", border:"1px solid #00ddff44", fontSize:10, fontWeight:600, color:"#00ddff", borderRadius:3 }}>📊 {scCount} STAIRCASE</div>}
           {gexAmp>0 && <div title={`GEX amplifying ${gexAmp} setup${gexAmp>1?"s":""} — dealers ${gexShort?"short gamma on "+gexShort+" squeeze"+(gexShort>1?"s":""):""}${gexShort&&gexLong?", ":""}${gexLong?"long gamma on "+gexLong+" flush"+(gexLong>1?"es":""):""}`} style={{ marginRight:8, padding:"4px 10px", background:"#ff88cc18", border:"1px solid #ff88cc55", fontSize:10, fontWeight:600, color:"#ff88cc", borderRadius:3 }}>🔥 {gexAmp} GEX{gexShort>0?` ↑${gexShort}`:""}{gexLong>0?` ↓${gexLong}`:""}</div>}
-          {trackedCount>0 && <div title="30-day backup list — pre-squeeze builds tracked across days, in case the move hasn't fired yet" style={{ marginRight:8, padding:"4px 10px", background:"#66ccff18", border:"1px solid #66ccff44", fontSize:10, fontWeight:600, color:"#66ccff", borderRadius:3 }}>🧠 {trackedCount} TRACKED · 30D BACKUP</div>}
+          {trackedCount>0 && <div onClick={()=>setViewMode(v=>v==="top10"?"live":"top10")} title={viewMode==="top10" ? "Click to return to LIVE view" : "Click to open the 30-day backup list — pre-squeeze builds tracked across days"} style={{ marginRight:8, padding:"4px 10px", background: viewMode==="top10" ? "#66ccff33" : "#66ccff18", border:`1px solid ${viewMode==="top10" ? "#66ccff" : "#66ccff44"}`, fontSize:10, fontWeight:700, color:"#66ccff", borderRadius:3, cursor:"pointer", letterSpacing:"0.04em" }}>🧠 {trackedCount} TRACKED · {viewMode==="top10" ? "← BACK TO LIVE" : "VIEW 30D"}</div>}
           {usage.scans>0 && (() => {
             const cost = (usage.in*3 + usage.out*15) / 1e6;
             const perScan = cost / usage.scans;
