@@ -205,18 +205,25 @@ function getGuidance(p) {
 }
 
 // ── TECHNICAL READ + VERDICT ENGINE ───────────────────────────────────────────
-// Maps: flow signal + GEX + IV + macro tide → explicit CALLS/PUTS/CASH verdict.
-// Implements the trading framework rule: any conflict between tech and macro = CASH.
+// Tech bias comes from ICHIMOKU on 5m bars — not from the signal category.
+// Macro bias comes from UW market tide (macro_bull / macro_bear signals in feed).
+// Framework rule:
+//   Tech BULLISH + Macro BULLISH = CALLS full size
+//   Tech BEARISH + Macro BEARISH = PUTS full size
+//   Tech BULLISH + Macro BEARISH = COIN FLIP (conflict — can't tell which wins)
+//   Tech BEARISH + Macro BULLISH = COIN FLIP (conflict — can't tell which wins)
+//   Tech NEUTRAL or Macro NEUTRAL = CASH (no edge either way)
+//   No Ichimoku data = PENDING (not enough technical data to decide)
 function getTechnicalRead(p, macroBias) {
-  // TECHNICAL BIAS from the signal itself
-  const techBias = (() => {
-    if (p.cat === "macro") return p.sig === "macro_bull" ? "BULLISH" : p.sig === "macro_bear" ? "BEARISH" : "NEUTRAL";
-    if (p.cat === "squeeze") return "BULLISH";
-    if (p.cat === "flush") return "BEARISH";
-    return "NEUTRAL";
-  })();
+  // MACRO comes from market tide — unchanged
+  const mb = macroBias === "BULLISH" || macroBias === "BEARISH" ? macroBias : "NEUTRAL";
 
-  // IV READ — near vs far term structure + elevated flag
+  // TECH BIAS strictly from Ichimoku. No fallback to squeeze/flush category.
+  const ich = p.ichimoku || null;
+  const techBias = ich?.bias || "PENDING";
+  const techStrength = ich?.strength || null;
+
+  // IV READ — from near/far term structure + elevated flag
   const ivNear = parseFloat(p.iv?.near) || 0;
   const ivFar  = parseFloat(p.iv?.far)  || 0;
   const ivRank = (ivNear > 0 && ivFar > 0)
@@ -224,14 +231,13 @@ function getTechnicalRead(p, macroBias) {
     : null;
   const ivHigh = !!p.iv?.elevated || (ivRank !== null && ivRank >= 55);
 
-  // SUGGESTED STRATEGY — matches the "Bias: X · IV Rank: Y% · Suggested: Z" header style
+  // SUGGESTED STRATEGY based on tech direction + IV regime
   const suggestedStrategy = (() => {
     if (techBias === "BULLISH") return ivHigh ? "Call Debit Spread (IV hedge)" : "Naked Call OTM";
     if (techBias === "BEARISH") return ivHigh ? "Put Debit Spread (IV hedge)" : "Naked Put OTM";
-    return "Iron Condor or Stay Out";
+    if (techBias === "NEUTRAL") return "Iron Condor or Stay Out";
+    return "Wait for Ichimoku read";
   })();
-
-  // Alt credit-spread when IV elevated + directional (matches TOS "Credit Spread" suggestion)
   const creditAlt = (() => {
     if (!ivHigh) return null;
     if (techBias === "BULLISH") return "Bull Put Credit Spread (sell IV)";
@@ -239,40 +245,46 @@ function getTechnicalRead(p, macroBias) {
     return null;
   })();
 
-  // VERDICT — user's framework rule:
-  //   Bullish tech + Bullish macro = CALLS full size
-  //   Bearish tech + Bearish macro = PUTS full size
-  //   Any conflict = CASH (never fight the tape)
-  //   Neutral anywhere = CASH
-  const mb = macroBias || "NEUTRAL";
+  // VERDICT logic — implements the framework rule precisely
   let verdict, verdictConf, verdictReason, verdictColor;
-  if (techBias === "NEUTRAL" || mb === "NEUTRAL") {
+  if (techBias === "PENDING") {
+    verdict = "PENDING";
+    verdictConf = 0;
+    verdictReason = "Ichimoku data not yet loaded for this ticker. Wait for next scan cycle.";
+    verdictColor = "#7591a8";
+  } else if (techBias === "NEUTRAL" || mb === "NEUTRAL") {
     verdict = "CASH";
     verdictConf = 50;
-    verdictReason = techBias === "NEUTRAL" ? "Tech signal neutral — nothing to trade." : "Macro neutral — no tailwind. Wait for conviction.";
+    verdictReason = techBias === "NEUTRAL"
+      ? "Price inside Ichimoku cloud — no trend. No directional edge."
+      : "Macro neutral — no tailwind. Wait for tide to pick a side.";
     verdictColor = "#7aaed0";
   } else if (techBias === mb) {
+    // Aligned — CALLS or PUTS
     verdict = techBias === "BULLISH" ? "CALLS" : "PUTS";
-    verdictConf = Math.min(95, 55 + Math.round((p.winProb || 50) * 0.4));
-    verdictReason = `${techBias} tech + ${mb} macro aligned. Full size per framework.`;
+    const strengthBonus = techStrength === "STRONG" ? 15 : techStrength === "MODERATE" ? 8 : 0;
+    verdictConf = Math.min(95, 50 + strengthBonus + Math.round((p.winProb || 50) * 0.3));
+    verdictReason = `${techBias} Ichimoku (${techStrength}) + ${mb} macro aligned. Full size per framework.`;
     verdictColor = techBias === "BULLISH" ? "#00ff88" : "#ff3355";
   } else {
-    verdict = "CASH";
-    verdictConf = 70;
-    verdictReason = `CONFLICT: ${techBias} tech vs ${mb} macro. Framework rule: never fight the tape. CASH only.`;
+    // Conflict — tech and macro disagree → COIN FLIP
+    verdict = "COIN FLIP";
+    verdictConf = 50;
+    verdictReason = `CONFLICT: ${techBias} Ichimoku vs ${mb} macro. No directional edge — 50/50 which side wins. Skip or size down hard.`;
     verdictColor = "#ffaa44";
   }
 
-  // News sanity check — catalyst within 24h flips framework caveat to "wait for flow confirm"
+  // News sanity check — 24h recent news adds a confirm-flow caveat
   const newsRecent = p.news?.any && p.news.hours_ago != null && p.news.hours_ago <= 24;
-  if (newsRecent && verdict !== "CASH") {
-    verdictReason += ` Recent news (${p.news.hours_ago}h ago) — confirm flow holds post-headline before sizing.`;
+  if (newsRecent && verdict !== "PENDING") {
+    verdictReason += ` News ${p.news.hours_ago}h ago — confirm flow holds post-headline.`;
   }
 
   return {
-    techBias, macroBias: mb, ivNear, ivFar, ivRank, ivHigh,
+    techBias, techStrength, macroBias: mb, ivNear, ivFar, ivRank, ivHigh,
     suggestedStrategy, creditAlt,
     verdict, verdictConf, verdictReason, verdictColor,
+    ichimoku: ich,
   };
 }
 
@@ -326,6 +338,97 @@ OUTPUT SCHEMA (one object per signal):
 Set enrichment fields (short, options_vol, earnings, iv, levels, congress, insider, news, fda, predict) to null — not in this scan's data. Use null wherever a field can't be derived. Return [] only if no signals classify.`;
 
 const MACRO_TICKERS = new Set(["SPY","QQQ","IWM","DIA","TLT","GLD","XLF","XLE","SQQQ","TQQQ","UVXY","VIX"]);
+
+// ── ICHIMOKU CLOUD — client-side math on 5m OHLC bars ─────────────────────────
+// Computes Tenkan (9), Kijun (26), Senkou Span A/B (52 for B), Chikou (26-back),
+// cloud state vs price, TK cross, and derives a BULLISH/BEARISH/NEUTRAL read.
+function computeIchimoku(barsRaw) {
+  if (!Array.isArray(barsRaw) || barsRaw.length < 55) return null;
+  // Normalize bar shape — UW returns {open, high, low, close, start_time} or similar
+  const bars = barsRaw.map(b => ({
+    h: +(b.high ?? b.h ?? 0),
+    l: +(b.low  ?? b.l ?? 0),
+    c: +(b.close?? b.c ?? 0),
+    t: b.start_time || b.timestamp || b.t || null,
+  })).filter(b => b.h > 0 && b.l > 0 && b.c > 0);
+  if (bars.length < 55) return null;
+  // Assume bars arrive newest-first from UW; sort ascending (oldest → newest)
+  const sorted = [...bars].sort((a,b) => {
+    if (!a.t || !b.t) return 0;
+    return new Date(a.t).getTime() - new Date(b.t).getTime();
+  });
+  const n = sorted.length;
+  const hl = (period, endIdx) => {
+    const start = Math.max(0, endIdx - period + 1);
+    let hi = -Infinity, lo = Infinity;
+    for (let i = start; i <= endIdx; i++) {
+      if (sorted[i].h > hi) hi = sorted[i].h;
+      if (sorted[i].l < lo) lo = sorted[i].l;
+    }
+    return (hi + lo) / 2;
+  };
+  const last = n - 1;
+  const tenkan = hl(9, last);
+  const kijun  = hl(26, last);
+  const spanA  = (tenkan + kijun) / 2;
+  const spanB  = hl(52, last);
+  const close  = sorted[last].c;
+  // Previous bar for TK-cross detection
+  const prevTenkan = n >= 2 ? hl(9, last - 1)  : tenkan;
+  const prevKijun  = n >= 2 ? hl(26, last - 1) : kijun;
+  const tkCross =
+    (prevTenkan <= prevKijun && tenkan > kijun) ? "bullish" :
+    (prevTenkan >= prevKijun && tenkan < kijun) ? "bearish" :
+    null;
+  // Chikou confirmation: today's close vs price 26 bars ago
+  const chikouRef = n > 26 ? sorted[last - 26].c : null;
+  const chikouConfirm =
+    chikouRef === null ? null :
+    close > chikouRef ? "bullish" :
+    close < chikouRef ? "bearish" : "neutral";
+  // Cloud geometry
+  const cloudTop = Math.max(spanA, spanB);
+  const cloudBot = Math.min(spanA, spanB);
+  const cloudColor = spanA > spanB ? "green" : spanA < spanB ? "red" : "flat";
+  const priceZone = close > cloudTop ? "above" : close < cloudBot ? "below" : "inside";
+  // Bias synthesis — standard Ichimoku rules
+  let bias, strength, summary;
+  if (priceZone === "above" && cloudColor === "green" && tenkan > kijun) {
+    bias = "BULLISH"; strength = "STRONG";
+    summary = "Price above green cloud + Tenkan>Kijun. Full trend-up posture.";
+  } else if (priceZone === "above" && cloudColor === "green") {
+    bias = "BULLISH"; strength = "MODERATE";
+    summary = "Price above green cloud but TK flat — trend intact, momentum pausing.";
+  } else if (priceZone === "above" && cloudColor === "red") {
+    bias = "BULLISH"; strength = "WEAK";
+    summary = "Price above cloud but cloud still red — recovery, not confirmed trend.";
+  } else if (priceZone === "below" && cloudColor === "red" && tenkan < kijun) {
+    bias = "BEARISH"; strength = "STRONG";
+    summary = "Price below red cloud + Tenkan<Kijun. Full trend-down posture.";
+  } else if (priceZone === "below" && cloudColor === "red") {
+    bias = "BEARISH"; strength = "MODERATE";
+    summary = "Price below red cloud but TK flat — downtrend intact, momentum pausing.";
+  } else if (priceZone === "below" && cloudColor === "green") {
+    bias = "BEARISH"; strength = "WEAK";
+    summary = "Price below cloud but cloud still green — pullback, not confirmed reversal.";
+  } else {
+    bias = "NEUTRAL"; strength = "TRANSITION";
+    summary = "Price inside the cloud — no trend. Wait for break above/below before acting.";
+  }
+  return {
+    tenkan: +tenkan.toFixed(2),
+    kijun:  +kijun.toFixed(2),
+    spanA:  +spanA.toFixed(2),
+    spanB:  +spanB.toFixed(2),
+    cloudTop: +cloudTop.toFixed(2),
+    cloudBot: +cloudBot.toFixed(2),
+    close:  +close.toFixed(2),
+    cloudColor, priceZone, tkCross, chikouConfirm,
+    bias, strength, summary,
+    bars: n,
+  };
+}
+
 async function fetchUWDirect(uwKey, signal) {
   const H = { Authorization: `Bearer ${uwKey}` };
   const get = (path) => fetch(`https://api.unusualwhales.com/api${path}`, { headers: H, signal })
@@ -338,26 +441,47 @@ async function fetchUWDirect(uwKey, signal) {
     get(`/market/market-tide`),
   ]);
 
-  // Phase 2: pick top 6 unique non-macro tickers by total premium
+  // Phase 2: pick top 6 tickers by premium for heavy DP/GEX, all unique for light OHLC
   const premBy = {};
   (flow.data||[]).forEach(r => { const t = r.ticker; if (!t || MACRO_TICKERS.has(t)) return; premBy[t] = (premBy[t]||0) + (+r.total_premium||0); });
   (dp.data||[]).forEach(r   => { const t = r.ticker; if (!t || MACRO_TICKERS.has(t)) return; premBy[t] = (premBy[t]||0) + (+r.premium||0); });
-  const topTickers = Object.entries(premBy).sort((a,b) => b[1]-a[1]).slice(0, 6).map(x => x[0]);
+  const sortedTickers = Object.entries(premBy).sort((a,b) => b[1]-a[1]).map(x => x[0]);
+  const topTickers  = sortedTickers.slice(0, 6);           // heavy endpoints
+  const ohlcTickers = sortedTickers.slice(0, 12);          // light OHLC endpoint — wider coverage
 
-  // Phase 3: parallel per-ticker enrichment (DP history for staircase + GEX for gamma bias)
-  const enrichments = await Promise.all(topTickers.flatMap(t => [
+  // Phase 3: parallel per-ticker enrichment (DP history + GEX + OHLC for Ichimoku)
+  const dpGexPromises = topTickers.flatMap(t => [
     get(`/darkpool/${t}?limit=30`),
     get(`/stock/${t}/greek-exposure`),
-  ]));
+  ]);
+  const ohlcPromises = ohlcTickers.map(t => get(`/stock/${t}/ohlc/5m?limit=400`));
+  const allResults = await Promise.all([...dpGexPromises, ...ohlcPromises]);
+  const dpGexResults = allResults.slice(0, dpGexPromises.length);
+  const ohlcResults  = allResults.slice(dpGexPromises.length);
+
   const per_ticker = {};
   topTickers.forEach((t, i) => {
     per_ticker[t] = {
-      dp_history:   (enrichments[i*2]?.data || []).slice(0, 30),
-      gex_snapshot:  enrichments[i*2+1]?.data?.[0] || null,  // most recent only
+      dp_history:  (dpGexResults[i*2]?.data || []).slice(0, 30),
+      gex_snapshot: dpGexResults[i*2+1]?.data?.[0] || null,
     };
   });
 
-  return { flow_alerts: flow.data || [], dark_pool_recent: dp.data || [], market_tide: tide.data || [], per_ticker };
+  // Pre-compute Ichimoku per ticker on the client — avoids bloating Claude tokens
+  const ichimokuByTicker = {};
+  ohlcTickers.forEach((t, i) => {
+    const bars = ohlcResults[i]?.data || [];
+    const ich = computeIchimoku(bars);
+    if (ich) ichimokuByTicker[t] = ich;
+  });
+
+  return {
+    flow_alerts: flow.data || [],
+    dark_pool_recent: dp.data || [],
+    market_tide: tide.data || [],
+    per_ticker,
+    ichimokuByTicker,
+  };
 }
 
 // ── HELPERS ───────────────────────────────────────────────────────────────────
@@ -678,9 +802,9 @@ function Card({ p, open, onToggle, pos, onSave, isNew, macroBias }) {
           <div style={{ display:"flex", alignItems:"center", gap:10, flexWrap:"wrap", marginBottom:6 }}>
             <span style={{ fontSize:20, fontWeight:700, color:"#f0f6ff", letterSpacing:"0.01em" }}>{p.ticker}</span>
             <span style={{ fontSize:11, padding:"3px 9px", background:accent+"1f", border:`1px solid ${accent}55`, color:accent, fontWeight:700, letterSpacing:"0.1em", borderRadius:3 }}>{sqT?.label||sigDef.label}</span>
-            {/* VERDICT CHIP — shows on collapsed row so you see CALLS/PUTS/CASH at a glance */}
+            {/* VERDICT CHIP — shows on collapsed row so you see CALLS/PUTS/CASH/COIN FLIP at a glance */}
             <span style={{ fontSize:12, padding:"3px 11px", background:tech.verdictColor+"25", border:`1.5px solid ${tech.verdictColor}`, color:tech.verdictColor, fontWeight:800, letterSpacing:"0.1em", borderRadius:3 }}>
-              {tech.verdict} · {tech.verdictConf}%
+              {tech.verdict}{tech.verdict==="PENDING"?"":` · ${tech.verdictConf}%`}
             </span>
             {isEW && <span style={{ fontSize:11, color:"#00ddff", background:"#001418", border:"1px solid #00ddff55", padding:"2px 8px", borderRadius:3 }}>👀 EARLY</span>}
             {sc>=3 && !isEW && <span style={{ fontSize:11, color:"#00ddff", fontWeight:700 }}>📊 {sc}d staircase</span>}
@@ -725,40 +849,101 @@ function Card({ p, open, onToggle, pos, onSave, isNew, macroBias }) {
             </div>
           </div>
 
-          {/* ─── 2. TOS-STYLE HEADER: Bias · IV Rank · Suggested Strategy ─── */}
-          <div style={{ padding:"16px 22px", background:"#060d15", borderBottom:"1px solid #111d28", display:"grid", gridTemplateColumns:"repeat(3, 1fr)", gap:14 }}>
-            <div>
-              <div className="label" style={{ marginBottom:5 }}>TECH BIAS</div>
-              <div className="stat-num" style={{ color:tech.techBias==="BULLISH"?"#00ff88":tech.techBias==="BEARISH"?"#ff3355":"#7aaed0" }}>{tech.techBias}</div>
-              <div className="mini" style={{marginTop:3}}>{tech.techBias==="NEUTRAL"?"No directional lean":`from ${sqT?.label||"signal"}`}</div>
-            </div>
-            <div>
-              <div className="label" style={{ marginBottom:5 }}>IV RANK</div>
-              <div className="stat-num" style={{ color:tech.ivRank===null?"#7aaed0":tech.ivRank>=55?"#ffaa44":"#44ffbb" }}>
-                {tech.ivRank===null?"—":tech.ivRank+"%"}
+          {/* ─── 2. ICHIMOKU CLOUD (tech bias source — full math) ─── */}
+          {tech.ichimoku ? (
+            <div style={{ padding:"18px 22px", background:"#060d15", borderBottom:"1px solid #111d28" }}>
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14, gap:12, flexWrap:"wrap" }}>
+                <div>
+                  <div className="sec-label">ICHIMOKU · 5M · {tech.ichimoku.bars} BARS</div>
+                  <div style={{ fontSize:22, fontWeight:800, marginTop:6, color: tech.ichimoku.bias==="BULLISH"?"#00ff88":tech.ichimoku.bias==="BEARISH"?"#ff3355":"#7aaed0", letterSpacing:"0.02em" }}>
+                    {tech.ichimoku.bias} · {tech.ichimoku.strength}
+                  </div>
+                </div>
+                <div style={{ textAlign:"right" }}>
+                  <div className="label">CLOSE</div>
+                  <div style={{ fontSize:22, fontWeight:700, color:"#eaf2ff", fontFamily:"'JetBrains Mono','SF Mono',Menlo,Consolas,monospace" }}>
+                    ${tech.ichimoku.close.toFixed(2)}
+                  </div>
+                </div>
               </div>
-              <div className="mini" style={{marginTop:3}}>{tech.ivRank===null?"IV data pending":tech.ivHigh?"Elevated — sell IV":"Normal — buy IV ok"}</div>
+              <div className="body-text-lg" style={{ marginBottom:14, color:"#c4d5e8", padding:"10px 14px", background:"#040810", borderLeft:`3px solid ${tech.ichimoku.bias==="BULLISH"?"#00ff88":tech.ichimoku.bias==="BEARISH"?"#ff3355":"#7aaed0"}`, borderRadius:3 }}>
+                {tech.ichimoku.summary}
+              </div>
+              {/* Ichimoku component values — the actual math in one glance */}
+              <div style={{ display:"grid", gridTemplateColumns:"repeat(4, 1fr)", gap:10, marginBottom:12 }}>
+                {[
+                  ["TENKAN (9)", tech.ichimoku.tenkan, "#66ccff"],
+                  ["KIJUN (26)", tech.ichimoku.kijun,  "#ffe033"],
+                  ["SPAN A", tech.ichimoku.spanA, tech.ichimoku.cloudColor==="green"?"#00ff88":"#ff9955"],
+                  ["SPAN B (52)", tech.ichimoku.spanB, tech.ichimoku.cloudColor==="green"?"#ff9955":"#ff3355"],
+                ].map(([l,v,c])=>(
+                  <div key={l} style={{ padding:"10px 12px", background:"#040810", border:`1px solid ${c}33`, borderRadius:4, textAlign:"center" }}>
+                    <div className="label" style={{ marginBottom:4, color:c+"cc", fontSize:11 }}>{l}</div>
+                    <div style={{ fontSize:15, fontWeight:700, color:c, fontFamily:"'JetBrains Mono','SF Mono',Menlo,Consolas,monospace" }}>${v.toFixed(2)}</div>
+                  </div>
+                ))}
+              </div>
+              {/* Price vs Cloud + signals */}
+              <div style={{ display:"grid", gridTemplateColumns:"repeat(3, 1fr)", gap:10 }}>
+                <div style={{ padding:"10px 12px", background:"#040810", border:"1px solid #15212e", borderRadius:4 }}>
+                  <div className="label" style={{ marginBottom:4 }}>PRICE vs CLOUD</div>
+                  <div style={{ fontSize:13, fontWeight:700, color: tech.ichimoku.priceZone==="above"?"#00ff88":tech.ichimoku.priceZone==="below"?"#ff3355":"#ffaa44" }}>
+                    {tech.ichimoku.priceZone==="above"?"▲ ABOVE CLOUD":tech.ichimoku.priceZone==="below"?"▼ BELOW CLOUD":"◆ INSIDE CLOUD"}
+                  </div>
+                  <div className="mini" style={{marginTop:3}}>
+                    Cloud: ${tech.ichimoku.cloudBot.toFixed(2)}–${tech.ichimoku.cloudTop.toFixed(2)}
+                  </div>
+                </div>
+                <div style={{ padding:"10px 12px", background:"#040810", border:"1px solid #15212e", borderRadius:4 }}>
+                  <div className="label" style={{ marginBottom:4 }}>TK CROSS</div>
+                  <div style={{ fontSize:13, fontWeight:700, color: tech.ichimoku.tkCross==="bullish"?"#00ff88":tech.ichimoku.tkCross==="bearish"?"#ff3355":"#7aaed0" }}>
+                    {tech.ichimoku.tkCross==="bullish"?"▲ BULL CROSS":tech.ichimoku.tkCross==="bearish"?"▼ BEAR CROSS":tech.ichimoku.tenkan > tech.ichimoku.kijun?"T > K (bull posture)":tech.ichimoku.tenkan < tech.ichimoku.kijun?"T < K (bear posture)":"T = K (flat)"}
+                  </div>
+                  <div className="mini" style={{marginTop:3}}>Tenkan vs Kijun</div>
+                </div>
+                <div style={{ padding:"10px 12px", background:"#040810", border:"1px solid #15212e", borderRadius:4 }}>
+                  <div className="label" style={{ marginBottom:4 }}>CHIKOU</div>
+                  <div style={{ fontSize:13, fontWeight:700, color: tech.ichimoku.chikouConfirm==="bullish"?"#00ff88":tech.ichimoku.chikouConfirm==="bearish"?"#ff3355":"#7aaed0" }}>
+                    {tech.ichimoku.chikouConfirm==="bullish"?"▲ CONFIRMS BULL":tech.ichimoku.chikouConfirm==="bearish"?"▼ CONFIRMS BEAR":"— NO CONFIRM"}
+                  </div>
+                  <div className="mini" style={{marginTop:3}}>Close vs 26 bars ago</div>
+                </div>
+              </div>
             </div>
-            <div>
-              <div className="label" style={{ marginBottom:5 }}>MACRO</div>
-              <div className="stat-num" style={{ color:tech.macroBias==="BULLISH"?"#00ff88":tech.macroBias==="BEARISH"?"#ff3355":"#7aaed0" }}>{tech.macroBias}</div>
-              <div className="mini" style={{marginTop:3}}>from market tide</div>
+          ) : (
+            <div style={{ padding:"14px 22px", background:"#060d15", borderBottom:"1px solid #111d28" }}>
+              <div className="sec-label" style={{ marginBottom:6 }}>ICHIMOKU · 5M</div>
+              <div style={{ fontSize:13, color:"#8aabc2", lineHeight:1.6 }}>
+                No 5m OHLC data fetched for {p.ticker} this scan cycle. Ichimoku only runs on top-12 tickers by premium — if this ticker ranks lower, tech bias defaults to PENDING and verdict holds for next scan.
+              </div>
             </div>
-          </div>
+          )}
 
-          {/* ─── 3. SUGGESTED STRATEGY (TOS-style, prominent) ─── */}
+          {/* ─── 3. MACRO + IV + SUGGESTED STRATEGY ─── */}
           <div style={{ padding:"14px 22px", background:"#050b12", borderBottom:"1px solid #111d28" }}>
-            <div className="label" style={{ marginBottom:8 }}>SUGGESTED STRATEGY</div>
-            <div style={{ display:"flex", gap:10, alignItems:"center", flexWrap:"wrap" }}>
-              <span style={{ fontSize:15, fontWeight:700, color:"#ffe033", padding:"6px 12px", background:"#141008", border:"1px solid #ffe03355", borderRadius:4 }}>
-                {tech.suggestedStrategy}
-              </span>
-              {tech.creditAlt && (
-                <span style={{ fontSize:13, color:"#aa88ff", padding:"5px 10px", background:"#0d0a14", border:"1px solid #aa88ff44", borderRadius:4 }}>
-                  or {tech.creditAlt}
-                </span>
-              )}
-              <span style={{ fontSize:12, color:"#8aabc2" }}>· DTE {prof.dte} · Hold {prof.hold}</span>
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 2fr", gap:14, alignItems:"center" }}>
+              <div>
+                <div className="label" style={{ marginBottom:4 }}>MACRO</div>
+                <div style={{ fontSize:16, fontWeight:700, color:tech.macroBias==="BULLISH"?"#00ff88":tech.macroBias==="BEARISH"?"#ff3355":"#7aaed0" }}>{tech.macroBias}</div>
+                <div className="mini" style={{marginTop:2}}>from market tide</div>
+              </div>
+              <div>
+                <div className="label" style={{ marginBottom:4 }}>IV RANK</div>
+                <div style={{ fontSize:16, fontWeight:700, color:tech.ivRank===null?"#7aaed0":tech.ivRank>=55?"#ffaa44":"#44ffbb" }}>
+                  {tech.ivRank===null?"—":tech.ivRank+"%"}
+                </div>
+                <div className="mini" style={{marginTop:2}}>{tech.ivRank===null?"pending":tech.ivHigh?"elevated":"normal"}</div>
+              </div>
+              <div>
+                <div className="label" style={{ marginBottom:4 }}>SUGGESTED STRATEGY</div>
+                <div style={{ display:"flex", gap:8, alignItems:"center", flexWrap:"wrap" }}>
+                  <span style={{ fontSize:14, fontWeight:700, color:"#ffe033", padding:"5px 10px", background:"#141008", border:"1px solid #ffe03355", borderRadius:4 }}>
+                    {tech.suggestedStrategy}
+                  </span>
+                  {tech.creditAlt && <span style={{ fontSize:12, color:"#aa88ff" }}>· or {tech.creditAlt}</span>}
+                </div>
+                <div className="mini" style={{marginTop:3}}>DTE {prof.dte} · hold {prof.hold}</div>
+              </div>
             </div>
           </div>
 
@@ -1056,6 +1241,7 @@ function App() {
     if (isFetching.current) { addLog("⏳ Already scanning…"); return; }
     isFetching.current=true; setLoading(true); setError("");
     addLog("Scanning: flow + dark pool + staircase detection + enrichment…");
+    let rawFetched = null;  // hoisted — populated in direct mode, read after Claude returns to attach Ichimoku to signals
     try {
       // Retry with exponential backoff. AbortController guards each attempt so a hung
       // MCP tool call can't tie up the next scan cycle.
@@ -1069,14 +1255,18 @@ function App() {
           // Build the request body — DIRECT mode fetches UW REST first then sends compact data to Claude (no mcp_servers).
           let body;
           if (directMode) {
-            addLog("Fetching UW REST (flow + dark pool + tide + per-ticker)…");
+            addLog("Fetching UW REST (flow + dark pool + tide + per-ticker + OHLC for Ichimoku)…");
             const raw = await fetchUWDirect(ukRef.current, ctrl.signal);
+            rawFetched = raw;  // hoisted — used later to attach ichimoku to each classified signal
             const tnames = Object.keys(raw.per_ticker||{});
-            addLog(`✓ UW: ${raw.flow_alerts.length} flow · ${raw.dark_pool_recent.length} DP · ${tnames.length} top tickers (${tnames.join(", ")})`);
+            const ichCount = Object.keys(raw.ichimokuByTicker||{}).length;
+            addLog(`✓ UW: ${raw.flow_alerts.length} flow · ${raw.dark_pool_recent.length} DP · ${tnames.length} top tickers (${tnames.join(", ")}) · ${ichCount} Ichimoku`);
+            // Strip ichimokuByTicker from the payload sent to Claude — it's heavy and unused by the classifier
+            const { ichimokuByTicker: _ich, ...forClaude } = raw;
             body = JSON.stringify({
               model:"claude-sonnet-4-5", max_tokens:2500,
               system: buildSystemDirect(),
-              messages:[{ role:"user", content:`Pre-fetched UW data:\n${JSON.stringify(raw)}\n\nClassify and return only the JSON array starting with [` }],
+              messages:[{ role:"user", content:`Pre-fetched UW data:\n${JSON.stringify(forClaude)}\n\nClassify and return only the JSON array starting with [` }],
             });
           } else {
             body = JSON.stringify({
@@ -1151,6 +1341,7 @@ function App() {
       const prints = parseArr(raw);
       if (!prints.length) { addLog("⚠ No valid JSON — will retry next cycle"); if(raw) addLog(`Snippet: ${raw.slice(0,100)}`); return; }
       const freshIds = new Set();
+      const ichMap = rawFetched?.ichimokuByTicker || {};
       const fresh = prints
         .filter(p=>p.ticker&&p.sig)
         .map(p=>({
@@ -1163,6 +1354,7 @@ function App() {
           staircase_days:parseInt(p.staircase_days)||0,
           time:p.time||new Date().toTimeString().slice(0,8),
           id:p.id||`${p.ticker}-${p.sig}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+          ichimoku: ichMap[p.ticker] || null,  // ← Ichimoku pre-computed client-side from 5m OHLC
         }))
         .map(p=>({...p, winProb:calcWinProb(p)}))
         .filter(p=>{
