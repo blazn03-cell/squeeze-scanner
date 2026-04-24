@@ -54,8 +54,16 @@ async function ensureHeader(connectors, sheetId) {
   }
 }
 
+function normalizeSheetId(raw) {
+  if (!raw) return raw;
+  let s = raw.trim();
+  const m = s.match(/\/d\/([a-zA-Z0-9_-]+)/);
+  if (m) return m[1];
+  return s.split(/[\/?#]/)[0];
+}
+
 export async function logToSheet(timestamp, results) {
-  const sheetId = process.env.GOOGLE_SHEET_ID;
+  const sheetId = normalizeSheetId(process.env.GOOGLE_SHEET_ID);
   if (!sheetId) throw new Error("Missing GOOGLE_SHEET_ID secret");
 
   const connectors = new ReplitConnectors();

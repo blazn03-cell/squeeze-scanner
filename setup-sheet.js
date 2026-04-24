@@ -4,7 +4,14 @@
 // tabs are rebuilt from scratch.
 import { ReplitConnectors } from "@replit/connectors-sdk";
 
-const SHEET_ID = process.env.GOOGLE_SHEET_ID;
+function normalizeSheetId(raw) {
+  if (!raw) return raw;
+  let s = raw.trim();
+  const m = s.match(/\/d\/([a-zA-Z0-9_-]+)/);
+  if (m) return m[1];
+  return s.split(/[\/?#]/)[0];
+}
+const SHEET_ID = normalizeSheetId(process.env.GOOGLE_SHEET_ID);
 if (!SHEET_ID) {
   console.error("✗ Missing GOOGLE_SHEET_ID secret");
   process.exit(1);
