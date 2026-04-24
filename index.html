@@ -195,8 +195,8 @@ const buildSystem = (uwKey) => `You connect to Unusual Whales MCP (paid). Return
 UW Bearer token: ${uwKey}
 
 FETCH IN ORDER (KEEP IT TIGHT — at most 5 MCP calls total to avoid timeouts):
-1. Flow alerts: size_greater_oi=true, is_otm=true, min_ask_perc=0.7, limit=50. Both calls AND puts.
-2. Dark pool recent: limit=40. Cross-reference tickers in both sweeps AND dark pool (higher conviction).
+1. Flow alerts: size_greater_oi=true, is_otm=true, min_ask_perc=0.7, limit=30. Both calls AND puts.
+2. Dark pool recent: limit=25. Cross-reference tickers in both sweeps AND dark pool (higher conviction).
 3. Market tide: net direction.
 4. For each unique non-macro ticker (up to 6 — TOP TICKERS BY PREMIUM ONLY): fetch darkpool/{ticker} last 7 days. Count consecutive days with DP prints at same price zone (±2%). count = staircase_days. Zone = staircase_zone.
 5. For the SAME top 6 tickers: fetch greek-exposure (bias, wall, comment). This populates gex.{bias, wall, comment} which drives the gamma squeeze/flush classification.
@@ -945,8 +945,8 @@ function App() {
     try {
       // Retry with exponential backoff. AbortController guards each attempt so a hung
       // MCP tool call can't tie up the next scan cycle.
-      const SCAN_TIMEOUT_MS = 90000;
-      const MAX_ATTEMPTS    = 3;
+      const SCAN_TIMEOUT_MS = 150000;  // 2.5 min — UW MCP responses are heavy on cold start
+      const MAX_ATTEMPTS    = 2;
       let res, lastErr;
       for (let attempt=1; attempt<=MAX_ATTEMPTS; attempt++) {
         const ctrl = new AbortController();
