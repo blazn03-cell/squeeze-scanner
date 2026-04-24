@@ -236,7 +236,14 @@ function pruneHist(h) {
   const out = {};
   Object.entries(h).forEach(([k,v]) => {
     const t = new Date(v.last_seen || today()).getTime();
-    if ((now - t)/DAY_MS <= 30) out[k] = v;
+    const ageDays = (now - t)/DAY_MS;
+    // Hard cap: drop anything older than 30 days
+    if (ageDays > 30) return;
+    // Stale-and-never-fired: drop items tracked 3+ days that never showed real follow-through
+    // ("fired" = had matched sweep+DP confluence OR cleared 70% win prob OR ≥3 distinct sighting days)
+    const fired = (v.sweepOk && v.dpOk) || (v.max_win_prob||0) >= 70 || (v.days_seen?.length||0) >= 3;
+    if (ageDays > 3 && !fired) return;
+    out[k] = v;
   });
   return out;
 }
@@ -1041,11 +1048,18 @@ function App() {
   const savePos = (id,pos) => setPositions(p=>({...p,[id]:pos}));
   const toggle  = id => setOpenId(p=>p===id?null:id);
   const effMinProb = gateOn ? Math.max(minProb, WIN_GATE) : minProb;
+  // Tickers in the current rolling feed that have at least one real sweep signal.
+  // Used to drop "useless" pure-DP prints (dp_buy/dp_sell) with no matching sweep.
+  const SWEEP_SIGS = new Set(["cs_dp","call_sweep","ps_dp","put_sweep"]);
+  const PURE_DP_SIGS = new Set(["dp_buy","dp_sell"]);
+  const tickersWithSweep = new Set(feed.filter(p => SWEEP_SIGS.has(p.sig)).map(p => p.ticker));
   const doFilter = items => items
     .filter(p =>
       (p.winProb===null||p.winProb>=effMinProb) &&
       (!confirmed||(p.sweepOk&&p.dpOk)) &&
-      (!ticker.trim()||p.ticker.includes(ticker.trim().toUpperCase()))
+      (!ticker.trim()||p.ticker.includes(ticker.trim().toUpperCase())) &&
+      // Drop pure DP prints with no matching sweep on the same ticker in the recent window
+      (!PURE_DP_SIGS.has(p.sig) || tickersWithSweep.has(p.ticker))
     )
     .sort((a,b) => {
       const ae=(a.staircase_days||0)>=3&&!a.sweepOk?-1:0, be=(b.staircase_days||0)>=3&&!b.sweepOk?-1:0;

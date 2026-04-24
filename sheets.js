@@ -54,6 +54,57 @@ async function ensureHeader(connectors, sheetId) {
   }
 }
 
+const PRUNE_OLDER_THAN_DAYS = 30;
+
+async function pruneOldRows(connectors, sheetId) {
+  // Find Raw Log sheetId
+  const meta = await connectors.proxy("google-sheet", `/v4/spreadsheets/${sheetId}?fields=sheets.properties`, { method: "GET" });
+  if (!meta.ok) return 0;
+  const metaJson = await meta.json();
+  const rawLog = (metaJson.sheets || []).find(s => s.properties.title === "Raw Log");
+  if (!rawLog) return 0;
+  const rawLogId = rawLog.properties.sheetId;
+
+  // Read column A (timestamps), starting row 2 (skip header)
+  const valsRes = await connectors.proxy("google-sheet", `/v4/spreadsheets/${sheetId}/values/Raw%20Log!A2:A`, { method: "GET" });
+  if (!valsRes.ok) return 0;
+  const valsJson = await valsRes.json();
+  const rows = valsJson.values || [];
+  if (rows.length === 0) return 0;
+
+  const cutoff = Date.now() - PRUNE_OLDER_THAN_DAYS * 86400000;
+  // 0-indexed sheet row numbers of stale rows (row 0 = header, so data starts at row 1)
+  const staleIdx = [];
+  rows.forEach((r, i) => {
+    const ts = r?.[0];
+    if (!ts) return;
+    const t = Date.parse(ts);
+    if (!isNaN(t) && t < cutoff) staleIdx.push(i + 1); // +1 for header
+  });
+  if (staleIdx.length === 0) return 0;
+
+  // Group consecutive indices into ranges and delete bottom-up to keep indices valid
+  staleIdx.sort((a, b) => a - b);
+  const ranges = [];
+  let start = staleIdx[0], end = start + 1;
+  for (let i = 1; i < staleIdx.length; i++) {
+    if (staleIdx[i] === end) end++;
+    else { ranges.push([start, end]); start = staleIdx[i]; end = start + 1; }
+  }
+  ranges.push([start, end]);
+  const requests = ranges.reverse().map(([s, e]) => ({
+    deleteDimension: { range: { sheetId: rawLogId, dimension: "ROWS", startIndex: s, endIndex: e } },
+  }));
+
+  const del = await connectors.proxy("google-sheet", `/v4/spreadsheets/${sheetId}:batchUpdate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ requests }),
+  });
+  if (!del.ok) return 0;
+  return staleIdx.length;
+}
+
 function normalizeSheetId(raw) {
   if (!raw) return raw;
   let s = raw.trim();
@@ -83,5 +134,14 @@ export async function logToSheet(timestamp, results) {
     const body = await res.text().catch(() => "");
     throw new Error(`Sheets append failed (HTTP ${res.status}): ${body.slice(0, 200)}`);
   }
+
+  // Auto-prune rows older than 30 days
+  try {
+    const pruned = await pruneOldRows(connectors, sheetId);
+    if (pruned > 0) console.log(`  pruned ${pruned} stale row${pruned === 1 ? "" : "s"} (>${PRUNE_OLDER_THAN_DAYS}d old)`);
+  } catch (e) {
+    console.log(`  (prune skipped: ${e?.message || e})`);
+  }
+
   return rows.length;
 }
