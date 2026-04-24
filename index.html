@@ -221,6 +221,34 @@ const fmt  = n => !n ? "—" : +n >= 1e6 ? `$${(+n/1e6).toFixed(2)}M` : +n >= 1e
 const fmtP = n => !n ? "—" : parseFloat(n).toFixed(1) + "%";
 const beep = () => { try { const ac = new(window.AudioContext||window.webkitAudioContext)(); const o=ac.createOscillator(),g=ac.createGain(); o.connect(g); g.connect(ac.destination); o.frequency.value=900; g.gain.setValueAtTime(0.18,ac.currentTime); g.gain.exponentialRampToValueAtTime(0.001,ac.currentTime+0.5); o.start(); o.stop(ac.currentTime+0.5); } catch(_){} };
 
+// ── DAILY TRADING PLAYBOOK (time-aware) ───────────────────────────────────────
+// Each step: t = minutes since midnight ET. Schedule is fixed in Eastern Time.
+const PLAYBOOK = [
+  { t: 8*60+30,  time: "8:30 AM",  title: "Scanner Fires",                 phase: "Pre-Market",  color: "#5b9bd5", body: "Replit runs the first scheduled scan. You don't need to do anything. Stay calm — the system works without you." },
+  { t: 8*60+35,  time: "8:35 AM",  title: "Phone Check (60 sec)",          phase: "Pre-Market",  color: "#5b9bd5", body: "Open Google Sheets → UW Scanner Log → Today tab. Look at the summary strip. Any candidates? Trading day possible. Zero candidates? Slow day, don't force." },
+  { t: 9*60+0,   time: "9:00 AM",  title: "Be At Your Desk",               phase: "Pre-Market",  color: "#5b9bd5", body: "Second scheduled scan runs. Coffee ready. Computer on. TradingView open. You need 20 min to prep before the bell." },
+  { t: 9*60+20,  time: "9:20 AM",  title: "📋 THE BRIEF (3 min)",          phase: "Brief",       color: "#d97706", body: "Open Today tab. Read summary → scan rows → check Repeat Hits → pick MAX 2 TICKERS with entry zone, stop zone, one-line thesis. Zero strong candidates? Don't trade today." },
+  { t: 9*60+25,  time: "9:25 AM",  title: "Final Pre-Market Scan",         phase: "Brief",       color: "#d97706", body: "Last scan fires. Refresh Today tab. Did your 2 picks still rank high? Dropped off → question them. Climbed → conviction confirmed." },
+  { t: 9*60+30,  time: "9:30 AM",  title: "🚫 HANDS OFF — Market Opens",   phase: "Wait Window", color: "#dc2626", body: "NO ENTRIES 9:30–10:00. Open TradingView, apply Ichimoku/Squeeze Pro/MFI/ORB-15. Check VIX: <20 full size · 20–25 half · >25 SKIP DAY. No trades. None." },
+  { t: 9*60+45,  time: "9:45 AM",  title: "📍 Mark Opening Range",         phase: "Wait Window", color: "#dc2626", body: "Note the highest and lowest price hit in the first 15 minutes for each pick. This is your ORB zone. Watch — don't click buy." },
+  { t: 10*60+0,  time: "10:00 AM", title: "✅ 13-Point Checklist → ENTRY", phase: "Execution",   color: "#16a34a", body: "Run the 13-point checklist. ALL 13 GREEN = enter (call spread or naked call, position-sized to VIX). 12 green, 1 missing = SKIP. No exceptions." },
+  { t: 10*60+30, time: "10:30 AM", title: "Position Management",           phase: "Manage",      color: "#6b7280", body: "Watch price action. Don't stare at P&L. Don't add. Don't roll. Don't open new tickers. The morning signal is the morning signal." },
+  { t: 12*60+0,  time: "12:00 PM", title: "☕ Lunch Chop",                  phase: "Manage",      color: "#6b7280", body: "Volume dies, algos dominate. Set price alerts at stop_zone + target_zone. Walk away. Stop hit? Exit immediately. +75% hit? Sell 50%, move stop to breakeven." },
+  { t: 14*60+0,  time: "2:00 PM",  title: "🔄 Power Hour Prep",            phase: "Manage",      color: "#6b7280", body: "Re-engage. Still above entry, ORB high, Ichimoku cloud? Hold. Any broken? Plan exit. Approaching GEX target? Scale out more. Trail final 20% with Kijun line." },
+  { t: 15*60+30, time: "3:30 PM",  title: "🎯 Close Decision",             phase: "Close",       color: "#5b21b6", body: "Hold overnight or close? Close if: +100%+, VIX spiked, macro headline tomorrow, momentum faded, or unsure. Hold ONLY if triple-hit + DP accumulation + no catalysts + bullish daily + VIX <20." },
+  { t: 16*60+0,  time: "4:00 PM",  title: "🔔 Market Closes",              phase: "Close",       color: "#5b21b6", body: "Confirm all intended exits filled. Screenshot P&L for the day. Don't touch the scanner or charts." },
+  { t: 16*60+30, time: "4:30 PM",  title: "📔 Journal (5 min)",            phase: "Close",       color: "#5b21b6", body: "Write: what tickers did the scanner surface, what did I trade, what happened, what would I change? Single most important habit — without it you can't improve." },
+  { t: 17*60+0,  time: "After 5 PM", title: "Done",                         phase: "Close",       color: "#5b21b6", body: "Close Replit, Google Sheets, TradingView. Don't research tomorrow's trades tonight — that's Sunday's job. Mental separation matters." },
+];
+function nowETMin() {
+  try {
+    const parts = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", hour12: false, hour: "2-digit", minute: "2-digit" }).formatToParts(new Date());
+    const h = +parts.find(p => p.type === "hour").value;
+    const m = +parts.find(p => p.type === "minute").value;
+    return h * 60 + m;
+  } catch { const d = new Date(); return d.getHours()*60 + d.getMinutes(); }
+}
+
 // ── 30-DAY HISTORY (localStorage) ─────────────────────────────────────────────
 const HIST_KEY = "sfs_history_v1";
 const DAY_MS   = 86400000;
@@ -885,6 +913,9 @@ function App() {
   const [viewMode,  setViewMode]  = useState("live");   // "live" | "top10"
   const [sortMode,  setSortMode]  = useState("days");    // "days" | "premium"
   const [usage,     setUsage]     = useState({ in:0, out:0, scans:0 });  // cumulative this session
+  const [nowMin,    setNowMin]    = useState(() => nowETMin());          // minutes since midnight ET, ticks every 30s
+  const [pbOpen,    setPbOpen]    = useState(false);                     // playbook expanded panel
+  const [showLegend,setShowLegend]= useState(false);                     // legend strip hidden by default
 
   const seen       = useRef(new Set());
   const intv       = useRef(null);
@@ -1037,6 +1068,7 @@ function App() {
   }, [ready, pollSec]);
 
   useEffect(()=>{ if(paused) clearInterval(intv.current); }, [paused]);
+  useEffect(() => { const id = setInterval(() => setNowMin(nowETMin()), 30000); return () => clearInterval(id); }, []);
 
   const connect = (a, u) => {
     akRef.current=a; ukRef.current=u;
@@ -1191,12 +1223,70 @@ function App() {
             ))}
           </div>
         </div>
-        <div style={{ display:"flex", gap:18, padding:"6px 20px", borderTop:"1px solid #0e1a24", background:"#04080c", flexWrap:"wrap" }}>
-          {[{i:"📊",t:"Staircase = 3+ day DP accumulation",c:"#00ddff"},{i:"👀",t:"Early = staircase, no sweep yet",c:"#22aacc"},{i:"⚡",t:"Both = sweep + DP confirmed",c:"#ffe033"},{i:"γ↑",t:"Short gamma = squeeze amplified",c:"#ff88cc"},{i:"γ↓",t:"Long gamma = flush amplified",c:"#ff6600"},{i:"⚠",t:"High IV = use spread",c:"#ffaa44"}].map(({i,t,c})=>(
-            <span key={i} style={{ fontSize:10, display:"flex", gap:6, alignItems:"center" }}><span style={{color:c, fontWeight:700}}>{i}</span><span style={{color:"#7591a8"}}>{t}</span></span>
-          ))}
-          <span style={{ marginLeft:"auto", fontSize:10, color:"#5a7a92" }}>{feed.length} signals · staircase → tier → win prob</span>
-        </div>
+        {(() => {
+          // PLAYBOOK BAR — current step (based on ET clock) + next step preview
+          let curIdx = -1;
+          for (let i = 0; i < PLAYBOOK.length; i++) { if (PLAYBOOK[i].t <= nowMin) curIdx = i; else break; }
+          const cur  = curIdx >= 0 ? PLAYBOOK[curIdx]  : null;
+          const nxt  = PLAYBOOK[curIdx + 1] || null;
+          const nowLabel = (() => { const h = Math.floor(nowMin/60), m = nowMin%60; const am = h<12; const hh = ((h+11)%12)+1; return `${hh}:${m.toString().padStart(2,"0")} ${am?"AM":"PM"} ET`; })();
+          return (
+            <div style={{ borderTop:"1px solid #0e1a24", background:"#04080c" }}>
+              <div onClick={()=>setPbOpen(o=>!o)} style={{ display:"flex", gap:14, padding:"7px 20px", cursor:"pointer", alignItems:"center", flexWrap:"wrap" }}>
+                <span style={{ fontSize:11, color:"#7591a8", letterSpacing:"0.12em", fontWeight:600 }}>📖 PLAYBOOK</span>
+                <span style={{ fontSize:10, color:"#5a7a92" }}>{nowLabel}</span>
+                {cur ? (
+                  <span style={{ fontSize:11, color:cur.color, fontWeight:600 }}>NOW · {cur.time} · {cur.title}</span>
+                ) : (
+                  <span style={{ fontSize:11, color:"#5a7a92", fontStyle:"italic" }}>Pre-market starts at 8:30 AM ET</span>
+                )}
+                {nxt && (
+                  <span style={{ fontSize:10, color:"#7591a8" }}>→ NEXT: <span style={{ color:nxt.color }}>{nxt.time} · {nxt.title}</span></span>
+                )}
+                <span style={{ marginLeft:"auto", display:"flex", gap:14, alignItems:"center" }}>
+                  <span style={{ fontSize:10, color:"#5a7a92" }}>{feed.length} signals</span>
+                  <span onClick={e=>{e.stopPropagation(); setShowLegend(s=>!s);}} title="Show/hide icon legend" style={{ fontSize:10, color:showLegend?"#ffe033":"#5a7a92", border:`1px solid ${showLegend?"#ffe03344":"#1a2a3a"}`, padding:"2px 7px", borderRadius:3, cursor:"pointer" }}>?</span>
+                  <span style={{ fontSize:10, color:"#7591a8" }}>{pbOpen ? "▴ collapse" : "▾ expand"}</span>
+                </span>
+              </div>
+              {pbOpen && (
+                <div style={{ padding:"12px 20px 16px", borderTop:"1px solid #0e1a24", background:"#06101a" }}>
+                  {cur && (
+                    <div style={{ background:"#080e16", border:`1px solid ${cur.color}55`, borderLeft:`3px solid ${cur.color}`, padding:"10px 14px", marginBottom:10, borderRadius:4 }}>
+                      <div style={{ fontSize:10, color:cur.color, fontWeight:700, letterSpacing:"0.12em", marginBottom:4 }}>NOW · {cur.phase.toUpperCase()}</div>
+                      <div style={{ fontSize:14, color:"#eaf2ff", fontWeight:700, marginBottom:6 }}>{cur.time} · {cur.title}</div>
+                      <div style={{ fontSize:12, color:"#b0c4d8", lineHeight:1.6 }}>{cur.body}</div>
+                    </div>
+                  )}
+                  {nxt && (
+                    <div style={{ background:"#04080c", border:`1px solid #0e1a24`, borderLeft:`3px solid ${nxt.color}88`, padding:"8px 14px", marginBottom:10, borderRadius:4, opacity:0.85 }}>
+                      <div style={{ fontSize:10, color:nxt.color, fontWeight:600, letterSpacing:"0.12em", marginBottom:3 }}>NEXT · {nxt.phase.toUpperCase()}</div>
+                      <div style={{ fontSize:12, color:"#cfdde9", fontWeight:600, marginBottom:4 }}>{nxt.time} · {nxt.title}</div>
+                      <div style={{ fontSize:11, color:"#9bb3c6", lineHeight:1.55 }}>{nxt.body}</div>
+                    </div>
+                  )}
+                  <div style={{ display:"flex", gap:6, flexWrap:"wrap", marginTop:10 }}>
+                    {PLAYBOOK.map((s, i) => {
+                      const isCur = i === curIdx, isPast = i < curIdx;
+                      return (
+                        <span key={s.t} style={{ fontSize:9, padding:"3px 7px", borderRadius:3, border:`1px solid ${isCur?s.color:"#1a2a3a"}`, background:isCur?s.color+"22":"transparent", color:isCur?s.color:isPast?"#3a5060":"#7591a8", textDecoration:isPast?"line-through":"none", letterSpacing:"0.04em" }} title={s.title}>
+                          {s.time}
+                        </span>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+              {showLegend && (
+                <div style={{ display:"flex", gap:18, padding:"6px 20px", borderTop:"1px solid #0e1a24", background:"#04080c", flexWrap:"wrap" }}>
+                  {[{i:"📊",t:"Staircase = 3+ day DP accumulation",c:"#00ddff"},{i:"👀",t:"Early = staircase, no sweep yet",c:"#22aacc"},{i:"⚡",t:"Both = sweep + DP confirmed",c:"#ffe033"},{i:"γ↑",t:"Short gamma = squeeze amplified",c:"#ff88cc"},{i:"γ↓",t:"Long gamma = flush amplified",c:"#ff6600"},{i:"⚠",t:"High IV = use spread",c:"#ffaa44"}].map(({i,t,c})=>(
+                    <span key={i} style={{ fontSize:10, display:"flex", gap:6, alignItems:"center" }}><span style={{color:c, fontWeight:700}}>{i}</span><span style={{color:"#7591a8"}}>{t}</span></span>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })()}
       </div>
 
       <div style={{ display:"grid", gridTemplateColumns:showLog?"1fr 1fr 0.7fr 200px":"1fr 1fr 0.7fr", flex:1, overflow:"hidden", background:"#05090e" }}>

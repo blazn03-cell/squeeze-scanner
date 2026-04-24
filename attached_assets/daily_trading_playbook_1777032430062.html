@@ -1,0 +1,642 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Daily Trading Playbook — Hour by Hour</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f5f5f0;color:#1a1a1a;padding:24px 16px;font-size:15px;line-height:1.65}
+.wrap{max-width:820px;margin:0 auto}
+h1{font-size:28px;font-weight:800;margin-bottom:4px;color:#1a1a1a}
+.subtitle{font-size:14px;color:#888;margin-bottom:28px;font-style:italic}
+
+/* HOUR BLOCK */
+.hour{background:#fff;border:1px solid #e0e0d8;border-radius:14px;margin-bottom:18px;overflow:hidden;break-inside:avoid}
+.hour-header{padding:14px 20px;border-bottom:1px solid #f0f0eb;display:flex;align-items:center;gap:12px}
+.hour-time{font-size:22px;font-weight:800;color:#1a1a1a;flex-shrink:0}
+.hour-title{font-size:15px;font-weight:700;color:#444}
+.hour-body{padding:16px 20px}
+.hour-body p{margin-bottom:10px;font-size:14px;color:#333}
+.hour-body ul{margin:8px 0 12px 20px;font-size:14px;color:#333}
+.hour-body ul li{margin-bottom:5px;line-height:1.6}
+.hour-body strong{color:#1a1a1a;font-weight:700}
+
+/* ACTION BOXES */
+.do-box{background:#f0fdf4;border-left:4px solid #16a34a;padding:10px 14px;margin:10px 0;border-radius:0 8px 8px 0}
+.do-box .label{font-size:11px;font-weight:800;color:#166534;text-transform:uppercase;letter-spacing:.8px;margin-bottom:4px}
+.dont-box{background:#fef2f2;border-left:4px solid #dc2626;padding:10px 14px;margin:10px 0;border-radius:0 8px 8px 0}
+.dont-box .label{font-size:11px;font-weight:800;color:#991b1b;text-transform:uppercase;letter-spacing:.8px;margin-bottom:4px}
+.watch-box{background:#fffbeb;border-left:4px solid #d97706;padding:10px 14px;margin:10px 0;border-radius:0 8px 8px 0}
+.watch-box .label{font-size:11px;font-weight:800;color:#92400e;text-transform:uppercase;letter-spacing:.8px;margin-bottom:4px}
+.info-box{background:#eff6ff;border-left:4px solid #2563eb;padding:10px 14px;margin:10px 0;border-radius:0 8px 8px 0}
+.info-box .label{font-size:11px;font-weight:800;color:#1e40af;text-transform:uppercase;letter-spacing:.8px;margin-bottom:4px}
+
+/* HOUR COLOR CODING */
+.hour.premarket .hour-header{background:#eff6ff}
+.hour.premarket .hour-time{color:#1d4ed8}
+.hour.brief .hour-header{background:#fef3c7}
+.hour.brief .hour-time{color:#92400e}
+.hour.waitwindow .hour-header{background:#fee2e2}
+.hour.waitwindow .hour-time{color:#991b1b}
+.hour.execution .hour-header{background:#dcfce7}
+.hour.execution .hour-time{color:#166534}
+.hour.manage .hour-header{background:#f3f4f6}
+.hour.manage .hour-time{color:#374151}
+.hour.close .hour-header{background:#ede9fe}
+.hour.close .hour-time{color:#5b21b6}
+
+/* SECTION HEADERS */
+.section-divider{margin:36px 0 20px;padding:14px 20px;background:#1a1a1a;color:#fff;border-radius:10px;text-align:center}
+.section-divider h2{font-size:20px;font-weight:800;letter-spacing:.5px}
+.section-divider p{font-size:13px;color:#aaa;margin-top:4px}
+
+/* EXIT RULES */
+.exit-rule{background:#fff;border:1px solid #e0e0d8;border-radius:12px;padding:16px 20px;margin-bottom:14px;display:flex;gap:14px;align-items:flex-start;break-inside:avoid}
+.exit-num{width:36px;height:36px;border-radius:50%;background:#dc2626;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:16px;flex-shrink:0}
+.exit-content{flex:1}
+.exit-title{font-size:15px;font-weight:800;margin-bottom:6px;color:#1a1a1a}
+.exit-row{font-size:13px;color:#444;margin-bottom:3px;line-height:1.55}
+.exit-row strong{color:#1a1a1a}
+
+/* CHECKLIST */
+.checklist-block{background:#fff;border:1px solid #e0e0d8;border-radius:12px;padding:16px 20px;margin-bottom:14px;break-inside:avoid}
+.checklist-block h3{font-size:15px;font-weight:800;margin-bottom:10px;color:#1a1a1a}
+.checklist-block ul{list-style:none;margin-left:0}
+.checklist-block ul li{padding:4px 0;font-size:14px;line-height:1.6}
+.checklist-block ul li::before{content:"☐ ";font-weight:800;color:#666}
+.checklist-block.done ul li::before{content:"✅ ";color:#16a34a}
+
+/* TIMELINE */
+.timeline{background:#1a1a1a;color:#fff;border-radius:12px;padding:20px;font-family:'SF Mono',Monaco,monospace;font-size:13px;line-height:1.9;margin-bottom:20px;break-inside:avoid}
+.timeline .time{color:#fbbf24;font-weight:700}
+.timeline .sep{color:#666}
+
+/* FINAL QUOTE */
+.quote{background:#1a1a1a;color:#fff;padding:22px 24px;border-radius:14px;margin-bottom:20px;text-align:center;break-inside:avoid}
+.quote p{font-size:15px;line-height:1.7;font-style:italic;color:#f0f0eb}
+.quote p strong{color:#fbbf24;font-weight:700}
+
+/* PRINT STYLES */
+@media print {
+  body{background:#fff;padding:12px;font-size:12px}
+  .hour,.exit-rule,.checklist-block,.quote,.timeline{box-shadow:none;break-inside:avoid;page-break-inside:avoid}
+  .section-divider{page-break-before:auto}
+  h1{font-size:22px}
+  .hour-time{font-size:18px}
+}
+
+.note{text-align:center;font-size:12px;color:#888;padding:16px 0;margin-top:12px;border-top:1px solid #e0e0d8}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>Daily Trading Playbook</h1>
+<div class="subtitle">Hour-by-hour, entry to exit. Follow word-for-word for 10 trading days before changing anything.</div>
+
+<!-- PRE-MARKET -->
+<div class="section-divider">
+  <h2>PRE-MARKET</h2>
+  <p>The scanner does the work. You stay calm.</p>
+</div>
+
+<div class="hour premarket">
+  <div class="hour-header">
+    <div class="hour-time">8:30 AM</div>
+    <div class="hour-title">Scanner Fires (You're Not Doing Anything)</div>
+  </div>
+  <div class="hour-body">
+    <p><strong>What's happening:</strong> Replit runs your first scan automatically. Data lands in Google Sheet.</p>
+    <p><strong>What you do:</strong> Nothing. You might still be asleep. That's fine.</p>
+    <p><strong>Why:</strong> The system works without you. That's the whole point.</p>
+  </div>
+</div>
+
+<div class="hour premarket">
+  <div class="hour-header">
+    <div class="hour-time">8:35 AM</div>
+    <div class="hour-title">Phone Check (60 seconds)</div>
+  </div>
+  <div class="hour-body">
+    <p><strong>What to do:</strong></p>
+    <ul>
+      <li>Grab phone</li>
+      <li>Open Google Sheets app → UW Scanner Log → <strong>Today</strong> tab</li>
+      <li>Look at the summary strip at top</li>
+    </ul>
+    <p><strong>What you're looking for:</strong></p>
+    <ul>
+      <li>Any candidates at all? → Trading day possible</li>
+      <li>Zero candidates? → Slow day, don't force anything</li>
+      <li>Error row? → Something broke, check Replit Deployments later</li>
+    </ul>
+    <div class="info-box">
+      <div class="label">Decision</div>
+      Go back to sleep or start your morning. Don't react yet. Too early.
+    </div>
+  </div>
+</div>
+
+<div class="hour premarket">
+  <div class="hour-header">
+    <div class="hour-time">9:00 AM</div>
+    <div class="hour-title">Scanner Fires Again (Be at Your Desk)</div>
+  </div>
+  <div class="hour-body">
+    <p><strong>What's happening:</strong> Second scheduled scan runs. More data lands.</p>
+    <p><strong>What you do:</strong> Be at your desk. Coffee ready. Computer on. TradingView open.</p>
+    <p><strong>Why:</strong> You need 20 minutes to prepare before the bell. Don't start prep at 9:25.</p>
+  </div>
+</div>
+
+<!-- BRIEF -->
+<div class="section-divider">
+  <h2>THE BRIEF</h2>
+  <p>Three minutes that set up the entire trading day.</p>
+</div>
+
+<div class="hour brief">
+  <div class="hour-header">
+    <div class="hour-time">9:20 AM</div>
+    <div class="hour-title">The Brief (3 minutes, Do This Every Day)</div>
+  </div>
+  <div class="hour-body">
+    <p><strong>Open Google Sheet on desktop → Today tab.</strong></p>
+    <p><strong>Step 1 (30 sec) — Read the summary strip:</strong></p>
+    <ul>
+      <li>How many total candidates?</li>
+      <li>How many scored 80+?</li>
+      <li>Any triple hits (all 3 scans)?</li>
+      <li>What's the top ticker?</li>
+    </ul>
+    <p><strong>Step 2 (60 sec) — Scan the rows:</strong></p>
+    <ul>
+      <li>Dark green score (80+) = priority</li>
+      <li>Yellow score (60–79) = maybe</li>
+      <li>Green Hit Count of 3 = highest conviction</li>
+      <li>Purple flow = institutional money confirmed</li>
+    </ul>
+    <p><strong>Step 3 (60 sec) — Click Repeat Hits tab:</strong></p>
+    <ul>
+      <li>Any tickers here? These are your A-list.</li>
+      <li>Usually 0–3 names show up</li>
+      <li>Read the Latest Thesis for each</li>
+    </ul>
+    <p><strong>Step 4 (30 sec) — Pick your plan:</strong></p>
+    <ul>
+      <li>Maximum <strong>2 tickers</strong> to work today. Not 3. Not 5. Two.</li>
+      <li>Write ticker, entry zone, stop zone, one-sentence thesis</li>
+    </ul>
+    <div class="watch-box">
+      <div class="label">Zero Strong Candidates?</div>
+      Close the sheet. Don't trade today. Skipping bad days is how you print good months.
+    </div>
+  </div>
+</div>
+
+<div class="hour brief">
+  <div class="hour-header">
+    <div class="hour-time">9:25 AM</div>
+    <div class="hour-title">Scanner Fires Last Time</div>
+  </div>
+  <div class="hour-body">
+    <p><strong>What's happening:</strong> Final pre-market scan. Fresh data appears.</p>
+    <p><strong>What you do:</strong> Refresh the Today tab. Check if your 2 picks still rank high.</p>
+    <ul>
+      <li>Dropped off? → Question them</li>
+      <li>Climbed higher? → Conviction confirmed</li>
+    </ul>
+  </div>
+</div>
+
+<!-- WAIT WINDOW -->
+<div class="section-divider">
+  <h2>WAIT WINDOW</h2>
+  <p>Market opens but you don't trade. This is where discipline is built.</p>
+</div>
+
+<div class="hour waitwindow">
+  <div class="hour-header">
+    <div class="hour-time">9:30 AM</div>
+    <div class="hour-title">Market Opens — HANDS OFF</div>
+  </div>
+  <div class="hour-body">
+    <p><strong>Rule: No entries between 9:30 and 10:00 AM. Period.</strong></p>
+    <p><strong>What to do during this 30 minutes:</strong></p>
+    <ul>
+      <li>Open TradingView for your 2 picks</li>
+      <li>Apply studies: Ichimoku Cloud, Squeeze Pro, MFI</li>
+      <li>Set the ORB 15-min study on each chart</li>
+      <li>Check VIX (top of TradingView)</li>
+      <li>Check if any macro news broke overnight</li>
+    </ul>
+    <div class="info-box">
+      <div class="label">VIX Decision Tree</div>
+      <ul style="margin:4px 0 0 20px">
+        <li>VIX under 20 → full position size planned</li>
+        <li>VIX 20–25 → half position size</li>
+        <li>VIX over 25 → <strong>skip the day entirely</strong>. Close charts. Don't fight regime.</li>
+      </ul>
+    </div>
+    <div class="watch-box">
+      <div class="label">Macro Kill Switches — Cancel If:</div>
+      <ul style="margin:4px 0 0 20px">
+        <li>Major geopolitical headline hit overnight</li>
+        <li>Surprise Fed announcement</li>
+        <li>Ticker gapped against your thesis</li>
+        <li>Options bid-ask wider than 10% of premium</li>
+      </ul>
+    </div>
+    <div class="dont-box">
+      <div class="label">Do Not</div>
+      Place any trade. Not a small one. Not a test one. None. Do not add new tickers. Do not change entry/stop levels.
+    </div>
+  </div>
+</div>
+
+<div class="hour waitwindow">
+  <div class="hour-header">
+    <div class="hour-time">9:45 AM</div>
+    <div class="hour-title">Mark the Opening Range</div>
+  </div>
+  <div class="hour-body">
+    <p><strong>On each TradingView chart:</strong></p>
+    <ul>
+      <li>Note the highest price the first 15 minutes hit</li>
+      <li>Note the lowest price the first 15 minutes hit</li>
+      <li>This is your ORB (Opening Range Breakout) zone</li>
+    </ul>
+    <p><strong>Why:</strong> You're about to trade the break of this range. Price closing above the high = confirmed bullish momentum. Price rejecting it = setup failed, don't enter.</p>
+    <div class="do-box">
+      <div class="label">Action</div>
+      Watch. Just watch. Don't click buy.
+    </div>
+  </div>
+</div>
+
+<!-- EXECUTION -->
+<div class="section-divider">
+  <h2>EXECUTION WINDOW</h2>
+  <p>All 13 green or skip. No exceptions.</p>
+</div>
+
+<div class="hour execution">
+  <div class="hour-header">
+    <div class="hour-time">10:00 AM</div>
+    <div class="hour-title">Run the 13-Point Checklist</div>
+  </div>
+  <div class="hour-body">
+
+    <div class="checklist-block done">
+      <h3>Scanner Already Confirmed (7 points):</h3>
+      <ul>
+        <li>Dark pool accumulation</li>
+        <li>Short interest elevated</li>
+        <li>Bullish options flow</li>
+        <li>No earnings next 7 days</li>
+        <li>GEX cluster above</li>
+        <li>Real premium size</li>
+        <li>Multi-scan conviction</li>
+      </ul>
+    </div>
+
+    <div class="checklist-block">
+      <h3>You Manually Confirm (6 points):</h3>
+      <ul>
+        <li>VIX regime acceptable (under 25)</li>
+        <li>Price broke above ORB 15-min high and holding</li>
+        <li>Price above Ichimoku cloud</li>
+        <li>Squeeze Pro momentum bars green and firing</li>
+        <li>MFI above 50 and rising</li>
+        <li>No macro headline risk in next 24 hours</li>
+      </ul>
+    </div>
+
+    <div class="dont-box">
+      <div class="label">Decision Rule</div>
+      All 13 green = enter. 12 green, 1 missing = <strong>skip</strong>. No exceptions. No "close enough."
+    </div>
+  </div>
+</div>
+
+<div class="hour execution">
+  <div class="hour-header">
+    <div class="hour-time">10:00–10:30 AM</div>
+    <div class="hour-title">Entry (If All 13 Green)</div>
+  </div>
+  <div class="hour-body">
+    <p><strong>Choose ONE structure:</strong></p>
+
+    <div class="info-box">
+      <div class="label">Structure A — Call Spread (Grind, VIX 15–22)</div>
+      <ul style="margin:4px 0 0 20px">
+        <li>Buy strike at or 1 above current price</li>
+        <li>Sell strike 3–5 above that</li>
+        <li>Expiration: 2–3 weeks out</li>
+        <li>Lower theta risk, hedged by short leg</li>
+      </ul>
+    </div>
+
+    <div class="info-box">
+      <div class="label">Structure B — Naked Call (Clear Ignition, VIX Under 18)</div>
+      <ul style="margin:4px 0 0 20px">
+        <li>Buy ATM or 1 strike OTM</li>
+        <li>Expiration: 2–3 weeks out</li>
+        <li>Higher reward, higher theta risk</li>
+      </ul>
+    </div>
+
+    <p><strong>Position size:</strong></p>
+    <ul>
+      <li>VIX under 20: full normal size</li>
+      <li>VIX 20–25: half size</li>
+      <li>VIX over 25: skip the day</li>
+    </ul>
+
+    <div class="do-box">
+      <div class="label">Verify Before Clicking Buy</div>
+      <ul style="margin:4px 0 0 20px">
+        <li>Open interest on strike &gt; 500</li>
+        <li>Bid-ask spread less than 10% of premium</li>
+        <li>Volume today already exceeds OI</li>
+        <li>You're within the entry_zone price from dashboard</li>
+      </ul>
+    </div>
+
+    <p><strong>Click buy. Confirm fill. Screenshot the entry.</strong></p>
+  </div>
+</div>
+
+<!-- MIDDAY -->
+<div class="section-divider">
+  <h2>POSITION MANAGEMENT</h2>
+  <p>Let the trade work. Don't hover. Don't chase.</p>
+</div>
+
+<div class="hour manage">
+  <div class="hour-header">
+    <div class="hour-time">10:30 AM – 12:00 PM</div>
+    <div class="hour-title">Position Management</div>
+  </div>
+  <div class="hour-body">
+    <p><strong>What to do:</strong></p>
+    <ul>
+      <li>Watch price action on your tickers</li>
+      <li>Do NOT stare at P&amp;L constantly</li>
+      <li>Let the trade breathe</li>
+    </ul>
+    <p><strong>What you're watching for:</strong></p>
+    <ul>
+      <li>Price continuing toward GEX target → good</li>
+      <li>Price stalling at ORB high without pushing → warning</li>
+      <li>Price breaking back below ORB high → exit warning</li>
+    </ul>
+    <div class="dont-box">
+      <div class="label">Do Not</div>
+      Add to positions. Roll strikes. Open new positions on other tickers. Check scanner for more ideas.
+    </div>
+    <p><strong>Why:</strong> The morning signal is the morning signal. Adding exposure mid-session = chasing.</p>
+  </div>
+</div>
+
+<div class="hour manage">
+  <div class="hour-header">
+    <div class="hour-time">12:00 – 2:00 PM</div>
+    <div class="hour-title">Lunch Chop (Stay Disciplined)</div>
+  </div>
+  <div class="hour-body">
+    <p><strong>Reality:</strong> Volume dies. Algorithms dominate. Sloppy price action. Most intraday reversals happen here.</p>
+    <p><strong>What to do:</strong></p>
+    <ul>
+      <li>Set price alerts at your stop_zone and target_zone</li>
+      <li>Walk away from the screen if possible</li>
+      <li>Eat lunch. Take a walk. Don't hover.</li>
+    </ul>
+    <div class="dont-box">
+      <div class="label">If Stop Triggers</div>
+      Exit immediately. Full position. Market order if needed on options. No "let me see if it bounces back." Stop means stop.
+    </div>
+    <div class="do-box">
+      <div class="label">If First Target Hits (+75%)</div>
+      Sell 50% of position. Move stop on remaining to breakeven. Now you're playing with house money.
+    </div>
+  </div>
+</div>
+
+<div class="hour manage">
+  <div class="hour-header">
+    <div class="hour-time">2:00 – 3:30 PM</div>
+    <div class="hour-title">Power Hour Prep (Re-engage)</div>
+  </div>
+  <div class="hour-body">
+    <p><strong>Check your position:</strong></p>
+    <ul>
+      <li>Still above entry, above ORB high, above Ichimoku cloud? → Hold</li>
+      <li>Any of those broken? → Start planning exit</li>
+    </ul>
+    <p><strong>GEX target check:</strong></p>
+    <ul>
+      <li>Price approaching GEX cluster target? → Prepare to scale out more</li>
+      <li>Not there yet but still trending up? → Hold remaining 30%</li>
+    </ul>
+    <p><strong>Trailing stop:</strong></p>
+    <ul>
+      <li>Use Ichimoku Kijun line as trailing stop on final 20%</li>
+      <li>Price closes below Kijun on 15-min chart → exit</li>
+    </ul>
+  </div>
+</div>
+
+<!-- CLOSE -->
+<div class="section-divider">
+  <h2>CLOSE DECISION</h2>
+  <p>Lock profits. Limit overnight risk.</p>
+</div>
+
+<div class="hour close">
+  <div class="hour-header">
+    <div class="hour-time">3:30 – 4:00 PM</div>
+    <div class="hour-title">Close Decision</div>
+  </div>
+  <div class="hour-body">
+    <p><strong>The big question: Hold overnight or close out?</strong></p>
+
+    <div class="dont-box">
+      <div class="label">Close the Position If ANY Of:</div>
+      <ul style="margin:4px 0 0 20px">
+        <li>At +100% gain or better on any portion → lock profits, theta kills weekend holds</li>
+        <li>VIX spiked during the day → reduce overnight risk</li>
+        <li>Macro headline risk tomorrow (Fed, econ data, geopolitics)</li>
+        <li>Price stalling and momentum faded</li>
+        <li>Not confident enough to hold through the night</li>
+      </ul>
+    </div>
+
+    <div class="do-box">
+      <div class="label">Hold Overnight ONLY If ALL Of:</div>
+      <ul style="margin:4px 0 0 20px">
+        <li>Scanner dashboard showed triple-hit conviction</li>
+        <li>Dark pool data confirms ongoing accumulation</li>
+        <li>No earnings or macro catalysts in next 48 hours</li>
+        <li>Ichimoku daily chart still bullish</li>
+        <li>VIX stable and under 20</li>
+      </ul>
+    </div>
+
+    <p><strong>Default rule: When in doubt, close.</strong> Overnight holds on options during volatile regimes = binary risk.</p>
+  </div>
+</div>
+
+<div class="hour close">
+  <div class="hour-header">
+    <div class="hour-time">4:00 PM</div>
+    <div class="hour-title">Market Closes</div>
+  </div>
+  <div class="hour-body">
+    <p><strong>Immediate actions:</strong></p>
+    <ul>
+      <li>Confirm all intended exits actually filled</li>
+      <li>Screenshot your P&amp;L for the day</li>
+      <li>Do not touch the scanner or charts</li>
+    </ul>
+  </div>
+</div>
+
+<div class="hour close">
+  <div class="hour-header">
+    <div class="hour-time">4:00 – 5:00 PM</div>
+    <div class="hour-title">Journal (5 minutes)</div>
+  </div>
+  <div class="hour-body">
+    <p><strong>Open a note. Write:</strong></p>
+    <ul>
+      <li>What tickers did the scanner surface?</li>
+      <li>What did I trade?</li>
+      <li>What happened?</li>
+      <li>What would I change?</li>
+    </ul>
+    <div class="info-box">
+      <div class="label">Why This Matters</div>
+      This is the single most important habit. Without it, you can't tune the scanner and you can't improve your discipline.
+    </div>
+  </div>
+</div>
+
+<div class="hour close">
+  <div class="hour-header">
+    <div class="hour-time">After 5 PM</div>
+    <div class="hour-title">Done</div>
+  </div>
+  <div class="hour-body">
+    <p><strong>What you do:</strong> Close Replit. Close Google Sheets. Close TradingView.</p>
+    <p><strong>What you do NOT do:</strong> Research tomorrow's trades tonight. That's Sunday's job.</p>
+    <p><strong>Why:</strong> Mental separation matters. Traders who think about the market 14 hours a day burn out and make revenge trades the next morning.</p>
+  </div>
+</div>
+
+<!-- EXIT RULES -->
+<div class="section-divider">
+  <h2>THE 5 EXIT TRIGGERS</h2>
+  <p>Any ONE fires = exit. Memorize these.</p>
+</div>
+
+<div class="exit-rule">
+  <div class="exit-num">1</div>
+  <div class="exit-content">
+    <div class="exit-title">🛑 Stop Zone Hit</div>
+    <div class="exit-row"><strong>When:</strong> Price touches stop_zone from dashboard</div>
+    <div class="exit-row"><strong>Action:</strong> Exit entire position immediately</div>
+    <div class="exit-row"><strong>No hesitation:</strong> Market order on options if needed</div>
+    <div class="exit-row"><strong>Why:</strong> You defined this at 9:20 AM with a clear head. Your 2 PM brain doesn't get to veto your 9 AM brain.</div>
+  </div>
+</div>
+
+<div class="exit-rule">
+  <div class="exit-num">2</div>
+  <div class="exit-content">
+    <div class="exit-title">🎯 Target Hit (+75%)</div>
+    <div class="exit-row"><strong>When:</strong> Position up 75% or more</div>
+    <div class="exit-row"><strong>Action:</strong> Sell 50% of position</div>
+    <div class="exit-row"><strong>Move stop:</strong> Remaining 50% stop now at breakeven</div>
+    <div class="exit-row"><strong>Why:</strong> Lock half the profit. Now the trade is free.</div>
+  </div>
+</div>
+
+<div class="exit-rule">
+  <div class="exit-num">3</div>
+  <div class="exit-content">
+    <div class="exit-title">🎯 GEX Target Hit</div>
+    <div class="exit-row"><strong>When:</strong> Price reaches GEX cluster zone (target from dashboard)</div>
+    <div class="exit-row"><strong>Action:</strong> Sell another 30% of position</div>
+    <div class="exit-row"><strong>Remaining 20%:</strong> Trail with Ichimoku Kijun line</div>
+    <div class="exit-row"><strong>Why:</strong> GEX cluster is where market maker hedging accelerates — and where selling pressure kicks in. Take money at the magnet.</div>
+  </div>
+</div>
+
+<div class="exit-rule">
+  <div class="exit-num">4</div>
+  <div class="exit-content">
+    <div class="exit-title">⏰ 2-Day Time Stop</div>
+    <div class="exit-row"><strong>When:</strong> 2 trading days have passed and thesis hasn't fired</div>
+    <div class="exit-row"><strong>Action:</strong> Exit regardless of P&amp;L</div>
+    <div class="exit-row"><strong>Why:</strong> Theta is already eating you alive. Squeezes fire fast or not at all. A setup that didn't ignite in 2 days won't ignite.</div>
+  </div>
+</div>
+
+<div class="exit-rule">
+  <div class="exit-num">5</div>
+  <div class="exit-content">
+    <div class="exit-title">🚨 Regime Change</div>
+    <div class="exit-row"><strong>When:</strong> VIX spikes above 25 intraday, or major macro headline breaks</div>
+    <div class="exit-row"><strong>Action:</strong> Exit all options positions immediately</div>
+    <div class="exit-row"><strong>Why:</strong> Your entry was based on one regime. The regime changed. The trade's assumptions are invalid.</div>
+  </div>
+</div>
+
+<div class="checklist-block" style="margin-top:22px">
+  <h3>Exit Priority Waterfall</h3>
+  <p style="font-size:13px;color:#666;margin-bottom:10px">When multiple signals fire at once, obey in this order:</p>
+  <ol style="margin-left:20px;font-size:14px;line-height:1.8">
+    <li><strong>Stop zone</strong> — always first, no exceptions</li>
+    <li><strong>Regime change</strong> — protects capital when macro breaks</li>
+    <li><strong>Time stop</strong> — protects from theta death</li>
+    <li><strong>Target hits</strong> — lock profits in sequence</li>
+    <li><strong>Trail stop</strong> — let winners run until trend breaks</li>
+  </ol>
+</div>
+
+<!-- TIMELINE -->
+<div class="section-divider">
+  <h2>VISUAL TIMELINE</h2>
+  <p>The whole day at a glance.</p>
+</div>
+
+<div class="timeline">
+<span class="time">8:30 AM</span>  <span class="sep">│</span> Scanner runs (asleep / breakfast)<br>
+<span class="time">9:00 AM</span>  <span class="sep">│</span> Scanner runs (be at desk)<br>
+<span class="time">9:20 AM</span>  <span class="sep">│</span> 📋 THE BRIEF — pick max 2 tickers<br>
+<span class="time">9:25 AM</span>  <span class="sep">│</span> Scanner final scan<br>
+<span class="time">9:30 AM</span>  <span class="sep">│</span> 🚫 HANDS OFF — market opens, wait window<br>
+<span class="time">9:45 AM</span>  <span class="sep">│</span> 📍 Mark ORB highs/lows on charts<br>
+<span class="time">10:00 AM</span> <span class="sep">│</span> ✅ 13-point checklist → ENTRY if all green<br>
+<span class="time">10:30 AM</span> <span class="sep">│</span> Position management begins<br>
+<span class="time">12:00 PM</span> <span class="sep">│</span> ☕ Lunch chop — set alerts, step away<br>
+<span class="time">2:00 PM</span>  <span class="sep">│</span> 🔄 Re-engage, check position health<br>
+<span class="time">3:30 PM</span>  <span class="sep">│</span> 🎯 Close decision time<br>
+<span class="time">4:00 PM</span>  <span class="sep">│</span> 🔔 Market closes, confirm fills<br>
+<span class="time">5:00 PM</span>  <span class="sep">│</span> 📔 Journal 5 minutes, done
+</div>
+
+<!-- FINAL -->
+<div class="quote">
+  <p>"The scanner surfaced it,<br>the checklist confirmed it,<br>the stop protects it,<br>the time stop limits it,<br>and my journal teaches me from it."<br><br><strong>If any of those five pieces breaks down, the system breaks down.</strong></p>
+</div>
+
+<div class="note">
+  Print this. Pin to your monitor. Follow word-for-word for 10 trading days before changing a single rule.
+</div>
+
+</div>
+</body>
+</html>
