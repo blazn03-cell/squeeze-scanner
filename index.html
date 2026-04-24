@@ -698,8 +698,10 @@ function TopCard({ entry, rank, sortMode }) {
   const mwp    = entry.max_win_prob || 0;
   const size   = sizingHint(days, mwp);
   const verified = mwp >= 70;
+  const prof   = PROF[entry.sqType] || PROF.short_squeeze;
+  const [open, setOpen] = useState(false);
   return (
-    <div style={{ padding:"9px 12px", borderBottom:"1px solid #0e1a24" }}>
+    <div style={{ padding:"9px 12px", borderBottom:"1px solid #0e1a24", cursor:"pointer", background:open?"#070d15":"transparent" }} onClick={()=>setOpen(o=>!o)}>
       <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:5, flexWrap:"wrap" }}>
         <span style={{ fontSize:9, color:"#6e88a0", width:22, fontWeight:700 }}>#{rank}</span>
         <span style={{ fontSize:13 }}>{def.icon}</span>
