@@ -1,29 +1,21 @@
-import { runScan } from "./scanner.js";
-import { logToSheet } from "./sheets.js";
-import { WATCHLIST } from "./config.js";
+import { mkdir, writeFile } from "node:fs/promises";
+import { scanUniverse } from "./src/jobs/scan-universe.js";
+import { WATCHLIST, SCAN_PARAMS } from "./config.js";
 
 async function main() {
   const timestamp = new Date().toISOString();
-  console.log(`[${timestamp}] Scan starting for ${WATCHLIST.length} ticker${WATCHLIST.length === 1 ? "" : "s"}: ${WATCHLIST.join(", ")}`);
+  console.log(`[${timestamp}] Scan starting for ${WATCHLIST.length} symbol${WATCHLIST.length === 1 ? "" : "s"}: ${WATCHLIST.join(", ")}`);
 
-  try {
-    const results = await runScan(WATCHLIST);
-    const wrote = await logToSheet(timestamp, results);
-    console.log(`[${timestamp}] Logged ${wrote} row${wrote === 1 ? "" : "s"} (${results.length} candidate${results.length === 1 ? "" : "s"})`);
-    process.exit(0);
-  } catch (err) {
-    console.error(`[${timestamp}] SCAN FAILED:`, err?.message || err);
-    try {
-      await logToSheet(timestamp, [{
-        ticker: "ERROR",
-        score: 0,
-        thesis: (err?.message || String(err)).slice(0, 250),
-      }]);
-    } catch (logErr) {
-      console.error(`[${timestamp}] also failed to log error to sheet:`, logErr?.message || logErr);
-    }
-    process.exit(1);
-  }
+  const scan = await scanUniverse({ symbols: WATCHLIST, concurrency: SCAN_PARAMS.maxConcurrency });
+  await mkdir("data/snapshots", { recursive: true });
+  const outputPath = `data/snapshots/${scan.runId}.json`;
+  await writeFile(outputPath, JSON.stringify(scan, null, 2));
+
+  console.log(`[${timestamp}] Scored ${scan.results.length} result${scan.results.length === 1 ? "" : "s"}; ${scan.failures.length} failure${scan.failures.length === 1 ? "" : "s"}`);
+  console.log(JSON.stringify(scan.results, null, 2));
 }
 
-main();
+main().catch((error) => {
+  console.error("SCAN FAILED:", error?.message || error);
+  process.exit(1);
+});

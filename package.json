@@ -1,16 +1,12 @@
 {
-  "name": "uw-premarket-scanner",
-  "version": "1.0.0",
-  "description": "Automated pre-market squeeze scanner — runs on cron, logs candidates to Google Sheets",
+  "name": "apex-scanner",
+  "version": "2.0.0",
+  "description": "APEX Scanner MVP with mocked market data, corrected scoring, and licensed-provider adapter boundaries",
   "type": "module",
   "main": "index.js",
   "scripts": {
     "scan": "node index.js",
-    "setup": "node setup-sheet.js"
-  },
-  "dependencies": {
-    "@anthropic-ai/sdk": "^0.32.1",
-    "@replit/connectors-sdk": "^0.4.0"
+    "test": "node --test"
   },
   "engines": {
     "node": ">=20"
