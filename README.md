@@ -61,6 +61,18 @@ Confidence = data completeness × data freshness × sample sufficiency × provid
 
 On Vercel, use Marketplace providers for databases/cache: Vercel Postgres is no longer first-party and existing databases were migrated to Neon through the Vercel Marketplace in December 2024; Vercel KV is no longer first-party and existing stores were migrated to Upstash Redis through the Vercel Marketplace in December 2024. Vercel Blob remains first-party and is the right fit for exported files and large backtesting artifacts.
 
+
+## Server-only environment variables
+
+Copy `.env.example` locally and keep all provider credentials server-side. Do not create `NEXT_PUBLIC_*` variables for market-data, database, Redis, or Stripe secrets.
+
+```bash
+cp .env.example .env.local
+MARKET_DATA_PROVIDER=mock npm run scan
+```
+
+Real provider variables (`MASSIVE_API_KEY`, `FLASHALPHA_API_KEY`, `FLOWALGO_API_KEY`) are placeholders only. Leave them unset until written commercial rights and API docs are confirmed for the exact product display and redistribution model.
+
 ## Run the mocked scanner
 
 ```bash

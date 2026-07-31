@@ -34,6 +34,29 @@ Deploy the customer-facing static MVP page to Vercel. Do not run continuous mark
 3. Add only server-side secrets when backend API routes are introduced. Never expose vendor keys through browser code or `NEXT_PUBLIC_*` variables.
 4. Use the Vercel app for landing pages, auth, dashboards, watchlists, billing, alerts, admin controls, and short authenticated API requests.
 
+
+## Server-only environment variables
+
+Create `.env.local` from `.env.example` for local worker testing. In Vercel, add secrets only to server-side runtimes through [Environment Variables](https://vercel.com/docs/projects/environment-variables).
+
+Required for the current MVP:
+
+```bash
+MARKET_DATA_PROVIDER=mock
+APEX_SYMBOLS=NVDA,MSFT,SPY
+APEX_SCAN_CONCURRENCY=4
+```
+
+Reserved for licensed provider activation only:
+
+```bash
+MASSIVE_API_KEY=
+FLASHALPHA_API_KEY=
+FLOWALGO_API_KEY=
+```
+
+Do not add any `NEXT_PUBLIC_*` market-data variables. Browser-exposed provider keys would allow users to extract the key and would violate the server-side vendor-key requirement.
+
 ## Worker deployment path
 
 - For 25–100 symbols every few minutes: add Inngest to a Next.js app and run scans as durable jobs with concurrency limits, retries, idempotency, caching, and provider rate-limit handling.

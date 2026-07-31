@@ -55,6 +55,20 @@ data/snapshots/
 
 Provider adapters remain disabled until commercial rights are confirmed. The mocked adapter is the only active adapter by default.
 
+
+## Provider configuration policy
+
+Provider adapters are server-only. The scanner should read provider keys from runtime environment variables, never from browser code and never from `NEXT_PUBLIC_*` variables.
+
+| Variable | Status | Use |
+| --- | --- | --- |
+| `MARKET_DATA_PROVIDER=mock` | Active | Default MVP provider |
+| `MASSIVE_API_KEY` | Reserved | Enable only after a Massive Business agreement covers display, redistribution, and derived signals |
+| `FLASHALPHA_API_KEY` | Reserved | Enable only after written commercial display/redistribution rights are confirmed |
+| `FLOWALGO_API_KEY` | Reserved | Enable only after verified enterprise API docs and negotiated commercial rights |
+
+A production activation PR should include the signed-rights reference, provider rate-limit policy, retry/backoff behavior, provider-health logging, and UI disclosure labels before changing `MARKET_DATA_PROVIDER` away from `mock`.
+
 ## Essential tables for the paid product
 
 | Table | Purpose |
