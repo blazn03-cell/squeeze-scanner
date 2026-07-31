@@ -93,6 +93,15 @@ The scanner prints scored results and writes an immutable JSON snapshot under `d
 npm test
 ```
 
+
+## Launch roadmap
+
+- **Phase 1: Private validation** — 25–100 symbols, mocked/delayed/licensed snapshot data, core indicators, scanner table, explanation panel, backtesting, no public subscriptions.
+- **Phase 2: Paid beta** — auth, Stripe subscriptions through verified webhooks, watchlists, email alerts, rate limiting, audit trail, vendor business agreement.
+- **Phase 3: Commercial launch** — dedicated live-data worker, real-time options analytics, web/push alerts, backtesting dashboard, admin monitoring, multiple tiers.
+
+Before selling access, finish the protections in `docs/production-architecture.md`: server-only vendor keys, schema validation, rate limits, idempotent Stripe webhooks, database ownership policies, provider-health monitoring, market-data disclosures, and legal review.
+
 ## Before selling access
 
 - Keep vendor keys server-side.

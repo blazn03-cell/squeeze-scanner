@@ -106,3 +106,79 @@ For the MVP, enqueue scans as durable jobs with bounded concurrency, retries, ca
 - Display market timestamps and delayed-data labels.
 - Publish terms, privacy policy, refund policy, and market-data disclosures.
 - Avoid language that promises guaranteed profits or implies personalized investment advice.
+
+## Launch readiness plan
+
+### Essential database tables
+
+| Table | Purpose |
+| --- | --- |
+| `profiles` | Customer account information |
+| `subscriptions` | Stripe plan and access status |
+| `symbols` | Tradable ticker metadata |
+| `watchlists` | User-created lists |
+| `watchlist_symbols` | Symbols belonging to each list |
+| `scan_runs` | One record for every scanner execution |
+| `scan_results` | Scores and indicator values |
+| `alert_rules` | User alert conditions |
+| `alert_events` | Trigger history and delivery status |
+| `provider_health` | Vendor latency and error information |
+| `audit_events` | Important account and system changes |
+
+Every scan result must retain:
+
+- Provider
+- Market timestamp
+- Processing timestamp
+- Indicator version
+- Score-engine version
+- Data freshness
+- Explanation fields
+
+These fields make each scanner decision auditable after the fact.
+
+### Protection required before selling it
+
+- Vendor keys must remain server-side.
+- Validate every request with a schema library such as Zod.
+- Rate-limit by user, IP, and subscription plan.
+- Verify Stripe webhook signatures.
+- Make webhooks idempotent.
+- Add database ownership policies.
+- Encrypt sensitive configuration through managed secret stores.
+- Add error tracking and provider-health monitoring.
+- Never promise guaranteed profits.
+- Display timestamps and delayed-data labels.
+- Publish terms, privacy policy, refund policy, and market-data disclosures.
+- Have an attorney review whether rankings, alerts, and language could be interpreted as personalized investment advice.
+
+### Practical release plan
+
+#### Phase 1: Private validation
+
+- 25–100 symbols
+- Delayed or licensed snapshot data
+- Core indicators
+- Scanner table
+- Explanation panel
+- Backtesting against historical bars
+- No public subscriptions yet
+
+#### Phase 2: Paid beta
+
+- Authentication
+- Stripe subscriptions
+- Watchlists
+- Email alerts
+- Rate limiting
+- Audit trail
+- Vendor business agreement
+
+#### Phase 3: Real-time commercial launch
+
+- Dedicated live-data worker
+- Real-time options analytics
+- Web and push alerts
+- Backtesting dashboard
+- Admin monitoring
+- Multiple subscription tiers
