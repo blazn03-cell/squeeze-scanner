@@ -3,59 +3,250 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>APEX Scanner v2 MVP</title>
+  <title>APEX Scanner Login</title>
   <style>
-    :root { color-scheme: dark; font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #04080c; color: #eaf2ff; }
-    body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 32px; }
-    main { max-width: 880px; border: 1px solid #132233; background: #080d14; padding: 36px; box-shadow: 0 24px 80px rgba(0,0,0,.35); }
-    h1 { margin: 0 0 12px; font-size: clamp(32px, 5vw, 54px); letter-spacing: -0.04em; }
-    h2 { margin-top: 28px; color: #9bb3c6; font-size: 14px; letter-spacing: .18em; text-transform: uppercase; }
-    p, li { color: #b6c6d5; line-height: 1.7; }
-    code, pre { font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace; }
-    pre { overflow: auto; background: #030609; border: 1px solid #132233; padding: 16px; color: #d7ebff; }
-    .grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
-    .card { border: 1px solid #132233; padding: 16px; background: #0b121b; }
-    .badge { display: inline-block; color: #7dd3fc; border: 1px solid #164e63; padding: 4px 8px; font-size: 12px; letter-spacing: .12em; text-transform: uppercase; }
+    :root {
+      color-scheme: dark;
+      --bg: #071018;
+      --panel: #0d1823;
+      --panel-soft: #111f2c;
+      --line: #203244;
+      --text: #edf6ff;
+      --muted: #9fb2c3;
+      --soft: #6f8394;
+      --accent: #6ee7ff;
+      --accent-dark: #0e7490;
+      --danger: #fca5a5;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background:
+        radial-gradient(circle at top left, rgba(14, 116, 144, 0.24), transparent 34rem),
+        linear-gradient(135deg, #050a0f, var(--bg));
+      color: var(--text);
+      display: grid;
+      place-items: center;
+      padding: 24px;
+    }
+
+    main {
+      width: min(100%, 980px);
+      display: grid;
+      grid-template-columns: 1fr 420px;
+      gap: 28px;
+      align-items: center;
+    }
+
+    .intro,
+    .login-card {
+      border: 1px solid var(--line);
+      background: rgba(13, 24, 35, 0.92);
+      box-shadow: 0 30px 90px rgba(0, 0, 0, 0.36);
+      border-radius: 28px;
+    }
+
+    .intro { padding: 44px; }
+    .login-card { padding: 32px; }
+
+    .eyebrow {
+      color: var(--accent);
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      margin-bottom: 18px;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(36px, 6vw, 64px);
+      line-height: 0.95;
+      letter-spacing: -0.06em;
+    }
+
+    .lead {
+      margin: 22px 0 0;
+      color: var(--muted);
+      font-size: 18px;
+      line-height: 1.65;
+      max-width: 620px;
+    }
+
+    .simple-list {
+      display: grid;
+      gap: 12px;
+      margin: 30px 0 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .simple-list li {
+      display: flex;
+      gap: 12px;
+      align-items: flex-start;
+      color: #c8d6e2;
+      line-height: 1.5;
+      font-size: 15px;
+    }
+
+    .dot {
+      width: 10px;
+      height: 10px;
+      margin-top: 7px;
+      border-radius: 999px;
+      background: var(--accent);
+      flex: 0 0 auto;
+      box-shadow: 0 0 18px rgba(110, 231, 255, 0.55);
+    }
+
+    .card-title {
+      margin: 0 0 6px;
+      font-size: 28px;
+      letter-spacing: -0.03em;
+    }
+
+    .card-subtitle {
+      margin: 0 0 26px;
+      color: var(--muted);
+      line-height: 1.55;
+    }
+
+    label {
+      display: block;
+      color: #d8e7f3;
+      font-size: 14px;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+
+    input[type="email"],
+    input[type="password"] {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: var(--panel-soft);
+      color: var(--text);
+      font: inherit;
+      font-size: 16px;
+      padding: 15px 16px;
+      outline: none;
+    }
+
+    input:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 4px rgba(110, 231, 255, 0.12);
+    }
+
+    .field { margin-bottom: 18px; }
+
+    .row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 14px;
+      margin: 2px 0 22px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .remember {
+      display: inline-flex;
+      align-items: center;
+      gap: 9px;
+      user-select: none;
+    }
+
+    .remember input { width: 18px; height: 18px; accent-color: var(--accent-dark); }
+
+    a { color: var(--accent); text-decoration: none; font-weight: 700; }
+    a:hover { text-decoration: underline; }
+
+    button {
+      width: 100%;
+      border: 0;
+      border-radius: 18px;
+      padding: 16px 18px;
+      color: #031018;
+      background: linear-gradient(135deg, #9ff3ff, #67e8f9);
+      font: inherit;
+      font-size: 17px;
+      font-weight: 900;
+      cursor: pointer;
+    }
+
+    button:hover { filter: brightness(1.04); }
+
+    .helper {
+      margin: 18px 0 0;
+      padding: 14px;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: rgba(17, 31, 44, 0.72);
+      color: var(--soft);
+      font-size: 13px;
+      line-height: 1.55;
+    }
+
+    .helper strong { color: #d8e7f3; }
+
+    @media (max-width: 860px) {
+      body { padding: 16px; }
+      main { grid-template-columns: 1fr; }
+      .intro { padding: 30px; }
+      .login-card { padding: 26px; }
+    }
   </style>
 </head>
 <body>
   <main>
-    <span class="badge">Mock data only</span>
-    <h1>APEX Scanner v2 MVP</h1>
-    <p>
-      This Vercel-facing page is intentionally read-only. Vendor credentials and market-data scans belong on the server-side worker, not in the browser.
-    </p>
+    <section class="intro" aria-labelledby="page-title">
+      <div class="eyebrow">APEX Scanner</div>
+      <h1 id="page-title">Simple market scans. Clear next steps.</h1>
+      <p class="lead">
+        The dashboard should show only what matters: your watchlist, the best setups, confidence, and warnings. No noisy charts. No crowded panels. No confusing buttons.
+      </p>
+      <ul class="simple-list" aria-label="Product promises">
+        <li><span class="dot"></span><span><strong>One clean score</strong> for the setup, with confidence shown separately.</span></li>
+        <li><span class="dot"></span><span><strong>Plain English reasons</strong> so users know why a symbol is on the list.</span></li>
+        <li><span class="dot"></span><span><strong>Mock data first</strong> until licensed market-data providers are approved.</span></li>
+      </ul>
+    </section>
 
-    <div class="grid">
-      <section class="card">
-        <h2>Vercel app</h2>
-        <p>Landing pages, auth, dashboard, watchlists, billing, alerts, admin controls, and short authenticated API requests.</p>
-      </section>
-      <section class="card">
-        <h2>Scanning worker</h2>
-        <p>Licensed provider ingestion, normalization, bounded concurrency, retries, rate-limit handling, immutable snapshots, and alert triggering.</p>
-      </section>
-      <section class="card">
-        <h2>Current MVP</h2>
-        <p>Run mocked scans locally while Massive, FlashAlpha, or any other vendor adapters remain disabled pending written commercial rights.</p>
-      </section>
-    </div>
+    <section class="login-card" aria-labelledby="login-title">
+      <h2 class="card-title" id="login-title">Sign in</h2>
+      <p class="card-subtitle">Use your account to open the scanner dashboard.</p>
 
-    <h2>Run locally</h2>
-    <pre><code>npm run scan
-APEX_SYMBOLS=NVDA,MSFT,SPY npm run scan
-npm test</code></pre>
+      <form onsubmit="event.preventDefault(); document.getElementById('message').textContent = 'Login is a placeholder. Real auth will be added in the Next.js app.';">
+        <div class="field">
+          <label for="email">Email</label>
+          <input id="email" name="email" type="email" autocomplete="email" placeholder="you@example.com" required />
+        </div>
 
-    <h2>Output model</h2>
-    <pre><code>{
-  "symbol": "NVDA",
-  "setup": "BULLISH_BREAKOUT",
-  "score": 84,
-  "confidence": 92,
-  "state": "CONFIRMED",
-  "reasons": ["Relative volume is 2.7× normal for this point in the session"],
-  "warnings": ["Options-positioning score is disabled until licensed vendor data is configured"]
-}</code></pre>
+        <div class="field">
+          <label for="password">Password</label>
+          <input id="password" name="password" type="password" autocomplete="current-password" placeholder="Your password" required />
+        </div>
+
+        <div class="row">
+          <label class="remember" for="remember">
+            <input id="remember" name="remember" type="checkbox" />
+            Remember me
+          </label>
+          <a href="#">Forgot password?</a>
+        </div>
+
+        <button type="submit">Open dashboard</button>
+      </form>
+
+      <p class="helper" id="message">
+        <strong>Safe placeholder:</strong> this page does not store passwords yet. Real login, password reset, and session handling will be added with server-side authentication.
+      </p>
+    </section>
   </main>
 </body>
 </html>
