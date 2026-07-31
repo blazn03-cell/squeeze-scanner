@@ -1,127 +1,16 @@
-import Anthropic from "@anthropic-ai/sdk";
-import { MODEL, MAX_TOKENS, SCAN_TIMEOUT_MS, MAX_RETRIES, RETRY_BACKOFF_MS, SCAN_PARAMS } from "./config.js";
+import { scanUniverse } from "./src/jobs/scan-universe.js";
 
-const SYSTEM_PROMPT = `You are a squeeze-candidate scanner targeting institutional accumulation patterns. Use Unusual Whales MCP tools.
-
-CRITICAL: AT MOST 3 MCP tool calls total. More causes JSON parse failures.
-
-CALL THESE 3 TOOLS:
-1. flow-alerts with filters: min_premium=${SCAN_PARAMS.minPremium}, min_dte=${SCAN_PARAMS.minDTE}, min_ask_perc=0.7, size_greater_oi=true, is_otm=true, limit=50. This is the primary signal — we want sweeps hitting the ASK above OI.
-2. darkpool/recent with min_premium=${SCAN_PARAMS.dpMinPremium}, limit=40. Cross-reference tickers appearing in both #1 and #2 (highest conviction).
-3. market-tide for net direction + GEX context.
-
-SCORING (0-100) — reward these patterns heavily:
-• Rule = "Repeated Hits", "Repeated Hits Ascending Fill", "RepeatedHits", or "Sweeps Followed By Floor": +25 each (these are UW's institutional accumulation tags)
-• Size/OI ratio ≥ 5x: +15 (new positioning, not closing)
-• Size/OI ratio ≥ 10x: +25 (massive new build)
-• Bid/Ask % ≥ 0.90 (paying full ask): +15
-• Bid/Ask % ≥ 0.95 (sweeping above ask): +25
-• Premium ≥ $1M on a single contract: +15
-• Same ticker has DP prints in #2 within last 5 days: +20 (smart money + flow alignment)
-• 3+ separate sweeps on same ticker this scan: +15 (sustained pressure)
-• Bullish (calls) when market_tide is positive: +5; Bearish (puts) when negative: +5
-Cap at 100.
-
-flow_signal mapping: purple = whale-tier (premium>$1M + ask>0.95) | yellow = strong (Repeated Hits + size_greater_oi) | white = standard sweep | none
-
-Return ONLY a JSON array. No prose, no markdown. First char [. Last char ].
-Schema:
-[
-  {
-    "ticker": "XYZ",
-    "score": 0-100,
-    "flow_signal": "purple|yellow|white|none",
-    "dp_accumulation_days": 0-5,
-    "gex_cluster_above": true|false,
-    "short_interest_pct": number or null,
-    "thesis": "one sentence — MUST mention the rule name (e.g. Repeated Hits) and size/OI ratio when present",
-    "entry_zone": "price range",
-    "stop_zone": "price range"
-  }
-]
-
-Only include tickers scoring ${SCAN_PARAMS.minScore}+. Empty [] is valid.`;
-
-function stripFences(s) {
-  if (!s) return s;
-  return s.trim()
-    .replace(/^```(?:json)?\s*/i, "")
-    .replace(/\s*```$/, "")
-    .trim();
-}
-
-function parseArr(raw) {
-  if (!raw) return [];
-  const cleaned = stripFences(raw);
-  try {
-    const parsed = JSON.parse(cleaned);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch (_) {
-    const start = cleaned.indexOf("[");
-    const end   = cleaned.lastIndexOf("]");
-    if (start >= 0 && end > start) {
-      try { return JSON.parse(cleaned.slice(start, end + 1)); } catch (_) {}
-    }
-    return [];
-  }
-}
-
-async function callOnce(client, watchlist, uwToken) {
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), SCAN_TIMEOUT_MS);
-  try {
-    const resp = await client.beta.messages.create({
-      model: MODEL,
-      max_tokens: MAX_TOKENS,
-      system: SYSTEM_PROMPT,
-      messages: [{ role: "user", content: `Scan these tickers: ${watchlist.join(", ")}` }],
-      mcp_servers: [{
-        type: "url",
-        url: "https://api.unusualwhales.com/api/mcp",
-        name: "unusual-whales",
-        authorization_token: uwToken,
-      }],
-      betas: ["mcp-client-2025-04-04"],
-    }, { signal: ctrl.signal });
-    return resp;
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
+/**
+ * Backward-compatible scanner entry point.
+ * The v2 MVP uses mocked market data by default and returns separated setup score,
+ * confidence, and signal state. Licensed vendor adapters remain disabled until
+ * commercial display/redistribution rights are confirmed in writing.
+ */
 export async function runScan(watchlist) {
-  const anthropicKey = process.env.ANTHROPIC_API_KEY;
-  const uwToken      = process.env.UW_API_TOKEN;
-  if (!anthropicKey) throw new Error("Missing ANTHROPIC_API_KEY secret");
-  if (!uwToken)      throw new Error("Missing UW_API_TOKEN secret");
-
-  const client = new Anthropic({ apiKey: anthropicKey });
-
-  let lastErr;
-  for (let attempt = 1; attempt <= MAX_RETRIES + 1; attempt++) {
-    try {
-      const resp = await callOnce(client, watchlist, uwToken);
-      const tools = (resp.content || []).filter(b => b.type === "mcp_tool_use");
-      if (tools.length) console.log(`  tools used: ${[...new Set(tools.map(t => t.name))].join(", ")}`);
-      const text = (resp.content || []).find(b => b.type === "text")?.text || "";
-      const usage = resp.usage || {};
-      const inTok  = (usage.input_tokens || 0) + (usage.cache_creation_input_tokens || 0) + (usage.cache_read_input_tokens || 0);
-      const outTok = usage.output_tokens || 0;
-      const cost   = (inTok * 3 + outTok * 15) / 1e6;
-      console.log(`  tokens: ${inTok} in / ${outTok} out · ~$${cost.toFixed(4)}`);
-      const arr = parseArr(text);
-      return arr.filter(c => c && c.ticker && typeof c.score === "number" && c.score >= SCAN_PARAMS.minScore);
-    } catch (err) {
-      lastErr = err;
-      const aborted = err?.name === "AbortError";
-      const why = aborted ? `timed out after ${SCAN_TIMEOUT_MS/1000}s` : (err?.message || String(err));
-      if (attempt <= MAX_RETRIES) {
-        console.log(`  attempt ${attempt}/${MAX_RETRIES + 1} failed (${why}) — retrying in ${RETRY_BACKOFF_MS/1000}s…`);
-        await new Promise(r => setTimeout(r, RETRY_BACKOFF_MS));
-        continue;
-      }
-      throw new Error(`Scan failed after ${MAX_RETRIES + 1} attempts: ${why}`);
-    }
+  const scan = await scanUniverse({ symbols: watchlist });
+  if (scan.failures.length > 0) {
+    const details = scan.failures.map((failure) => `${failure.symbol}: ${failure.error}`).join("; ");
+    throw new Error(`Scan completed with provider failures: ${details}`);
   }
-  throw lastErr || new Error("Unknown scan failure");
+  return scan.results;
 }

@@ -1,20 +1,12 @@
-// Pre-market scanner config.
-// Edit WATCHLIST each Sunday night for the upcoming trading week.
+// APEX Scanner MVP config.
+// Mock data is the default until commercial market-data agreements are confirmed.
 
-export const WATCHLIST = [
-  "SPY", "QQQ", "IWM",
-];
+export const WATCHLIST = (process.env.APEX_SYMBOLS || "NVDA,MSFT,SPY")
+  .split(",")
+  .map((symbol) => symbol.trim().toUpperCase())
+  .filter(Boolean);
 
 export const SCAN_PARAMS = {
-  minPremium:      100000,
-  minDTE:          7,
-  dpMinPremium:    5000000,
-  dpLookbackDays:  5,
-  minScore:        60,
+  minScore: 60,
+  maxConcurrency: Number.parseInt(process.env.APEX_SCAN_CONCURRENCY || "4", 10),
 };
-
-export const MODEL = "claude-sonnet-4-5";
-export const MAX_TOKENS = 4000;
-export const SCAN_TIMEOUT_MS = 30000;
-export const MAX_RETRIES = 2;
-export const RETRY_BACKOFF_MS = 3000;
