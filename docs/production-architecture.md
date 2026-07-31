@@ -86,3 +86,23 @@ A production activation PR should include the signed-rights reference, provider 
 | audit_events | Important account and system changes |
 
 Every scan result must retain provider, market timestamp, processing timestamp, indicator version, score-engine version, data freshness, and explanation fields.
+
+## Stripe and subscription safety
+
+Subscriptions are controlled by verified webhooks, not by a checkout-success redirect. The webhook handler must verify signatures, process each Stripe event once, update the `subscriptions` table from authoritative Stripe events, and write audit records for access changes.
+
+## Inngest and worker safety
+
+For the MVP, enqueue scans as durable jobs with bounded concurrency, retries, cache reads/writes, provider rate-limit handling, and immutable scan-run persistence. Vercel request handlers should trigger or read scan state; they should not run continuous full-market WebSocket ingestion.
+
+## Security requirements before paid beta
+
+- Vendor keys stay server-side.
+- Every request is schema-validated.
+- Rate-limit by user, IP, and subscription plan.
+- Apply database ownership policies and Supabase RLS if Supabase is used.
+- Encrypt sensitive configuration through managed secret stores.
+- Record provider health, alert delivery, and audit events.
+- Display market timestamps and delayed-data labels.
+- Publish terms, privacy policy, refund policy, and market-data disclosures.
+- Avoid language that promises guaranteed profits or implies personalized investment advice.

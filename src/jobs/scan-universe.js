@@ -1,5 +1,5 @@
-import { scoreSnapshot } from "../domain/scoring/score-engine.js";
 import { createMarketDataProvider } from "../infrastructure/providers/index.js";
+import { scanSymbol } from "./scan-symbol.js";
 
 const DEFAULT_CONCURRENCY = 4;
 
@@ -12,8 +12,7 @@ export async function scanUniverse({ symbols, provider = createMarketDataProvide
     while (queue.length > 0) {
       const symbol = queue.shift();
       try {
-        const snapshot = await provider.getSnapshot(symbol);
-        results.push(scoreSnapshot(snapshot));
+        results.push(await scanSymbol({ symbol, provider }));
       } catch (error) {
         failures.push({ symbol, error: error?.message || String(error) });
       }
