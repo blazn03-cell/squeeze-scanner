@@ -5,12 +5,29 @@
 Left to right, so the decision resolves as your eye moves:
 
 ```
-Symbol │ Last │ V4_APEX │ V4_DIR │ V4_CONF │ V3_StableScore │ V4_Confirmed │ V4_Early
-       │ V3_ModelATRpct │ RelVol30 │ RelVol30Intraday │ DarvasScan │ DarvasBias
-       │ SqueezeHit% │ SqueezeState │ SmartFlow │ BidAskSpread │ Earnings │ V4_Regime
+Symbol │ Last │ V4_APEX │ V4_DIR │ V4_CONF │ V4_TIMING │ V3_StableScore │ V4_Early
+       │ V4_Confirmed │ V3_ModelATRpct │ RelVol30 │ RelVol30Intraday │ DarvasScan
+       │ DarvasBias │ SqueezeHit% │ SqueezeState │ SmartFlow │ V4_EXTENSION
+       │ V4_LIQUIDITY_SCORE │ BidAskSpread │ Earnings │ V4_DaysToEarnings │ V4_Regime
 ```
 
 Sort on **V4_APEX** descending. Everything else is context for the top rows.
+
+## Decision hierarchy
+
+Work down this list. Stop as soon as a row fails one — do not talk yourself past it.
+
+1. **APEX** — is it worth looking at?
+2. **DIR** — which side? `0` means skip, whatever else the row says.
+3. **CONF** — do the lenses agree?
+4. **TIMING** — is the move still available?
+5. **STABLE** — is the underlying setup actually good?
+6. **RVOL** — is anyone there?
+7. **ATR%** — is there enough range to pay for the risk?
+8. **DARVAS** — where is it against structure?
+9. **FLOW** — which way is pressure leaning?
+10. **LIQUIDITY / SPREAD** — can you get out?
+11. **EARNINGS** — is there an event about to invalidate all of the above?
 
 ## Interpretation tables
 
@@ -24,7 +41,7 @@ Sort on **V4_APEX** descending. Everything else is context for the top rows.
 | 40-54 | Below average. |
 | 0-39 | Weak. |
 
-Capped at 72 unless 3 of 4 gates pass, so a 73+ always has breadth behind it.
+Capped at 72 unless 4 of 6 gates pass, and hard-blocked at 55 when direction is 0, liquidity is under 35, or extension exceeds 3 ATR. A 73+ always has breadth behind it.
 
 ### V4_DIR — −2 … +2
 `+2` strong bull · `+1` bull · `0` neutral · `−1` bear · `−2` strong bear.
@@ -49,9 +66,29 @@ Capped at 45 whenever DIR is 0 — the COIN FLIP rule. On daily aggregation the 
 `0` no setup (or liquidity floor failed) · `1` watch · `2` developing · `3` confirmed ·
 `4` apex. Counts *breadth* of confirmation, not magnitude.
 
+### V4_TIMING — −2 … +2
+`+2` prime · `+1` early · `0` neutral · `−1` extended · `−2` exhausted.
+This is the "is it still catchable" column. **A high APEX with −1 or −2 is a setup you
+have already missed.**
+
 ### V4_Early — 0-100
-`75-100` prime window · `60-74` building · `45-59` mid · `<45` late or nothing.
-**Read against APEX**: high APEX + low Early = the move already happened.
+`75-100` strong transition · `60-74` building · `45-59` mild · `<45` nothing changing.
+This scores **change**, not strength: a stock that has been strong for weeks scores near
+zero here, correctly. Timing and Early answer different questions and will disagree —
+Early asks "is something starting?", Timing asks "is it still available?"
+
+### V4_EXTENSION — ATR units
+`<0.50` normal · `0.50-1.00` active · `1.00-1.50` extended · `1.50-2.00` highly extended ·
+`>2.00` chase risk. Measured from the nearer of the 21 EMA and session VWAP. Above
+**3.00** APEX is hard-blocked.
+
+### V4_LIQUIDITY_SCORE — 0-100
+`80+` excellent · `65-79` good · `50-64` acceptable · `35-49` marginal · `<35` blocks APEX.
+Dollar volume, price level, participation and turnover. **Not market depth.**
+
+### V4_DaysToEarnings — trading days
+Blank means the calendar had nothing — **unknown, not safe**. Run on Day aggregation only;
+the value is in bars, so on 4h it counts 4h bars.
 
 ### V3_ModelATRpct — percent
 `<1.0` low movement · `1.0-2.0` moderate · `2.0-3.0` active · `3.0-5.0` strong range ·
@@ -111,10 +148,15 @@ The tradeable combination is **State 1 with Hit ≥ 65**.
 
 ## Daily workflow
 
-1. Pre-market: `V4_MASTER_SCAN` on Daily. Note the top 10 by APEX.
-2. 09:30-10:00: no entries (the existing playbook rule). Switch columns to 15m.
-3. 10:00+: `V4_EARLY_ENTRY_SCAN` on 15m for names not yet extended.
-4. Before sizing: check **BidAskSpread** < 0.25% and **Earnings** = 0.
+Daily is the default and the ceiling; the target holding period is 1-3 days, stretching
+to a couple of weeks on the cleanest trends. Use 4h when you want the same system to move
+faster, and accept that it gets jumpier.
+
+1. Pre-market: `V4_MASTER_SCAN` on **Daily**. Note the top 10 by APEX.
+2. 09:30-10:00: no entries (the existing playbook rule).
+3. `V4_EARLY_ENTRY_SCAN` on Daily for names not yet extended — or 4h for the faster read.
+   Drop to 15m only to time an entry on a name you already chose, never to scan.
+4. Before sizing: **TIMING** ≥ 0, **BidAskSpread** < 0.25%, **Earnings** = 0.
 5. Open the web dashboard, hit **🧮 V4**, and compare. The grid runs the same model on
    5-minute bars, next to the sweep / dark-pool / GEX columns that ThinkorSwim cannot
    see. Agreement between the two — V4 structure *and* options flow pointing the same

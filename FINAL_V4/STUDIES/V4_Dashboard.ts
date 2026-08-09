@@ -4,17 +4,24 @@
 # PURPOSE      : On-chart labels for every V4 number, including the text regime name.
 # AGGREGATION  : Whatever the chart is on. Match it to your columns when comparing.
 # INSTALL      : Charts > Studies > Edit Studies > Create > paste > apply to the chart.
-# OUTPUT       : A row of labels: APEX, DIR, CONF, STABLE, EARLY, ATR%, RVOL, DARVAS, SQZ, FLOW, REGIME.
+# OUTPUT       : A row of labels: APEX, DIR, CONF, STABLE, EARLY, ATR%, RVOL, DARVAS, SQZ, FLOW, REGIME, TIMING, EXT, LIQ, CONFIRM.
 # COLORS       : Each label carries its own column's colour scale.
 # LIMITATIONS  : Labels are chart-only. A watchlist custom quote cannot render them, which is why the columns emit numbers and this study emits the words.
 # ==========================================================================
 
 # ---- MODULE: PRICE ---------------------------------------------------------
-def c = close;
-def h = high;
-def l = low;
-def o = open;
-def v = volume;
+# signalMode shifts EVERY input series by one bar, so the whole model inherits
+# it without a single downstream branch. LIVE reads the forming bar (earlier,
+# but the value changes until the bar closes). CLOSED_BAR reads only confirmed
+# bars (one bar later, but the number is final once printed).
+# LIVE is NOT repaint-proof. Nothing that reads a forming bar can be.
+input signalMode = {default LIVE, CLOSED_BAR};
+def closedBar = signalMode == signalMode.CLOSED_BAR;
+def c = if closedBar then close[1] else close;
+def h = if closedBar then high[1] else high;
+def l = if closedBar then low[1] else low;
+def o = if closedBar then open[1] else open;
+def v = if closedBar then volume[1] else volume;
 
 # ---- MODULE: ATR / VOLATILITY ----------------------------------------------
 input atrLength = 14;
@@ -259,6 +266,46 @@ def darvasQuality = Max(0, Min(100, 50 + 12 * darvasScan + 8 * darvasBias
       + (if !IsNaN(distTopATR) and distTopATR >= 0 and distTopATR <= 1 then 10 else 0)
       + (if failedBO then -15 else 0)));
 
+# ---- MODULE: LIQUIDITY SCORE 0..100 ----------------------------------------
+# Tradeability relative to the scan universe. This does NOT measure market
+# depth, order-book thickness, or true slippage — ThinkScript charts expose
+# none of those. It is dollar volume, price level, current participation and
+# share turnover, which is what IS observable. BidAskSpread.ts is the only
+# real spread reading in the set, and it exists only as a custom quote.
+def liqDV = if dollarVol >= 200000000 then 45
+            else if dollarVol >= 100000000 then 40
+            else if dollarVol >= 50000000 then 34
+            else if dollarVol >= 25000000 then 28
+            else if dollarVol >= 10000000 then 20
+            else if dollarVol >= 5000000 then 12
+            else if dollarVol >= minDollarVol then 6
+            else 0;
+def liqPrice = if c >= 10 then 25 else if c >= 5 then 20 else if c >= 2 then 12 else if c >= 1 then 5 else 0;
+def liqPart  = if rvolSafe >= 1.5 then 20 else if rvolSafe >= 1.0 then 16 else if rvolSafe >= 0.75 then 10 else 4;
+def liqTurn  = if avgVol >= 2000000 then 10 else if avgVol >= 500000 then 7 else if avgVol >= 200000 then 4 else 0;
+def liquidityScore = Round(Max(0, Min(100, liqDV + liqPrice + liqPart + liqTurn)), 0);
+
+# ---- MODULE: EXTENSION (ATR units from equilibrium) -------------------------
+# Distance from the NEARER of two equilibria: the trend mean (EMA21) and, when
+# it exists, the session mean (VWAP). Using VWAP alone was wrong — on any normal
+# intraday trend day price drifts several ATR from the session open while
+# sitting right on its trend mean, which made a healthy trend read as "chase
+# risk" and hard-blocked APEX. You are not chasing if price is near EITHER
+# equilibrium, so the measure takes the minimum. On Daily, VWAP is unavailable
+# and this collapses cleanly to the EMA distance.
+def extEma  = if atrOK then AbsValue(c - emaM) / atr else Double.NaN;
+def extVwap = if atrOK and vwapOK then AbsValue(c - vw) / atr else Double.NaN;
+def extensionATR = if IsNaN(extEma) then extVwap
+                   else if IsNaN(extVwap) then extEma
+                   else Min(extEma, extVwap);
+def extSafe = if IsNaN(extensionATR) then 0 else extensionATR;
+def extBand = if IsNaN(extensionATR) then 0
+              else if extensionATR < 0.50 then 2
+              else if extensionATR < 1.00 then 1
+              else if extensionATR < 1.50 then 0
+              else if extensionATR < 2.00 then -1
+              else -2;
+
 # ---- MODULE: APEX MASTER SCORE 0..100 --------------------------------------
 # StableScore already carries trend / momentum / rvol / volatility / structure /
 # liquidity with intra-bucket correlation control, so APEX does NOT re-add them.
@@ -270,29 +317,49 @@ def apexRaw = 0.55 * stableScore
             + 0.20 * AbsValue(smartFlow)
             + 0.15 * confidence
             + 0.10 * sqzHit;
-def apexGate = (if stableScore >= 55 then 1 else 0) + (if confidence >= 55 then 1 else 0)
-             + (if AbsValue(smartFlow) >= 25 then 1 else 0) + (if AbsValue(darvasScan) >= 1 then 1 else 0);
+# QUALITY GATES. A high raw blend is necessary but never sufficient: an elite
+# APEX has to clear four of six independent gates, and three conditions block
+# elite status outright no matter how extreme the components are.
+def apexGate = (if stableScore >= 55 then 1 else 0)
+             + (if confidence >= 55 then 1 else 0)
+             + (if AbsValue(smartFlow) >= 25 then 1 else 0)
+             + (if AbsValue(darvasScan) >= 1 then 1 else 0)
+             + (if liquidityScore >= 50 then 1 else 0)
+             + (if direction != 0 then 1 else 0);
+# Hard blocks: no directional read, untradeable, or already a chase.
+def apexBlock = direction == 0 or liquidityScore < 35 or extSafe > 3.0;
 # A one-bar spike maxes out SmartFlow and Confidence at the same time, which is
-# enough to clear three gates on its own. StableScore already discounts it; APEX
-# must discount it too or the spike leaks straight through the blend.
+# enough to clear several gates on its own. StableScore already discounts it;
+# APEX must discount it too or the spike leaks straight through the blend.
 def apexPenalty = (if spike then 0.85 else 1) * (if failedBO then 0.90 else 1);
 def apexScore = Round(Max(0, Min(100,
-      (if apexGate >= 3 then apexRaw else Min(72, apexRaw)) * apexPenalty)), 0);
+      (if apexBlock then Min(55, apexRaw)
+       else if apexGate >= 4 then apexRaw
+       else Min(72, apexRaw)) * apexPenalty)), 0);
 
-# ---- MODULE: EARLY ENTRY 0..100 --------------------------------------------
-# Rewards the conditions that PRECEDE expansion and penalises extension. This is
-# the anti-lag engine: a stock already 4 ATR above its 21 EMA scores poorly here
-# no matter how strong every other column looks.
+# ---- MODULE: EARLY ENTRY 0..100 (TRANSITION engine) ------------------------
+# This scores CHANGE, not level. Every term compares now against a few bars ago,
+# so a stock that has been strong for two weeks scores near zero here while a
+# stock crossing from neutral into strength scores high. It is deliberately NOT
+# "V4_APEX with lower thresholds" — that would just find the same names later.
+def rvolRising  = rvolSafe > rvolSafe[3] and rvolSafe >= 1.1;
+def volAccelE   = volTrend > volTrend[3] and volTrend >= 1.05;
+def adxImproving = adx > adx[3] and adx >= 15 and adx < 35;
+def stackFlip   = (stackUp >= 2 and stackUp[5] < 2) or (stackDn >= 2 and stackDn[5] < 2);
+def vwapReclaim = vwapOK and c > vw and c[3] < vw[3];
+def momSlopeUp  = AbsValue(sqzMom) > AbsValue(sqzMom[3]) and AbsValue(sqzMom[3]) > AbsValue(sqzMom[6]);
+def compReleasing = (sqzOn and bwRank < bwRank[3]) or sinceFire <= 2;
+def approachingBO = !IsNaN(distTopATR) and distTopATR > 0 and distTopATR <= 1.5;
 def earlyRaw =
-      (if rvolSafe >= 1.2 and rvolSafe <= 2.5 then 20 else if rvolSafe > 2.5 then 8 else 0)
-    + (if volTrend >= 1.15 then 12 else 0)
-    + (if !IsNaN(distTopATR) and distTopATR > 0 and distTopATR <= 1.5 then 20
-       else if brokeOut and sinceBO <= 1 then 12 else 0)
-    + (if sqzOn and sqzBars >= 6 then 15 else if sinceFire <= 2 then 12 else 0)
-    + (if (stackUp >= 2 and stackUp[5] < 2) or (stackDn >= 2 and stackDn[5] < 2) then 10 else 0)
-    + (if vwapOK and c > vw and c[3] < vw[3] then 10 else 0)
-    + (if AbsValue(sqzMom) > AbsValue(sqzMom[3]) then 8 else 0)
-    + (if AbsValue(extATR) <= 2 then 15 else if AbsValue(extATR) <= 3 then 7 else 0);
+      (if rvolRising then 16 else 0)
+    + (if volAccelE then 10 else 0)
+    + (if adxImproving then 12 else 0)
+    + (if stackFlip then 14 else 0)
+    + (if vwapReclaim then 12 else 0)
+    + (if momSlopeUp then 10 else 0)
+    + (if compReleasing then 12 else 0)
+    + (if approachingBO then 14 else 0)
+    - (if extSafe > 1.5 then 20 else if extSafe > 1.0 then 8 else 0);
 def earlyScore = Round(Max(0, Min(100, earlyRaw)), 0);
 
 # ---- MODULE: REGIME (numeric so the column sorts) --------------------------
@@ -329,6 +396,24 @@ def v4Confirmed =
       else if confCount >= 3 and stableScore >= 55 then 2
       else if confCount >= 2 then 1
       else 0;
+
+# ---- MODULE: TIMING -2..+2 (entry maturity) --------------------------------
+# -2 EXHAUSTED / VERY LATE · -1 EXTENDED · 0 NEUTRAL · +1 EARLY · +2 PRIME
+# Separate from EarlyEntry: EarlyEntry scores how much TRANSITION is underway,
+# Timing answers the blunter question of whether the move is still available.
+def volAccel  = rvolSafe > rvolSafe[3] and rvolSafe >= 1.1;
+def momAccel  = AbsValue(sqzMom) > AbsValue(sqzMom[3]);
+def nearBO    = !IsNaN(distTopATR) and distTopATR > 0 and distTopATR <= 1.0;
+def sqzTrans  = (sqzOn and sqzBars >= 5) or sinceFire <= 2;
+def exhausted = (rsi > 78 or rsi < 22) and extSafe >= 1.5;
+def timingRaw = extBand
+              + (if volAccel then 1 else 0)
+              + (if momAccel then 1 else 0)
+              + (if nearBO then 1 else 0)
+              + (if sqzTrans then 1 else 0)
+              + (if exhausted then -2 else 0);
+def v4Timing = if timingRaw >= 4 then 2 else if timingRaw >= 2 then 1
+               else if timingRaw <= -3 then -2 else if timingRaw <= -1 then -1 else 0;
 
 # ---- SCRIPT BODY -----------------------------------------------------------
 
@@ -382,6 +467,18 @@ AddLabel(showLabels, "REGIME " + (if regime == 1 then "TREND" else if regime == 
       if regime == 3 then Color.VIOLET else if regime == 2 then Color.CYAN
       else if regime == 1 then Color.GREEN else if regime == 4 then Color.ORANGE
       else if regime == 5 then Color.RED else Color.GRAY);
+
+AddLabel(showLabels, "TIMING " + (if v4Timing == 2 then "PRIME" else if v4Timing == 1 then "EARLY"
+      else if v4Timing == -1 then "EXTENDED" else if v4Timing == -2 then "EXHAUSTED" else "NEUTRAL"),
+      if v4Timing >= 1 then Color.GREEN else if v4Timing <= -1 then Color.RED else Color.GRAY);
+
+AddLabel(showLabels, "EXT " + Round(if IsNaN(extensionATR) then 0 else extensionATR, 2) + " ATR",
+      if IsNaN(extensionATR) then Color.GRAY else if extensionATR > 2 then Color.RED
+      else if extensionATR > 1.5 then Color.ORANGE else if extensionATR > 1 then Color.YELLOW else Color.GRAY);
+
+AddLabel(showLabels, "LIQ " + liquidityScore,
+      if liquidityScore >= 65 then Color.GREEN else if liquidityScore >= 50 then Color.CYAN
+      else if liquidityScore >= 35 then Color.YELLOW else Color.RED);
 
 AddLabel(showLabels, "CONFIRM " + v4Confirmed + "/4",
       if v4Confirmed >= 4 then Color.GREEN else if v4Confirmed == 3 then Color.CYAN

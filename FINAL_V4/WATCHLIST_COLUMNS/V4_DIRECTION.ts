@@ -2,7 +2,7 @@
 # V4_DIRECTION.ts
 # ==========================================================================
 # PURPOSE      : Bull/bear orientation from six independent lenses.
-# AGGREGATION  : Same as APEX.
+# AGGREGATION  : Same as APEX — Daily default, 4h fast variant.
 # INSTALL      : MarketWatch > Quotes > Customize > Custom Quotes > new > paste.
 # OUTPUT       : -2 strong bear · -1 bear · 0 neutral · +1 bull · +2 strong bull. +/-2 requires a net of 4 of 6 lenses.
 # COLORS       : red shades bearish · grey neutral · green shades bullish.
@@ -10,11 +10,18 @@
 # ==========================================================================
 
 # ---- MODULE: PRICE ---------------------------------------------------------
-def c = close;
-def h = high;
-def l = low;
-def o = open;
-def v = volume;
+# signalMode shifts EVERY input series by one bar, so the whole model inherits
+# it without a single downstream branch. LIVE reads the forming bar (earlier,
+# but the value changes until the bar closes). CLOSED_BAR reads only confirmed
+# bars (one bar later, but the number is final once printed).
+# LIVE is NOT repaint-proof. Nothing that reads a forming bar can be.
+input signalMode = {default LIVE, CLOSED_BAR};
+def closedBar = signalMode == signalMode.CLOSED_BAR;
+def c = if closedBar then close[1] else close;
+def h = if closedBar then high[1] else high;
+def l = if closedBar then low[1] else low;
+def o = if closedBar then open[1] else open;
+def v = if closedBar then volume[1] else volume;
 
 # ---- MODULE: ATR / VOLATILITY ----------------------------------------------
 input atrLength = 14;

@@ -1,6 +1,16 @@
 # FINAL_V4 — ThinkorSwim quant column & scanner system
 
-32 ThinkScript files: 18 watchlist columns, 10 Stock Hacker scans, 4 chart studies.
+36 ThinkScript files: 22 watchlist columns, 10 Stock Hacker scans, 4 chart studies.
+
+**This folder is completely standalone.** Nothing in it calls an API, reads this repo's
+JavaScript, or needs the web dashboard. Hand `FINAL_V4/` to anyone with ThinkorSwim and
+it works. The dashboard integration described at the bottom is a convenience, not a
+dependency.
+
+**Daily is the default and the maximum aggregation.** The parameters are tuned for a
+**1-3 day** holding period, stretching to a couple of weeks on the cleanest trends —
+which is where squeezes and flushes resolve. Use **4h** if you want the same system to
+move faster and accept that it gets jumpier. Anything below 15m is not supported.
 
 **Read `DOCUMENTATION/PROJECT_AUDIT.md` first.** It contains one finding that changes
 how you should read everything else: this repository contained **no ThinkScript at all**
@@ -35,7 +45,11 @@ scroll to *Custom Quotes* → **+** → paste → name it → Apply)
 | 15 | `WATCHLIST_COLUMNS/BidAskSpread.ts` | `BidAskSpread` |
 | 16 | `WATCHLIST_COLUMNS/EarningsRisk.ts` | `Earnings` |
 | 17 | `WATCHLIST_COLUMNS/V4_REGIME.ts` | `V4_Regime` |
-| 18 | `WATCHLIST_COLUMNS/V4_RelStrength.ts` | `V4_RS` *(optional — slow, see below)* |
+| 18 | `WATCHLIST_COLUMNS/V4_TIMING.ts` | `V4_Timing` |
+| 19 | `WATCHLIST_COLUMNS/V4_EXTENSION.ts` | `V4_Extension` |
+| 20 | `WATCHLIST_COLUMNS/V4_LIQUIDITY_SCORE.ts` | `V4_Liquidity` |
+| 21 | `WATCHLIST_COLUMNS/V4_DaysToEarnings.ts` | `V4_DaysToEarnings` *(Daily only)* |
+| 22 | `WATCHLIST_COLUMNS/V4_RelStrength.ts` | `V4_RS` *(optional — slow, see below)* |
 
 **2. Scans** (Scan tab → Stock Hacker → Add Study Filter → wrench → thinkScript Editor →
 paste → OK; leave the condition on `plot is true`)
@@ -53,8 +67,8 @@ word. `V4_DarvasBox` and `V4_SqueezeStudy` draw what the scanner is reading.
 
 **Aggregation must match everywhere.** A column set to Daily and a scan set to 15m will
 disagree, and neither is wrong — they are answering different questions. Pick one
-timeframe per workflow (Daily for swing, 15m for intraday) and set it on every column
-and every scan filter.
+timeframe (Daily, or 4h for the faster variant) and set it on every column and every
+scan filter.
 
 **`RelVol30Intraday` needs `barsPerDay` set to match.** 5m → 78, 10m → 39, 15m → 26,
 30m → 13, and extended-hours data **off**. Get this wrong and the column reads garbage
@@ -65,22 +79,46 @@ rather than blank, which is worse. See the header comment in the file.
 ## Reading a row
 
 ```
-SYMBOL  APEX  DIR  CONF  STABLE  EARLY  ATR%  RVOL  DARVAS  SQZ  FLOW  SPREAD
-GMAB     82   +2    86     74      71   2.55  2.4     +2     78   +64   0.08%
+SYMBOL  APEX  DIR  CONF  TIME  STABLE  EARLY  ATR%  RVOL  DARVAS  SQZ  FLOW  EXT   LIQ  SPREAD
+GMAB     82   +2    86    +1     74      71   2.55  2.4     +2     78   +64  0.84   93  0.08%
 ```
 
 - **APEX** — is it tradeable at all? Sort on this.
 - **DIR** — which side. `+2` long, `-2` short. A high APEX with `-2` is a high-quality
-  **short**, not a buy.
+  **short**, not a buy. `0` means skip, whatever else the row says.
 - **CONF** — do the six lenses agree? Low CONF on a high APEX means the signals are
   fighting each other.
+- **TIME** — is the move still available? `+2` prime, `-2` exhausted. **A high APEX with
+  `-1` or `-2` is a setup you have already missed.**
 - **STABLE** — setup quality on its own terms, direction-agnostic.
-- **EARLY** — are you early or late? High APEX + low EARLY = the move already happened.
+- **EARLY** — is something *changing* right now? This scores transition, not strength, so
+  a stock that has been strong for weeks correctly scores near zero.
+- **EXT** — ATR from equilibrium. Above 3.0 APEX is hard-blocked.
+- **LIQ** — tradeability 0-100. Below 35 APEX is hard-blocked. Not market depth.
 - **SPREAD** — under 0.25% or skip it.
 
-`DOCUMENTATION/WATCHLIST_LAYOUT.md` has the full interpretation table.
+The full decision hierarchy and interpretation tables are in
+`DOCUMENTATION/WATCHLIST_LAYOUT.md`.
 
 ---
+
+## Also in this branch: the Income ETF Lab
+
+Separate discipline, separate tab. The scanner hunts 1-3 day moves; the **💰 INCOME**
+tab in the dashboard is about owning option-income ETFs and getting paid monthly —
+YieldMax, Kurv, Defiance, Roundhill, NEOS, JPMorgan, REX and cash. It carries a
+plain-English explanation of how covered-call income actually works, a card per issuer,
+four allocation presets, and a compounding model.
+
+The model's one non-obvious design decision: **NAV drift is a first-class input, not
+assumed to be zero.** Most income spreadsheets model distributions against a flat share
+price, which flatters high-yield single-stock funds badly, because a large part of some
+distributions is return of capital — your own money handed back while the share price
+drops to match. Four scenarios (Ignore NAV / Base / Stress / Bear year) let you see the
+difference. If a plan only works under "Ignore NAV", it is not a plan.
+
+Every yield and drift figure there is an **editable assumption, not a quote or a
+forecast**.
 
 ## The same engine runs on the web dashboard
 
@@ -98,8 +136,9 @@ because the dashboard's input is 5m bars rather than a daily column:
 2. VWAP is rebuilt as a real session VWAP from the bars, rather than TOS's `vwap`.
 
 The dashboard has **no BidAskSpread column** — the UW endpoints in use return no
-stock-level quote. Liquidity is shown as approximate average daily dollar volume there,
-and the real spread lives in ThinkorSwim where `bid`/`ask` are actually exposed.
+stock-level quote. It shows `V4_LIQUIDITY_SCORE` instead, with the approximate average
+daily dollar volume in the tooltip. The real spread lives in ThinkorSwim, where
+`bid`/`ask` are exposed to custom quotes and nowhere else.
 
 ---
 
@@ -110,9 +149,12 @@ and the real spread lives in ThinkorSwim where `bid`/`ask` are actually exposed.
   proxy** and is documented as such in its own header.
 - It does not predict. `SqueezeHit%` grades how well a bar matches the pre-expansion
   template. That is a setup-quality score, not a probability.
-- It has not been compiled inside ThinkorSwim by the author. See
-  `DOCUMENTATION/TOS_LIMITATIONS.md` for the specific constructs that need your eyes on
-  first paste.
+- It does not detect gamma, dealer positioning, or options flow of any kind. No V4
+  column makes an options-positioning claim.
+- **It has not been compiled inside ThinkorSwim.** Status is
+  **STATICALLY VALIDATED — REQUIRES TOS COMPILE TEST**. The 20-point acceptance checklist
+  and the ranked list of what to compile-test first are in
+  `DOCUMENTATION/TOS_LIMITATIONS.md`.
 
 ---
 

@@ -2,7 +2,7 @@
 # V4_EarlyEntry.ts
 # ==========================================================================
 # PURPOSE      : Anti-lag score: how EARLY this setup is, before it extends.
-# AGGREGATION  : 15m intraday, or daily for swing.
+# AGGREGATION  : DAILY — the default and the MAXIMUM. 4h for faster 1-3 day trades.
 # INSTALL      : MarketWatch > Quotes > Customize > Custom Quotes > new > paste.
 # OUTPUT       : 0-100. High = pre-expansion. Low = either nothing brewing or already gone.
 # COLORS       : grey low · amber building · green prime entry window.
@@ -10,11 +10,18 @@
 # ==========================================================================
 
 # ---- MODULE: PRICE ---------------------------------------------------------
-def c = close;
-def h = high;
-def l = low;
-def o = open;
-def v = volume;
+# signalMode shifts EVERY input series by one bar, so the whole model inherits
+# it without a single downstream branch. LIVE reads the forming bar (earlier,
+# but the value changes until the bar closes). CLOSED_BAR reads only confirmed
+# bars (one bar later, but the number is final once printed).
+# LIVE is NOT repaint-proof. Nothing that reads a forming bar can be.
+input signalMode = {default LIVE, CLOSED_BAR};
+def closedBar = signalMode == signalMode.CLOSED_BAR;
+def c = if closedBar then close[1] else close;
+def h = if closedBar then high[1] else high;
+def l = if closedBar then low[1] else low;
+def o = if closedBar then open[1] else open;
+def v = if closedBar then volume[1] else volume;
 
 # ---- MODULE: VOLUME / PARTICIPATION / LIQUIDITY -----------------------------
 input rvolLength   = 30;
@@ -96,20 +103,63 @@ def effRatio = if erDen <= 0 then 0 else Max(0, Min(1, erNum / erDen));
 def extATR = if atrOK then (c - emaM) / atr else 0;
 def spike  = if atrOK and !IsNaN(atr[1]) and atr[1] > 0 then tr > 3 * atr[1] else no;
 
-# ---- MODULE: EARLY ENTRY 0..100 --------------------------------------------
-# Rewards the conditions that PRECEDE expansion and penalises extension. This is
-# the anti-lag engine: a stock already 4 ATR above its 21 EMA scores poorly here
-# no matter how strong every other column looks.
+# ---- MODULE: ADX / DI (self-contained, no study reference) ------------------
+input adxLength = 14;
+def upMove   = h - h[1];
+def downMove = l[1] - l;
+def plusDM   = if upMove > downMove and upMove > 0 then upMove else 0;
+def minusDM  = if downMove > upMove and downMove > 0 then downMove else 0;
+def trWil    = WildersAverage(tr, adxLength);
+def plusDI   = if trWil <= 0 then 0 else 100 * WildersAverage(plusDM, adxLength) / trWil;
+def minusDI  = if trWil <= 0 then 0 else 100 * WildersAverage(minusDM, adxLength) / trWil;
+def diSum    = plusDI + minusDI;
+def dx       = if diSum <= 0 then 0 else 100 * AbsValue(plusDI - minusDI) / diSum;
+def adx      = WildersAverage(dx, adxLength);
+
+# ---- MODULE: EXTENSION (ATR units from equilibrium) -------------------------
+# Distance from the NEARER of two equilibria: the trend mean (EMA21) and, when
+# it exists, the session mean (VWAP). Using VWAP alone was wrong — on any normal
+# intraday trend day price drifts several ATR from the session open while
+# sitting right on its trend mean, which made a healthy trend read as "chase
+# risk" and hard-blocked APEX. You are not chasing if price is near EITHER
+# equilibrium, so the measure takes the minimum. On Daily, VWAP is unavailable
+# and this collapses cleanly to the EMA distance.
+def extEma  = if atrOK then AbsValue(c - emaM) / atr else Double.NaN;
+def extVwap = if atrOK and vwapOK then AbsValue(c - vw) / atr else Double.NaN;
+def extensionATR = if IsNaN(extEma) then extVwap
+                   else if IsNaN(extVwap) then extEma
+                   else Min(extEma, extVwap);
+def extSafe = if IsNaN(extensionATR) then 0 else extensionATR;
+def extBand = if IsNaN(extensionATR) then 0
+              else if extensionATR < 0.50 then 2
+              else if extensionATR < 1.00 then 1
+              else if extensionATR < 1.50 then 0
+              else if extensionATR < 2.00 then -1
+              else -2;
+
+# ---- MODULE: EARLY ENTRY 0..100 (TRANSITION engine) ------------------------
+# This scores CHANGE, not level. Every term compares now against a few bars ago,
+# so a stock that has been strong for two weeks scores near zero here while a
+# stock crossing from neutral into strength scores high. It is deliberately NOT
+# "V4_APEX with lower thresholds" — that would just find the same names later.
+def rvolRising  = rvolSafe > rvolSafe[3] and rvolSafe >= 1.1;
+def volAccelE   = volTrend > volTrend[3] and volTrend >= 1.05;
+def adxImproving = adx > adx[3] and adx >= 15 and adx < 35;
+def stackFlip   = (stackUp >= 2 and stackUp[5] < 2) or (stackDn >= 2 and stackDn[5] < 2);
+def vwapReclaim = vwapOK and c > vw and c[3] < vw[3];
+def momSlopeUp  = AbsValue(sqzMom) > AbsValue(sqzMom[3]) and AbsValue(sqzMom[3]) > AbsValue(sqzMom[6]);
+def compReleasing = (sqzOn and bwRank < bwRank[3]) or sinceFire <= 2;
+def approachingBO = !IsNaN(distTopATR) and distTopATR > 0 and distTopATR <= 1.5;
 def earlyRaw =
-      (if rvolSafe >= 1.2 and rvolSafe <= 2.5 then 20 else if rvolSafe > 2.5 then 8 else 0)
-    + (if volTrend >= 1.15 then 12 else 0)
-    + (if !IsNaN(distTopATR) and distTopATR > 0 and distTopATR <= 1.5 then 20
-       else if brokeOut and sinceBO <= 1 then 12 else 0)
-    + (if sqzOn and sqzBars >= 6 then 15 else if sinceFire <= 2 then 12 else 0)
-    + (if (stackUp >= 2 and stackUp[5] < 2) or (stackDn >= 2 and stackDn[5] < 2) then 10 else 0)
-    + (if vwapOK and c > vw and c[3] < vw[3] then 10 else 0)
-    + (if AbsValue(sqzMom) > AbsValue(sqzMom[3]) then 8 else 0)
-    + (if AbsValue(extATR) <= 2 then 15 else if AbsValue(extATR) <= 3 then 7 else 0);
+      (if rvolRising then 16 else 0)
+    + (if volAccelE then 10 else 0)
+    + (if adxImproving then 12 else 0)
+    + (if stackFlip then 14 else 0)
+    + (if vwapReclaim then 12 else 0)
+    + (if momSlopeUp then 10 else 0)
+    + (if compReleasing then 12 else 0)
+    + (if approachingBO then 14 else 0)
+    - (if extSafe > 1.5 then 20 else if extSafe > 1.0 then 8 else 0);
 def earlyScore = Round(Max(0, Min(100, earlyRaw)), 0);
 
 # ---- SCRIPT BODY -----------------------------------------------------------

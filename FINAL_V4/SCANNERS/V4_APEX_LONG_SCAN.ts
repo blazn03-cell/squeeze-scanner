@@ -2,7 +2,7 @@
 # V4_APEX_LONG_SCAN.ts
 # ==========================================================================
 # PURPOSE      : Highest-quality BULLISH setups that have already confirmed.
-# AGGREGATION  : Daily for swing, 15m intraday.
+# AGGREGATION  : DAILY — the default and the MAXIMUM. 4h for faster 1-3 day trades.
 # INSTALL      : Scan tab > Stock Hacker > Add Study Filter > click the wrench on the filter > thinkScript Editor > paste > OK. Leave the condition as 'plot is true'.
 # OUTPUT       : true = symbol passes. Sort the results by the V4_APEX_SCORE column.
 # COLORS       : n/a — scan filters have no colour output.
@@ -10,11 +10,18 @@
 # ==========================================================================
 
 # ---- MODULE: PRICE ---------------------------------------------------------
-def c = close;
-def h = high;
-def l = low;
-def o = open;
-def v = volume;
+# signalMode shifts EVERY input series by one bar, so the whole model inherits
+# it without a single downstream branch. LIVE reads the forming bar (earlier,
+# but the value changes until the bar closes). CLOSED_BAR reads only confirmed
+# bars (one bar later, but the number is final once printed).
+# LIVE is NOT repaint-proof. Nothing that reads a forming bar can be.
+input signalMode = {default LIVE, CLOSED_BAR};
+def closedBar = signalMode == signalMode.CLOSED_BAR;
+def c = if closedBar then close[1] else close;
+def h = if closedBar then high[1] else high;
+def l = if closedBar then low[1] else low;
+def o = if closedBar then open[1] else open;
+def v = if closedBar then volume[1] else volume;
 
 # ---- MODULE: ATR / VOLATILITY ----------------------------------------------
 input atrLength = 14;
@@ -259,6 +266,46 @@ def darvasQuality = Max(0, Min(100, 50 + 12 * darvasScan + 8 * darvasBias
       + (if !IsNaN(distTopATR) and distTopATR >= 0 and distTopATR <= 1 then 10 else 0)
       + (if failedBO then -15 else 0)));
 
+# ---- MODULE: LIQUIDITY SCORE 0..100 ----------------------------------------
+# Tradeability relative to the scan universe. This does NOT measure market
+# depth, order-book thickness, or true slippage — ThinkScript charts expose
+# none of those. It is dollar volume, price level, current participation and
+# share turnover, which is what IS observable. BidAskSpread.ts is the only
+# real spread reading in the set, and it exists only as a custom quote.
+def liqDV = if dollarVol >= 200000000 then 45
+            else if dollarVol >= 100000000 then 40
+            else if dollarVol >= 50000000 then 34
+            else if dollarVol >= 25000000 then 28
+            else if dollarVol >= 10000000 then 20
+            else if dollarVol >= 5000000 then 12
+            else if dollarVol >= minDollarVol then 6
+            else 0;
+def liqPrice = if c >= 10 then 25 else if c >= 5 then 20 else if c >= 2 then 12 else if c >= 1 then 5 else 0;
+def liqPart  = if rvolSafe >= 1.5 then 20 else if rvolSafe >= 1.0 then 16 else if rvolSafe >= 0.75 then 10 else 4;
+def liqTurn  = if avgVol >= 2000000 then 10 else if avgVol >= 500000 then 7 else if avgVol >= 200000 then 4 else 0;
+def liquidityScore = Round(Max(0, Min(100, liqDV + liqPrice + liqPart + liqTurn)), 0);
+
+# ---- MODULE: EXTENSION (ATR units from equilibrium) -------------------------
+# Distance from the NEARER of two equilibria: the trend mean (EMA21) and, when
+# it exists, the session mean (VWAP). Using VWAP alone was wrong — on any normal
+# intraday trend day price drifts several ATR from the session open while
+# sitting right on its trend mean, which made a healthy trend read as "chase
+# risk" and hard-blocked APEX. You are not chasing if price is near EITHER
+# equilibrium, so the measure takes the minimum. On Daily, VWAP is unavailable
+# and this collapses cleanly to the EMA distance.
+def extEma  = if atrOK then AbsValue(c - emaM) / atr else Double.NaN;
+def extVwap = if atrOK and vwapOK then AbsValue(c - vw) / atr else Double.NaN;
+def extensionATR = if IsNaN(extEma) then extVwap
+                   else if IsNaN(extVwap) then extEma
+                   else Min(extEma, extVwap);
+def extSafe = if IsNaN(extensionATR) then 0 else extensionATR;
+def extBand = if IsNaN(extensionATR) then 0
+              else if extensionATR < 0.50 then 2
+              else if extensionATR < 1.00 then 1
+              else if extensionATR < 1.50 then 0
+              else if extensionATR < 2.00 then -1
+              else -2;
+
 # ---- MODULE: APEX MASTER SCORE 0..100 --------------------------------------
 # StableScore already carries trend / momentum / rvol / volatility / structure /
 # liquidity with intra-bucket correlation control, so APEX does NOT re-add them.
@@ -270,14 +317,25 @@ def apexRaw = 0.55 * stableScore
             + 0.20 * AbsValue(smartFlow)
             + 0.15 * confidence
             + 0.10 * sqzHit;
-def apexGate = (if stableScore >= 55 then 1 else 0) + (if confidence >= 55 then 1 else 0)
-             + (if AbsValue(smartFlow) >= 25 then 1 else 0) + (if AbsValue(darvasScan) >= 1 then 1 else 0);
+# QUALITY GATES. A high raw blend is necessary but never sufficient: an elite
+# APEX has to clear four of six independent gates, and three conditions block
+# elite status outright no matter how extreme the components are.
+def apexGate = (if stableScore >= 55 then 1 else 0)
+             + (if confidence >= 55 then 1 else 0)
+             + (if AbsValue(smartFlow) >= 25 then 1 else 0)
+             + (if AbsValue(darvasScan) >= 1 then 1 else 0)
+             + (if liquidityScore >= 50 then 1 else 0)
+             + (if direction != 0 then 1 else 0);
+# Hard blocks: no directional read, untradeable, or already a chase.
+def apexBlock = direction == 0 or liquidityScore < 35 or extSafe > 3.0;
 # A one-bar spike maxes out SmartFlow and Confidence at the same time, which is
-# enough to clear three gates on its own. StableScore already discounts it; APEX
-# must discount it too or the spike leaks straight through the blend.
+# enough to clear several gates on its own. StableScore already discounts it;
+# APEX must discount it too or the spike leaks straight through the blend.
 def apexPenalty = (if spike then 0.85 else 1) * (if failedBO then 0.90 else 1);
 def apexScore = Round(Max(0, Min(100,
-      (if apexGate >= 3 then apexRaw else Min(72, apexRaw)) * apexPenalty)), 0);
+      (if apexBlock then Min(55, apexRaw)
+       else if apexGate >= 4 then apexRaw
+       else Min(72, apexRaw)) * apexPenalty)), 0);
 
 # ---- MODULE: V4 CONFIRMATION LEVEL 0..4 ------------------------------------
 # Counts how many INDEPENDENT subsystems agree. Not a second StableScore:
@@ -301,12 +359,32 @@ def v4Confirmed =
       else if confCount >= 2 then 1
       else 0;
 
+# ---- MODULE: TIMING -2..+2 (entry maturity) --------------------------------
+# -2 EXHAUSTED / VERY LATE · -1 EXTENDED · 0 NEUTRAL · +1 EARLY · +2 PRIME
+# Separate from EarlyEntry: EarlyEntry scores how much TRANSITION is underway,
+# Timing answers the blunter question of whether the move is still available.
+def volAccel  = rvolSafe > rvolSafe[3] and rvolSafe >= 1.1;
+def momAccel  = AbsValue(sqzMom) > AbsValue(sqzMom[3]);
+def nearBO    = !IsNaN(distTopATR) and distTopATR > 0 and distTopATR <= 1.0;
+def sqzTrans  = (sqzOn and sqzBars >= 5) or sinceFire <= 2;
+def exhausted = (rsi > 78 or rsi < 22) and extSafe >= 1.5;
+def timingRaw = extBand
+              + (if volAccel then 1 else 0)
+              + (if momAccel then 1 else 0)
+              + (if nearBO then 1 else 0)
+              + (if sqzTrans then 1 else 0)
+              + (if exhausted then -2 else 0);
+def v4Timing = if timingRaw >= 4 then 2 else if timingRaw >= 2 then 1
+               else if timingRaw <= -3 then -2 else if timingRaw <= -1 then -1 else 0;
+
 # ---- SCRIPT BODY -----------------------------------------------------------
 
 input minApex       = 70;
 input minStable     = 65;
 input minConfidence = 60;
 input minConfirmed  = 3;
+input minLiquidity  = 50;
+input maxExtension  = 2.0;
 
 plot scan = apexScore >= minApex
         and stableScore >= minStable
@@ -314,4 +392,7 @@ plot scan = apexScore >= minApex
         and v4Confirmed >= minConfirmed
         and direction >= 1
         and smartFlow >= 20
+        and liquidityScore >= minLiquidity
+        and extSafe <= maxExtension
+        and rvolSafe >= 1.0
         and dollarVol >= minDollarVol;

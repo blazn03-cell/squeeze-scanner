@@ -2,7 +2,7 @@
 # SmartFlow.ts
 # ==========================================================================
 # PURPOSE      : Buying-vs-selling PRESSURE proxy, -100 to +100.
-# AGGREGATION  : 15m intraday (VWAP term is live) or daily (VWAP term drops to 0).
+# AGGREGATION  : DAILY — the default and the MAXIMUM. 4h for faster 1-3 day trades.
 # INSTALL      : MarketWatch > Quotes > Customize > Custom Quotes > new > paste.
 # OUTPUT       : <-60 extreme bearish · -60..-25 bearish · -25..+25 neutral · +25..+60 bullish · >+60 extreme bullish.
 # COLORS       : red shades selling · grey neutral · green shades buying.
@@ -10,11 +10,18 @@
 # ==========================================================================
 
 # ---- MODULE: PRICE ---------------------------------------------------------
-def c = close;
-def h = high;
-def l = low;
-def o = open;
-def v = volume;
+# signalMode shifts EVERY input series by one bar, so the whole model inherits
+# it without a single downstream branch. LIVE reads the forming bar (earlier,
+# but the value changes until the bar closes). CLOSED_BAR reads only confirmed
+# bars (one bar later, but the number is final once printed).
+# LIVE is NOT repaint-proof. Nothing that reads a forming bar can be.
+input signalMode = {default LIVE, CLOSED_BAR};
+def closedBar = signalMode == signalMode.CLOSED_BAR;
+def c = if closedBar then close[1] else close;
+def h = if closedBar then high[1] else high;
+def l = if closedBar then low[1] else low;
+def o = if closedBar then open[1] else open;
+def v = if closedBar then volume[1] else volume;
 
 # ---- MODULE: MONEY FLOW (close-location weighted) ---------------------------
 input flowLength = 20;

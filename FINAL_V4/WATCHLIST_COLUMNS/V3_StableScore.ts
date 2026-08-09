@@ -2,7 +2,7 @@
 # V3_StableScore.ts
 # ==========================================================================
 # PURPOSE      : 0-100 setup-quality score across six correlation-separated buckets.
-# AGGREGATION  : Daily for swing, 15m for intraday. Keep it consistent with the scans.
+# AGGREGATION  : DAILY — the default and the MAXIMUM. 4h for faster 1-3 day trades.
 # INSTALL      : MarketWatch > Quotes > Customize > Custom Quotes > new > paste.
 # OUTPUT       : 0-39 weak · 40-54 below avg · 55-64 acceptable · 65-74 strong · 75-84 very strong · 85-100 elite. Elite requires 3+ buckets at 70%.
 # COLORS       : grey/red weak · amber acceptable · teal strong · green elite.
@@ -10,11 +10,18 @@
 # ==========================================================================
 
 # ---- MODULE: PRICE ---------------------------------------------------------
-def c = close;
-def h = high;
-def l = low;
-def o = open;
-def v = volume;
+# signalMode shifts EVERY input series by one bar, so the whole model inherits
+# it without a single downstream branch. LIVE reads the forming bar (earlier,
+# but the value changes until the bar closes). CLOSED_BAR reads only confirmed
+# bars (one bar later, but the number is final once printed).
+# LIVE is NOT repaint-proof. Nothing that reads a forming bar can be.
+input signalMode = {default LIVE, CLOSED_BAR};
+def closedBar = signalMode == signalMode.CLOSED_BAR;
+def c = if closedBar then close[1] else close;
+def h = if closedBar then high[1] else high;
+def l = if closedBar then low[1] else low;
+def o = if closedBar then open[1] else open;
+def v = if closedBar then volume[1] else volume;
 
 # ---- MODULE: ATR / VOLATILITY ----------------------------------------------
 input atrLength = 14;

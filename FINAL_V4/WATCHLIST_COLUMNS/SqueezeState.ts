@@ -2,7 +2,7 @@
 # SqueezeState.ts
 # ==========================================================================
 # PURPOSE      : Which phase of the squeeze cycle the bar is in.
-# AGGREGATION  : Same as SqueezeHitPct.
+# AGGREGATION  : Same as SqueezeHitPct — Daily default, 4h fast variant.
 # INSTALL      : MarketWatch > Quotes > Customize > Custom Quotes > new > paste.
 # OUTPUT       : 2 SQUEEZE ACTIVE · 1 FIRING (released within 3 bars) · -1 POST-SQUEEZE MOMENTUM (4-10 bars out) · 0 no squeeze context.
 # COLORS       : purple active · green firing · teal post-squeeze · grey none.
@@ -10,11 +10,18 @@
 # ==========================================================================
 
 # ---- MODULE: PRICE ---------------------------------------------------------
-def c = close;
-def h = high;
-def l = low;
-def o = open;
-def v = volume;
+# signalMode shifts EVERY input series by one bar, so the whole model inherits
+# it without a single downstream branch. LIVE reads the forming bar (earlier,
+# but the value changes until the bar closes). CLOSED_BAR reads only confirmed
+# bars (one bar later, but the number is final once printed).
+# LIVE is NOT repaint-proof. Nothing that reads a forming bar can be.
+input signalMode = {default LIVE, CLOSED_BAR};
+def closedBar = signalMode == signalMode.CLOSED_BAR;
+def c = if closedBar then close[1] else close;
+def h = if closedBar then high[1] else high;
+def l = if closedBar then low[1] else low;
+def o = if closedBar then open[1] else open;
+def v = if closedBar then volume[1] else volume;
 
 # ---- MODULE: ATR / VOLATILITY ----------------------------------------------
 input atrLength = 14;

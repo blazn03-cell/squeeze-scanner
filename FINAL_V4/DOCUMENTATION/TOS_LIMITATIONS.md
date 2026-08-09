@@ -17,7 +17,7 @@
 Every file in `SCANNERS/` was machine-checked for exactly one plot named `scan`, and for
 the absence of labels, bubbles, background colours, and aggregation tokens. Every file in
 `WATCHLIST_COLUMNS/` was checked for exactly one plot and no `AddLabel`. The same pass
-checked all 32 files for duplicate declarations, undeclared identifiers, unbalanced
+checked all 36 files for duplicate declarations, undeclared identifiers, unbalanced
 parentheses, unterminated statements, and PineScript-isms (`ta.*`, `request.security`,
 `varip`, `nz()`, `bar_index`, …). Zero findings.
 
@@ -43,7 +43,56 @@ chart. That split is the reason both files exist.
 
 **Knowing how long you have held a position.** ThinkScript has no idea you are in a
 trade. The existing dashboard's trade-day decay (×0.85 → ×0.65 → ×0.45) has no
-equivalent. `V4_EarlyEntry` uses extension-from-EMA as the proxy for "how late am I."
+equivalent. `V4_TIMING` uses extension from the nearer equilibrium as the proxy for
+"how late is this move" — a different question from "how long have I held it". That
+gap is unavoidable, not an oversight.
+
+## Validation status
+
+> **STATICALLY VALIDATED — REQUIRES TOS COMPILE TEST**
+
+That label is precise. Do not read it as "compile test passed", because no script here
+has been run through the ThinkorSwim compiler.
+
+### Acceptance checklist — what was actually checked
+
+| # | Check | Result |
+|---|---|---|
+| 1 | Valid ThinkScript syntax (statement termination, balanced parens) | ✅ machine-checked, all files |
+| 2 | Exactly one plot where required (columns, scans) | ✅ machine-checked |
+| 3 | No PineScript syntax (`ta.*`, `request.security`, `varip`, `nz()`, `bar_index`, `study()`) | ✅ machine-checked |
+| 4 | No fake imports / module system | ✅ none exist — ThinkScript has none |
+| 5 | No secondary aggregation in Stock Hacker filters | ✅ machine-checked |
+| 6 | Numerically sortable output where required | ✅ every column plots a number |
+| 7 | Divide-by-zero protection | ✅ every quotient guarded |
+| 8 | NaN protection | ✅ every optional input `IsNaN`-guarded |
+| 9 | No future references (positive offsets) | ✅ none, except the documented earnings lookup |
+| 10 | Active-bar behaviour documented | ✅ `signalMode` input + stated plainly |
+| 11 | Correlation overlap controlled | ✅ see `V4_DEPENDENCY_MATRIX.md` |
+| 12 | Quality / direction / confidence / timing separated | ✅ four distinct columns |
+| 13 | Extreme-extension penalty | ✅ hard block above 3.0 ATR |
+| 14 | Liquidity gate | ✅ hard floor + score, blocks APEX below 35 |
+| 15 | False-breakout handling | ✅ `failedBO` in StableScore, APEX and the breakout scan |
+| 16 | Event-risk handling | ✅ two earnings columns |
+| 17 | Reasonable computational cost | ⚠️ **not measured** — see `Inertia` note below |
+| 18 | Duplicate declarations | ✅ machine-checked |
+| 19 | Shared modules byte-identical across files | ✅ build fails otherwise |
+| 20 | Arithmetic correctness of the scoring model | ✅ verified by executing an identical JS port against synthetic data — see `SCORING_MODEL.md` |
+
+Items 17 and everything in the next section are the open ones.
+
+### Compile-test these first
+
+In this order — they are ranked by how likely they are to reject:
+
+1. `RelVol30Intraday.ts` — the `fold` + `GetValue` construct
+2. `V4_DaysToEarnings.ts` and `EarningsRisk.ts` — the `GetEventOffset` sign convention
+3. `BidAskSpread.ts` — must be pasted as a **custom quote**, not a study
+4. `V4_APEX_SCORE.ts` — the largest file; if anything hits a size or complexity limit it is this
+5. Any one scan, e.g. `V4_MASTER_SCAN.ts` — confirms the one-plot form is accepted
+6. `V4_Core.ts` — only if you intend to use the `reference` approach
+
+If 1-5 compile, the rest almost certainly will: they are built from the same modules.
 
 ## What I cannot guarantee without compiling inside ThinkorSwim
 
@@ -80,7 +129,12 @@ much cheaper, and the direction sign is what most of the model actually consumes
 doubles per-row cost. It is optional and excluded from `V4_Confirmed`'s category count
 for exactly this reason.
 
-**7. `StDev` sample vs population.** The Bollinger term assumes ThinkScript's `StDev` is
+**7. `signalMode` enum input.** `input signalMode = {default LIVE, CLOSED_BAR};` is
+standard ThinkScript, but if your build rejects the enum form, replace it with
+`input useClosedBar = no;` and change `def closedBar = signalMode == signalMode.CLOSED_BAR;`
+to `def closedBar = useClosedBar;`. Nothing else needs to change.
+
+**8. `StDev` sample vs population.** The Bollinger term assumes ThinkScript's `StDev` is
 population (÷n). If your build uses the sample form (÷n−1), squeeze detection shifts very
 slightly — the direction of every signal is unaffected, but `SqueezeHit%` values will not
 match the dashboard to the point.
@@ -92,16 +146,16 @@ match the dashboard to the point.
 smoothing, and the Keltner channel. Each shared module appears at most once per file, in
 dependency order.
 
-Heaviest to lightest: `V4_MASTER_SCAN` (341 lines) → `V4_APEX_SCORE` (290) → …
-→ `V3_ModelATRpct` (36). Light columns pull only the modules they need — `RelVol30`
-does not compute ADX, and `V3_ModelATRpct` computes nothing but ATR.
+Light columns pull only the modules they need — `RelVol30` does not compute ADX, and
+`V3_ModelATRpct` computes nothing but ATR. The heaviest files are `V4_APEX_SCORE` and
+`V4_MASTER_SCAN`, which pull nearly every module.
 
 ## Modularity — the honest trade-off
 
 ThinkScript has no `#include`. There are exactly two options:
 
 **What was shipped:** every file is self-contained, and the shared blocks are
-**byte-identical** across all 32 files (machine-verified — the audit fails if any two
+**byte-identical** across all 36 files (machine-verified — the audit fails if any two
 copies drift). Nothing to install in order, nothing to break by renaming a study.
 
 **The alternative:** `STUDIES/V4_Core.ts` is that same single source, exported as hidden

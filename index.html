@@ -9,7 +9,10 @@
   <title>⚡ Squeeze & Flush Scanner</title>
   <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <!-- Pinned. Unpinned, this URL follows @babel/standalone's latest tag and can
+       change the JSX transform under the page with no warning. 8.0.4 is the
+       version this build was verified against in Chromium end to end. -->
+  <script src="https://unpkg.com/@babel/standalone@8.0.4/babel.min.js"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com"/>
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet"/>
@@ -535,7 +538,8 @@ function computeV4(barsRaw) {
   }
   const plusDI  = (trW[i] > 0) ? 100 * pW[i] / trW[i] : 0;
   const minusDI = (trW[i] > 0) ? 100 * mW[i] / trW[i] : 0;
-  const adx = v4Wilder(DX, 14)[i] || 0;
+  const ADXs = v4Wilder(DX, 14);
+  const adx = ADXs[i] || 0;
 
   // ── RSI ────────────────────────────────────────────────────────────────────
   const up = [], dn = [];
@@ -604,9 +608,13 @@ function computeV4(barsRaw) {
     SQZ[x] = isFinite(bbU) && isFinite(kcU) && bbU < kcU && bbD > kcD;
     BW[x] = (!isFinite(basis) || basis <= 0) ? NaN : 100 * (bbU - bbD) / basis;
   }
-  const bwLo = v4Lo(BW.map(x => isFinite(x) ? x : Infinity), 100, i);
-  const bwHi = v4Hi(BW.map(x => isFinite(x) ? x : -Infinity), 100, i);
-  const bwRank = (!isFinite(BW[i]) || (bwHi - bwLo) <= 0) ? 50 : 100 * (BW[i] - bwLo) / (bwHi - bwLo);
+  const BWlo = BW.map(x => isFinite(x) ? x : Infinity), BWhi = BW.map(x => isFinite(x) ? x : -Infinity);
+  const bwRankAt = x => {
+    if (x < 0 || !isFinite(BW[x])) return 50;
+    const lo = v4Lo(BWlo, 100, x), hi = v4Hi(BWhi, 100, x);
+    return (hi - lo) <= 0 ? 50 : 100 * (BW[x] - lo) / (hi - lo);
+  };
+  const bwRank = bwRankAt(i);
   let sqzBars = 0, sinceFire = 999;
   for (let x = 1; x < n; x++) {
     sqzBars = SQZ[x] ? sqzBars + 1 : 0;
@@ -619,6 +627,31 @@ function computeV4(barsRaw) {
   const effRatio = erDen <= 0 ? 0 : v4Clamp(Math.abs(C[i] - C[Math.max(0, i - 20)]) / erDen, 0, 1);
   const extATR = atrOK ? (C[i] - emaM[i]) / atr : 0;
   const spike = (atrOK && isFinite(ATR[i - 1]) && ATR[i - 1] > 0) ? TR[i] > 3 * ATR[i - 1] : false;
+
+  // ── extension from equilibrium, in ATR units ───────────────────────────────
+  // Distance from the NEARER of two equilibria: trend mean (EMA21) and session
+  // mean (VWAP). VWAP alone was wrong — on a normal intraday trend day price
+  // drifts several ATR from the session open while sitting on its trend mean,
+  // which read as "chase risk" and hard-blocked APEX. You are not chasing if
+  // price is near EITHER equilibrium. On Daily this collapses to the EMA term.
+  const extEma  = atrOK ? Math.abs(C[i] - emaM[i]) / atr : NaN;
+  const extVwap = (atrOK && vwapOK) ? Math.abs(C[i] - vw) / atr : NaN;
+  const extensionATR = !isFinite(extEma) ? extVwap
+    : !isFinite(extVwap) ? extEma : Math.min(extEma, extVwap);
+  const extSafe = isFinite(extensionATR) ? extensionATR : 0;
+  const extBand = !isFinite(extensionATR) ? 0
+    : extensionATR < 0.50 ? 2 : extensionATR < 1.00 ? 1
+    : extensionATR < 1.50 ? 0 : extensionATR < 2.00 ? -1 : -2;
+
+  // ── liquidity score — tradeability, NOT market depth ──────────────────────
+  const liqDV = dollarVol >= 200000000 ? 45 : dollarVol >= 100000000 ? 40
+    : dollarVol >= 50000000 ? 34 : dollarVol >= 25000000 ? 28
+    : dollarVol >= 10000000 ? 20 : dollarVol >= 5000000 ? 12
+    : dollarVol >= minDollarVol ? 6 : 0;
+  const liqPrice = C[i] >= 10 ? 25 : C[i] >= 5 ? 20 : C[i] >= 2 ? 12 : C[i] >= 1 ? 5 : 0;
+  const liqPart  = rvolSafe >= 1.5 ? 20 : rvolSafe >= 1.0 ? 16 : rvolSafe >= 0.75 ? 10 : 4;
+  const liqTurn  = avgVol >= 2000000 ? 10 : avgVol >= 500000 ? 7 : avgVol >= 200000 ? 4 : 0;
+  const liquidityScore = Math.round(v4Clamp(liqDV + liqPrice + liqPart + liqTurn, 0, 100));
 
   // ── SmartFlow proxy ────────────────────────────────────────────────────────
   const cmfN = v4Clamp(cmf / 0.25, -1, 1);
@@ -704,12 +737,28 @@ function computeV4(barsRaw) {
 
   // ── APEX ───────────────────────────────────────────────────────────────────
   const apexRaw = 0.55 * stableScore + 0.20 * Math.abs(smartFlow) + 0.15 * confidence + 0.10 * sqzHit;
+  // QUALITY GATES. A high raw blend is necessary but never sufficient: elite
+  // APEX needs four of six gates, and three conditions block it outright.
   const apexGate = (stableScore >= 55 ? 1 : 0) + (confidence >= 55 ? 1 : 0)
-                 + (Math.abs(smartFlow) >= 25 ? 1 : 0) + (Math.abs(darvasScan) >= 1 ? 1 : 0);
-  // A one-bar spike maxes SmartFlow and Confidence at once, which clears three
-  // gates on its own. StableScore already discounts it; APEX must too.
+                 + (Math.abs(smartFlow) >= 25 ? 1 : 0) + (Math.abs(darvasScan) >= 1 ? 1 : 0)
+                 + (liquidityScore >= 50 ? 1 : 0) + (direction !== 0 ? 1 : 0);
+  const apexBlock = direction === 0 || liquidityScore < 35 || extSafe > 3.0;
+  // A one-bar spike maxes SmartFlow and Confidence at once, which clears
+  // several gates on its own. StableScore already discounts it; APEX must too.
   const apexPenalty = (spike ? 0.85 : 1) * (failedBO ? 0.90 : 1);
-  const apexScore = Math.round(v4Clamp((apexGate >= 3 ? apexRaw : Math.min(72, apexRaw)) * apexPenalty, 0, 100));
+  const apexScore = Math.round(v4Clamp(
+    (apexBlock ? Math.min(55, apexRaw) : apexGate >= 4 ? apexRaw : Math.min(72, apexRaw)) * apexPenalty, 0, 100));
+
+  // ── timing: is the move still available? ──────────────────────────────────
+  const volAccel  = i >= 3 && rvolSafe > ((v4Sma(V,30,i-3) > 0) ? V[i-3] / v4Sma(V,30,i-3) : 0) && rvolSafe >= 1.1;
+  const momAccel  = Math.abs(sqzMom) > Math.abs(sqzMom3);
+  const nearBO    = isFinite(distTopATR) && distTopATR > 0 && distTopATR <= 1.0;
+  const sqzTrans  = (sqzOn && sqzBars >= 5) || sinceFire <= 2;
+  const exhausted = (rsi > 78 || rsi < 22) && extSafe >= 1.5;
+  const timingRaw = extBand + (volAccel ? 1 : 0) + (momAccel ? 1 : 0)
+                  + (nearBO ? 1 : 0) + (sqzTrans ? 1 : 0) + (exhausted ? -2 : 0);
+  const v4Timing = timingRaw >= 4 ? 2 : timingRaw >= 2 ? 1
+                 : timingRaw <= -3 ? -2 : timingRaw <= -1 ? -1 : 0;
 
   // ── regime ─────────────────────────────────────────────────────────────────
   const revUp = rsi < 32 && C[i] > O[i] && cmf > 0 && C[i] > C[i - 1];
@@ -720,15 +769,24 @@ function computeV4(barsRaw) {
   const regimeName = ["CHOP", "TREND", "BREAKOUT", "SQUEEZE", "REVERSAL", "HIGH VOL", "LOW VOL"][regime] || "CHOP";
 
   // ── early entry ────────────────────────────────────────────────────────────
+  // TRANSITION engine: every term compares now against a few bars ago, so a
+  // name that has been strong for weeks scores near zero and a name crossing
+  // into strength scores high. Not "APEX with lower thresholds".
+  const rvolAt = x => { const a = v4Sma(V, 30, x); return (!isFinite(a) || a <= 0) ? 0 : V[x] / a; };
+  const volTrendAt = x => { const sl = v4Sma(V, 50, x); return (!isFinite(sl) || sl <= 0) ? 1 : v4Sma(V, 5, x) / sl; };
+  const rvolRising    = i >= 3 && rvolSafe > rvolAt(i - 3) && rvolSafe >= 1.1;
+  const volAccelE     = i >= 3 && volTrend > volTrendAt(i - 3) && volTrend >= 1.05;
+  const adxImproving  = i >= 3 && adx > (ADXs[i - 3] || 0) && adx >= 15 && adx < 35;
+  const stackFlip     = (stackUp >= 2 && stackUp5 < 2) || (stackDn >= 2 && stackDn5 < 2);
+  const vwapReclaim   = vwapOK && C[i] > vw && i >= 3 && C[i - 3] < VW[i - 3];
+  const momSlopeUp    = Math.abs(sqzMom) > Math.abs(sqzMom3) && Math.abs(sqzMom3) > Math.abs(sqzMomAt(i - 6));
+  const compReleasing = (sqzOn && bwRank < bwRankAt(i - 3)) || sinceFire <= 2;
+  const approachingBO = isFinite(distTopATR) && distTopATR > 0 && distTopATR <= 1.5;
   const earlyScore = Math.round(v4Clamp(
-      ((rvolSafe >= 1.2 && rvolSafe <= 2.5) ? 20 : rvolSafe > 2.5 ? 8 : 0)
-    + (volTrend >= 1.15 ? 12 : 0)
-    + ((isFinite(distTopATR) && distTopATR > 0 && distTopATR <= 1.5) ? 20 : (brokeOut && sinceBO <= 1) ? 12 : 0)
-    + ((sqzOn && sqzBars >= 6) ? 15 : sinceFire <= 2 ? 12 : 0)
-    + (((stackUp >= 2 && stackUp5 < 2) || (stackDn >= 2 && stackDn5 < 2)) ? 10 : 0)
-    + ((vwapOK && C[i] > vw && i >= 3 && C[i - 3] < VW[i - 3]) ? 10 : 0)
-    + (Math.abs(sqzMom) > Math.abs(sqzMom3) ? 8 : 0)
-    + (Math.abs(extATR) <= 2 ? 15 : Math.abs(extATR) <= 3 ? 7 : 0), 0, 100));
+      (rvolRising ? 16 : 0) + (volAccelE ? 10 : 0) + (adxImproving ? 12 : 0)
+    + (stackFlip ? 14 : 0) + (vwapReclaim ? 12 : 0) + (momSlopeUp ? 10 : 0)
+    + (compReleasing ? 12 : 0) + (approachingBO ? 14 : 0)
+    - (extSafe > 1.5 ? 20 : extSafe > 1.0 ? 8 : 0), 0, 100));
 
   // ── confirmation level ─────────────────────────────────────────────────────
   const cTrend  = (stackUp >= 2 || stackDn >= 2) && adx >= 20;
@@ -748,6 +806,8 @@ function computeV4(barsRaw) {
     early: earlyScore, confirmed: v4Confirmed, atrPct: isFinite(atrPct) ? +atrPct.toFixed(2) : null,
     rvol: isFinite(rvol) ? +rvol.toFixed(2) : null, darvas: darvasScan, darvasBias,
     sqzHit, sqzState, smartFlow, regime, regimeName,
+    timing: v4Timing, extension: isFinite(extensionATR) ? +extensionATR.toFixed(2) : null,
+    liquidityScore,
     liquidity: Math.round(dollarVol), adx: +adx.toFixed(1), rsi: +rsi.toFixed(1),
     bars: n,
   };
@@ -1149,10 +1209,11 @@ function Card({ p, open, onToggle, pos, onSave, isNew, macroBias }) {
               {tech.verdict}{tech.verdict==="PENDING"?"":` · ${tech.verdictConf}%`}
             </span>
             {v4 && (
-              <span title={`V4 · APEX ${v4.apex} · DIR ${v4DirLabel(v4.direction)} · CONF ${v4.confidence} · STABLE ${v4.stable} · EARLY ${v4.early} · ${v4.regimeName}${v4.early < 40 && v4.apex >= 65 ? " — strong but EXTENDED, the move already happened" : ""}`}
+              <span title={`V4 · APEX ${v4.apex} · DIR ${v4DirLabel(v4.direction)} · CONF ${v4.confidence} · TIMING ${v4DirLabel(v4.timing)} · STABLE ${v4.stable} · EARLY ${v4.early} · EXT ${v4.extension ?? "—"} ATR · LIQ ${v4.liquidityScore} · ${v4.regimeName}${v4.timing <= -1 && v4.apex >= 65 ? " — strong but EXTENDED, the move already happened" : ""}`}
                 style={{ fontSize:11, padding:"3px 9px", background:"#08131d", border:`1px solid ${v4Color(v4.apex, V4_SCORE_BAND)}66`, color:v4Color(v4.apex, V4_SCORE_BAND), fontWeight:700, letterSpacing:"0.06em", borderRadius:3, fontFamily:"'JetBrains Mono','SF Mono',Menlo,Consolas,monospace" }}>
                 APEX {v4.apex} · <span style={{ color:v4DirColor(v4.direction) }}>{v4DirLabel(v4.direction)}</span>
-                {v4.early < 40 && v4.apex >= 65 && <span style={{ color:"#ff9955" }}> ⚠LATE</span>}
+                {v4.timing <= -1 && v4.apex >= 65 && <span style={{ color:"#ff9955" }}> ⚠LATE</span>}
+                {v4.timing === 2 && <span style={{ color:"#00ff88" }}> ★PRIME</span>}
               </span>
             )}
             {isEW && <span style={{ fontSize:11, color:"#00ddff", background:"#001418", border:"1px solid #00ddff55", padding:"2px 8px", borderRadius:3 }}>👀 EARLY</span>}
@@ -1579,16 +1640,18 @@ function V4Grid({ feed, onClose }) {
               <th style={th} title="Master 0-100 opportunity score">APEX</th>
               <th style={th} title="Direction: -2 strong bear … +2 strong bull">DIR</th>
               <th style={th} title="Agreement between the six direction lenses">CONF</th>
+              <th style={th} title="Entry maturity: +2 prime, -2 exhausted. Is the move still available?">TIME</th>
               <th style={th} title="Setup quality, direction-agnostic">STABLE</th>
-              <th style={th} title="How early: high APEX + low EARLY means you missed it">EARLY</th>
+              <th style={th} title="Transition score: how much is CHANGING right now">EARLY</th>
               <th style={th} title="ATR as % of price">ATR%</th>
               <th style={th} title="Volume vs 30-bar average">RVOL</th>
               <th style={th} title="Darvas state / structural bias">DARVAS</th>
               <th style={th} title="Squeeze setup quality + state">SQZ</th>
               <th style={th} title="Buying/selling pressure proxy — NOT order flow">FLOW</th>
               <th style={th} title="Confirmation breadth 0-4">CONF✓</th>
+              <th style={th} title="Distance from equilibrium in ATR units. >2.0 = chase risk">EXT</th>
+              <th style={th} title="Tradeability 0-100. NOT market depth. <35 blocks APEX">LIQ</th>
               <th style={{ ...th, textAlign:"left" }}>REGIME</th>
-              <th style={th} title="Approx average daily dollar volume">LIQ</th>
             </tr>
           </thead>
           <tbody>
@@ -1599,6 +1662,10 @@ function V4Grid({ feed, onClose }) {
                 <td style={bar(r.apex, v4Color(r.apex, V4_SCORE_BAND))}>{r.apex}</td>
                 <td style={{ ...td, color:v4DirColor(r.direction), fontWeight:800 }}>{v4DirLabel(r.direction)}</td>
                 <td style={bar(r.confidence, v4Color(r.confidence, V4_SCORE_BAND))}>{r.confidence}</td>
+                <td style={{ ...td, color:v4DirColor(r.timing), fontWeight:800 }}
+                    title={r.timing===2?"PRIME":r.timing===1?"EARLY":r.timing===-1?"EXTENDED":r.timing===-2?"EXHAUSTED":"NEUTRAL"}>
+                  {v4DirLabel(r.timing)}
+                </td>
                 <td style={bar(r.stable, v4Color(r.stable, V4_SCORE_BAND))}>{r.stable}</td>
                 <td style={bar(r.early, v4Color(r.early, V4_SCORE_BAND))}>{r.early}</td>
                 <td style={{ ...td, color: r.atrPct==null ? "#3e5268" : r.atrPct>=5 ? "#ff66cc" : r.atrPct>=3 ? "#00ff88" : r.atrPct>=2 ? "#00ddff" : r.atrPct>=1 ? "#ffe033" : "#7591a8" }}>
@@ -1618,8 +1685,14 @@ function V4Grid({ feed, onClose }) {
                   {r.smartFlow > 0 ? `+${r.smartFlow}` : r.smartFlow}
                 </td>
                 <td style={{ ...td, color: r.confirmed>=4 ? "#00ff88" : r.confirmed===3 ? "#00ddff" : r.confirmed===2 ? "#ffe033" : "#7591a8" }}>{r.confirmed}/4</td>
+                <td style={{ ...td, color: r.extension==null ? "#3e5268" : r.extension>2 ? "#ff3355" : r.extension>1.5 ? "#ff9955" : r.extension>1 ? "#ffe033" : "#7591a8" }}>
+                  {r.extension==null ? "—" : r.extension.toFixed(2)}
+                </td>
+                <td style={{ ...td, color: r.liquidityScore>=65 ? "#00ff88" : r.liquidityScore>=50 ? "#00ddff" : r.liquidityScore>=35 ? "#ffe033" : "#ff3355" }}
+                    title={`approx ${liq(r.liquidity)} average daily dollar volume`}>
+                  {r.liquidityScore}
+                </td>
                 <td style={{ ...td, textAlign:"left", fontSize:11, letterSpacing:"0.08em", color:V4_REGIME_COLOR[r.regimeName] || "#7591a8" }}>{r.regimeName}</td>
-                <td style={{ ...td, color: r.liquidity>=25e6 ? "#9fb5c8" : "#ff9955" }}>{liq(r.liquidity)}</td>
               </tr>
             ))}
           </tbody>
@@ -1629,10 +1702,401 @@ function V4Grid({ feed, onClose }) {
         <b style={{color:"#8aabc2"}}>FLOW is a proxy, not order flow.</b> It is built from close-location × volume,
         VWAP displacement and relative volume — the same substitute FINAL_V4 uses in ThinkorSwim, which has no
         dark-pool feed. The real positioning data is the sweep / DP / GEX columns on the cards below.
-        <b style={{color:"#8aabc2"}}> No BID/ASK column:</b> the Unusual Whales endpoints in use return no stock-level
-        quote, so liquidity is shown as approximate average daily dollar volume instead of a spread. In ThinkorSwim,
-        use <code style={{color:"#9fb5c8"}}>BidAskSpread.ts</code> — bid/ask is only exposed to custom quotes.
+        <b style={{color:"#8aabc2"}}> LIQ is tradeability, not depth.</b> It scores dollar volume, price level,
+        participation and turnover — never order-book thickness or real slippage, which no endpoint here exposes.
+        There is no BID/ASK column because the Unusual Whales endpoints in use return no stock-level quote; in
+        ThinkorSwim use <code style={{color:"#9fb5c8"}}>BidAskSpread.ts</code>, where bid/ask is exposed to custom
+        quotes only. <b style={{color:"#8aabc2"}}>Nothing here detects gamma.</b> The γ badges on the cards below are
+        real GEX data from the API — the V4 columns make no options-positioning claim at all.
       </div>
+    </div>
+  );
+}
+
+// ── INCOME ETF LAB ────────────────────────────────────────────────────────────
+// A separate discipline from the scanner. The scanner hunts 1-3 day moves; this
+// tab is about owning option-income ETFs and getting paid monthly.
+//
+// EVERY yield and drift number below is an ASSUMPTION, not a forecast and not a
+// quote. They are editable. Real distribution rates on these funds swing hard
+// month to month, and a big part of some distributions is return of capital —
+// your own money handed back, with the share price dropping to match. A model
+// that ignores that would flatter YieldMax-style funds badly, so NAV drift is a
+// first-class input here rather than an afterthought.
+const INCOME_FAMILIES = [
+  { key:"yieldmax", name:"YieldMax",  color:"#ff3355",
+    style:"Covered calls on ONE stock at a time",
+    yieldPct:60, driftPct:-12, risk:5,
+    tickers:"MSTY · CONY · NVDY · TSLY",
+    simple:"They pick one wild stock and rent it out over and over. The wilder the stock, the more rent people pay — so the monthly cheque is huge.",
+    watch:"If the one stock falls, you feel all of it. Several of these funds have paid big cheques while the share price slid, so your total money barely moved." },
+  { key:"kurv",     name:"Kurv",      color:"#00ddff",
+    style:"Income on indexes, sectors and commodities",
+    yieldPct:15, driftPct:0, risk:3,
+    tickers:"KQQQ and sector funds",
+    simple:"Instead of one stock, they rent out a whole basket. Smaller cheque, but a basket does not blow up the way one company can.",
+    watch:"Smaller monthly cheque. You are trading income for calm." },
+  { key:"defiance", name:"Defiance",  color:"#ff9955",
+    style:"Option income including 0DTE (same-day) strategies",
+    yieldPct:40, driftPct:-8, risk:4,
+    tickers:"0DTE income funds",
+    simple:"They rent things out for one single day, over and over, every single day. Lots of small rents add up fast.",
+    watch:"Doing it every day means the fund is always exposed. A sharp drop lands before the rents can cover it." },
+  { key:"roundhill",name:"Roundhill", color:"#ffe033",
+    style:"Weekly option-income ETFs",
+    yieldPct:25, driftPct:-4, risk:3,
+    tickers:"Weekly-pay income funds",
+    simple:"Same idea, but they collect rent every week instead of every month, so money arrives more often.",
+    watch:"More frequent does not mean more total. Look at the yearly number, not the weekly one." },
+  { key:"neos",     name:"NEOS",      color:"#00ff88",
+    style:"Tax-efficient covered calls",
+    yieldPct:12, driftPct:1, risk:2,
+    tickers:"QQQI · SPYI",
+    simple:"They rent out a big index AND set it up so you hand less of the cheque to the tax office.",
+    watch:"Modest yield. The advantage is what you KEEP after tax, which this model only shows if you set a tax rate." },
+  { key:"jpm",      name:"JPMorgan",  color:"#66ccff",
+    style:"Equity Premium Income",
+    yieldPct:9,  driftPct:2, risk:2,
+    tickers:"JEPI · JEPQ",
+    simple:"A very large bank runs a careful version of the same rent idea. Smallest cheque here, steadiest ride.",
+    watch:"You will feel left behind in a roaring bull market, because the rent caps how much you gain." },
+  { key:"rex",      name:"REX Shares",color:"#cc88ff",
+    style:"Leveraged and income-focused ETFs",
+    yieldPct:30, driftPct:-6, risk:4,
+    tickers:"Leveraged income funds",
+    simple:"They borrow to make the bet bigger, then rent it out. Bigger bet, bigger rent.",
+    watch:"Borrowing makes losses bigger too. Leverage cuts both ways, always." },
+  { key:"cash",     name:"Cash / T-Bill", color:"#7591a8",
+    style:"Short-term Treasuries or money market",
+    yieldPct:4.5, driftPct:0, risk:1,
+    tickers:"SGOV · BIL",
+    simple:"Money parked somewhere safe that still pays a little. This is your dip-buying fund.",
+    watch:"Not really income investing. It is ammunition for when everything goes on sale." },
+];
+
+const INCOME_PRESETS = {
+  conservative: { label:"Conservative", note:"Sleep at night. Most of the money in the steadiest funds.",
+    w:{ yieldmax:10, kurv:20, defiance:0,  roundhill:0,  neos:25, jpm:35, rex:0,  cash:10 } },
+  balanced:     { label:"Balanced",     note:"Real monthly income without betting the farm on one issuer.",
+    w:{ yieldmax:25, kurv:20, defiance:5,  roundhill:5,  neos:20, jpm:15, rex:0,  cash:10 } },
+  aggressive:   { label:"Aggressive",   note:"Maximum cheque. Expect the share price to sag while it pays.",
+    w:{ yieldmax:45, kurv:10, defiance:15, roundhill:10, neos:5,  jpm:0,  rex:10, cash:5  } },
+  spread:       { label:"Spread by issuer", note:"The classic diversified split — no single issuer can sink you.",
+    w:{ yieldmax:30, kurv:25, defiance:0,  roundhill:0,  neos:20, jpm:15, rex:0,  cash:10 } },
+};
+
+// NAV scenarios multiply the base drift. This is the honest dial: a model run at
+// "Ignore NAV" is the one most income spreadsheets show, and it is the one that
+// gets people hurt.
+const NAV_SCENARIOS = {
+  ignore: { label:"Ignore NAV (income only)", mult:0,   note:"What most income spreadsheets show. Assumes the share price never moves. Optimistic." },
+  base:   { label:"Base case",                mult:1,   note:"Assumes the higher-yield funds slowly lose share price, which is what several have done." },
+  stress: { label:"Stress test",              mult:2,   note:"Doubles the share-price decay. Run this before you size a position." },
+  bear:   { label:"Bear year",                mult:4,   note:"Quadruples the decay. Note this still only models slow NAV bleed — a real crash hits the underlying stock directly and lands far harder and faster than this." },
+};
+
+// Monthly projection. Each family compounds separately so NAV drift, yield and
+// weight all apply to the right slice of money.
+function projectIncome({ start, monthlyAdd, weights, months, reinvest, taxPct, navScenario }) {
+  const mult = NAV_SCENARIOS[navScenario]?.mult ?? 1;
+  const totalW = Object.values(weights).reduce((a, b) => a + (+b || 0), 0);
+  if (!(start > 0) || totalW <= 0) return null;
+
+  const sleeves = INCOME_FAMILIES
+    .map(f => ({ f, w: (+weights[f.key] || 0) / totalW }))
+    .filter(s => s.w > 0)
+    .map(s => ({ ...s, bal: start * s.w }));
+
+  const rows = [];
+  let cumGross = 0, cumNet = 0, cumCash = 0, contributed = 0;
+
+  for (let m = 1; m <= months; m++) {
+    let gross = 0;
+    for (const s of sleeves) {
+      const monthlyYield = s.f.yieldPct / 100 / 12;
+      const monthlyDrift = (s.f.driftPct * mult) / 100 / 12;
+      const income = s.bal * monthlyYield;   // distributions come off the pre-drift balance
+      gross += income;
+      s.bal *= (1 + monthlyDrift);           // then the share price moves
+      const net = income * (1 - taxPct / 100);
+      if (reinvest) s.bal += net;
+      s.bal += monthlyAdd * s.w;
+    }
+    const net = gross * (1 - taxPct / 100);
+    cumGross += gross;
+    cumNet += net;
+    if (!reinvest) cumCash += net;
+    contributed += monthlyAdd;
+    rows.push({
+      m, gross, net,
+      balance: sleeves.reduce((a, s) => a + s.bal, 0),
+      cumNet, cumCash,
+    });
+  }
+
+  const endBalance = rows[rows.length - 1].balance;
+  const invested = start + contributed;
+  // Total return counts money you actually kept: end value, plus cash taken out
+  // if not reinvesting, minus everything you put in.
+  const profit = endBalance + (reinvest ? 0 : cumCash) - invested;
+  return {
+    rows, endBalance, invested, cumGross, cumNet, cumCash, profit,
+    totalReturnPct: invested > 0 ? (profit / invested) * 100 : 0,
+    blendedYieldPct: sleeves.reduce((a, s) => a + s.w * s.f.yieldPct, 0),
+    blendedDriftPct: sleeves.reduce((a, s) => a + s.w * s.f.driftPct * mult, 0),
+  };
+}
+
+const money = n => (n < 0 ? "-" : "") + "$" + Math.abs(Math.round(n)).toLocaleString();
+
+function IncomeTab({ onClose }) {
+  const [preset, setPreset]   = useState("balanced");
+  const [weights, setWeights] = useState(INCOME_PRESETS.balanced.w);
+  const [start, setStart]     = useState(50000);
+  const [addM, setAddM]       = useState(0);
+  const [months, setMonths]   = useState(12);
+  const [reinvest, setReinv]  = useState(true);
+  const [taxPct, setTaxPct]   = useState(0);
+  const [nav, setNav]         = useState("base");
+  const [openFam, setOpenFam] = useState(null);
+
+  const applyPreset = k => { setPreset(k); setWeights({ ...INCOME_PRESETS[k].w }); };
+  const setW = (key, val) => {
+    setWeights(w => ({ ...w, [key]: Math.max(0, Math.min(100, +val || 0)) }));
+    setPreset("custom");
+  };
+  const totalW = Object.values(weights).reduce((a, b) => a + (+b || 0), 0);
+  const proj = projectIncome({ start, monthlyAdd: addM, weights, months, reinvest, taxPct, navScenario: nav });
+
+  const lbl  = { fontSize:11, color:"#7591a8", letterSpacing:"0.1em", fontWeight:600, display:"block", marginBottom:4 };
+  const inp  = { background:"#080e16", border:"1px solid #15212e", color:"#d0deec", padding:"7px 10px", fontSize:13, outline:"none", borderRadius:3, width:"100%", fontFamily:"'JetBrains Mono','SF Mono',Menlo,monospace" };
+  const card = { background:"#070d15", border:"1px solid #13202e", borderRadius:5, padding:14 };
+  const th   = { padding:"7px 10px", textAlign:"right", fontSize:10, letterSpacing:"0.12em", color:"#7591a8", fontWeight:700, borderBottom:"1px solid #1a2a3a", whiteSpace:"nowrap" };
+  const td   = { padding:"6px 10px", textAlign:"right", fontSize:13, fontFamily:"'JetBrains Mono','SF Mono',Menlo,monospace", whiteSpace:"nowrap" };
+
+  return (
+    <div style={{ background:"#04080c", borderBottom:"1px solid #0e1a24", maxHeight:"78vh", overflow:"auto", flexShrink:0 }}>
+      <div style={{ display:"flex", alignItems:"center", gap:12, padding:"10px 20px", borderBottom:"1px solid #0e1a24", position:"sticky", top:0, background:"#04080c", zIndex:3 }}>
+        <span style={{ fontSize:12, fontWeight:700, letterSpacing:"0.16em", color:"#ffcc66" }}>💰 INCOME ETF LAB</span>
+        <span style={{ fontSize:11, color:"#7591a8" }}>Option-income funds · monthly cash · compounding model</span>
+        <button onClick={onClose} style={{ marginLeft:"auto", background:"transparent", border:"1px solid #15212e", color:"#7591a8", fontSize:12, padding:"4px 10px", cursor:"pointer", borderRadius:3 }}>✕ close</button>
+      </div>
+
+      {/* ── PLAIN-ENGLISH PRIMER ─────────────────────────────────────────── */}
+      <div style={{ padding:"16px 20px", borderBottom:"1px solid #0e1a24" }}>
+        <div className="sec-label" style={{ marginBottom:10 }}>HOW THESE FUNDS MAKE MONEY — THE WHOLE IDEA</div>
+        <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(280px, 1fr))", gap:12 }}>
+          {[
+            { t:"1. You own something", b:"The fund buys a stock, or a basket of stocks. Normal so far." },
+            { t:"2. You rent it out", b:"The fund sells someone the right to buy that stock at a set price later. The buyer pays cash right now. That cash is where your monthly cheque comes from." },
+            { t:"3. You give up the moonshot", b:"If the stock rockets past the set price, you do not get the extra. You already sold that part. Steady cash now, capped gains later." },
+            { t:"4. Wilder stock = bigger rent", b:"People pay more to rent something that jumps around a lot. That is the entire reason a single-stock fund can pay 60% while an index fund pays 9%. The yield is the risk, showing up as cash." },
+            { t:"5. The catch nobody puts on the poster", b:"If the stock falls, you still lose. The rent softens the fall, it does not stop it. And some months the 'dividend' is partly your own money handed back — the share price drops by the same amount. That is called return of capital." },
+            { t:"6. So judge it on total money", b:"Cheque + share price = total. A fund paying 100% while the share price halves has not made you rich. Always check both." },
+          ].map(x => (
+            <div key={x.t} style={card}>
+              <div style={{ fontSize:13, fontWeight:700, color:"#eaf2ff", marginBottom:6 }}>{x.t}</div>
+              <div className="body-text" style={{ fontSize:13 }}>{x.b}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* ── FAMILIES ─────────────────────────────────────────────────────── */}
+      <div style={{ padding:"16px 20px", borderBottom:"1px solid #0e1a24" }}>
+        <div className="sec-label" style={{ marginBottom:4 }}>THE ISSUERS — CLICK ANY ROW FOR THE PLAIN-ENGLISH VERSION</div>
+        <div style={{ fontSize:11, color:"#7591a8", marginBottom:10 }}>
+          Yield and drift are editable assumptions used by the model below, not quotes. Risk is 1 (calmest) to 5 (wildest).
+        </div>
+        <table style={{ borderCollapse:"collapse", width:"100%" }}>
+          <thead><tr>
+            <th style={{ ...th, textAlign:"left" }}>ISSUER</th>
+            <th style={{ ...th, textAlign:"left" }}>STYLE</th>
+            <th style={th} title="Assumed annual distribution rate">YIELD</th>
+            <th style={th} title="Assumed annual share-price drift">NAV DRIFT</th>
+            <th style={th}>RISK</th>
+            <th style={{ ...th, textAlign:"left" }}>EXAMPLES</th>
+          </tr></thead>
+          <tbody>
+            {INCOME_FAMILIES.map(f => (
+              <React.Fragment key={f.key}>
+                <tr onClick={() => setOpenFam(openFam === f.key ? null : f.key)}
+                    style={{ borderBottom:"1px solid #0b141c", cursor:"pointer", background: openFam===f.key ? "#080e16" : "transparent" }}>
+                  <td style={{ ...td, textAlign:"left", color:f.color, fontWeight:700, fontSize:14 }}>{openFam===f.key?"▾":"▸"} {f.name}</td>
+                  <td style={{ ...td, textAlign:"left", fontFamily:"inherit", fontSize:12, color:"#9fb5c8" }}>{f.style}</td>
+                  <td style={{ ...td, color:"#00ff88", fontWeight:700 }}>{f.yieldPct}%</td>
+                  <td style={{ ...td, color: f.driftPct < 0 ? "#ff5577" : f.driftPct > 0 ? "#44cc88" : "#7591a8" }}>{f.driftPct > 0 ? "+" : ""}{f.driftPct}%</td>
+                  <td style={{ ...td, color: f.risk>=5?"#ff3355":f.risk>=4?"#ff9955":f.risk>=3?"#ffe033":"#00ff88", letterSpacing:"-1px" }}>{"⭐".repeat(f.risk)}</td>
+                  <td style={{ ...td, textAlign:"left", fontSize:11, color:"#8aabc2" }}>{f.tickers}</td>
+                </tr>
+                {openFam === f.key && (
+                  <tr><td colSpan={6} style={{ padding:"0 10px 14px 10px", background:"#080e16" }}>
+                    <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+                      <div style={{ ...card, borderLeft:`3px solid ${f.color}` }}>
+                        <div style={{ fontSize:11, letterSpacing:"0.12em", color:"#8aabc2", fontWeight:700, marginBottom:6 }}>HOW IT WORKS</div>
+                        <div className="body-text" style={{ fontSize:13 }}>{f.simple}</div>
+                      </div>
+                      <div style={{ ...card, borderLeft:"3px solid #ff9955" }}>
+                        <div style={{ fontSize:11, letterSpacing:"0.12em", color:"#ff9955", fontWeight:700, marginBottom:6 }}>WATCH OUT FOR</div>
+                        <div className="body-text" style={{ fontSize:13 }}>{f.watch}</div>
+                      </div>
+                    </div>
+                  </td></tr>
+                )}
+              </React.Fragment>
+            ))}
+          </tbody>
+        </table>
+        <div style={{ marginTop:12, ...card, borderLeft:"3px solid #ff3355" }}>
+          <div style={{ fontSize:12, fontWeight:700, color:"#ff8899", marginBottom:6 }}>⚠ One correction worth having right</div>
+          <div className="body-text" style={{ fontSize:13 }}>
+            <b style={{color:"#eaf2ff"}}>MSTY is MicroStrategy (Strategy Inc), not Microsoft.</b> That is not a small difference. MicroStrategy
+            holds an enormous amount of Bitcoin, so MSTY behaves like a leveraged Bitcoin bet that pays you monthly — it is one of the
+            most volatile funds on this whole page, not a safe blue-chip income fund. If your reason for holding it is Bitcoin exposure,
+            that reasoning works. If your reason was "Microsoft is a stable giant", the position is doing something completely different
+            from what you think.
+          </div>
+        </div>
+      </div>
+
+      {/* ── ALLOCATION + MODEL ───────────────────────────────────────────── */}
+      <div style={{ padding:"16px 20px", borderBottom:"1px solid #0e1a24" }}>
+        <div className="sec-label" style={{ marginBottom:10 }}>BUILD A PORTFOLIO</div>
+
+        <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginBottom:14 }}>
+          {Object.entries(INCOME_PRESETS).map(([k, p]) => (
+            <button key={k} onClick={() => applyPreset(k)} title={p.note}
+              style={{ padding:"7px 12px", background: preset===k ? "#0d1a26" : "transparent",
+                       border:`1px solid ${preset===k ? "#ffcc66" : "#15212e"}`, color: preset===k ? "#ffcc66" : "#7591a8",
+                       fontSize:12, fontWeight:600, cursor:"pointer", borderRadius:3, letterSpacing:"0.05em" }}>
+              {p.label}
+            </button>
+          ))}
+          {preset === "custom" && <span style={{ alignSelf:"center", fontSize:11, color:"#ffcc66" }}>custom mix</span>}
+        </div>
+        {INCOME_PRESETS[preset] && (
+          <div style={{ fontSize:12, color:"#9fb5c8", marginBottom:14, fontStyle:"italic" }}>{INCOME_PRESETS[preset].note}</div>
+        )}
+
+        <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(150px, 1fr))", gap:10, marginBottom:16 }}>
+          {INCOME_FAMILIES.map(f => (
+            <div key={f.key} style={{ ...card, padding:10, borderLeft:`3px solid ${f.color}` }}>
+              <label style={{ ...lbl, color:f.color }}>{f.name.toUpperCase()}</label>
+              <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+                <input type="range" min="0" max="100" value={weights[f.key] || 0}
+                  onChange={e => setW(f.key, e.target.value)} style={{ flex:1, accentColor:f.color }}/>
+                <span style={{ fontSize:13, fontWeight:700, color:"#e4edf7", minWidth:34, textAlign:"right", fontFamily:"'JetBrains Mono',monospace" }}>
+                  {weights[f.key] || 0}%
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+        <div style={{ fontSize:12, color: Math.abs(totalW-100) < 0.5 ? "#00ff88" : "#ffaa44", marginBottom:16 }}>
+          Weights total <b>{totalW}%</b>{Math.abs(totalW-100) >= 0.5 && " — not 100%, so the model normalises them proportionally."}
+        </div>
+
+        <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(150px, 1fr))", gap:12, marginBottom:16 }}>
+          <div><label style={lbl}>STARTING AMOUNT</label>
+            <input style={inp} type="number" min="0" step="1000" value={start} onChange={e=>setStart(Math.max(0,+e.target.value||0))}/></div>
+          <div><label style={lbl}>ADDED EACH MONTH</label>
+            <input style={inp} type="number" min="0" step="100" value={addM} onChange={e=>setAddM(Math.max(0,+e.target.value||0))}/></div>
+          <div><label style={lbl}>MONTHS</label>
+            <select style={inp} value={months} onChange={e=>setMonths(+e.target.value)}>
+              {[12,24,36,60,120].map(v=><option key={v} value={v}>{v} months{v>=12?` (${v/12}y)`:""}</option>)}
+            </select></div>
+          <div><label style={lbl}>TAX ON INCOME</label>
+            <select style={inp} value={taxPct} onChange={e=>setTaxPct(+e.target.value)}>
+              {[0,15,22,24,32,37].map(v=><option key={v} value={v}>{v===0?"0% (tax-free account)":`${v}%`}</option>)}
+            </select></div>
+          <div><label style={lbl}>REINVEST CHEQUES?</label>
+            <select style={inp} value={reinvest?"y":"n"} onChange={e=>setReinv(e.target.value==="y")}>
+              <option value="y">Yes — compound it</option>
+              <option value="n">No — spend it</option>
+            </select></div>
+          <div><label style={lbl}>SHARE-PRICE ASSUMPTION</label>
+            <select style={inp} value={nav} onChange={e=>setNav(e.target.value)}>
+              {Object.entries(NAV_SCENARIOS).map(([k,v])=><option key={k} value={k}>{v.label}</option>)}
+            </select></div>
+        </div>
+        <div style={{ fontSize:12, color:"#9fb5c8", marginBottom:4, fontStyle:"italic" }}>{NAV_SCENARIOS[nav].note}</div>
+      </div>
+
+      {/* ── RESULTS ──────────────────────────────────────────────────────── */}
+      {proj && (
+        <div style={{ padding:"16px 20px" }}>
+          <div className="sec-label" style={{ marginBottom:10 }}>PROJECTION</div>
+          <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(160px, 1fr))", gap:10, marginBottom:16 }}>
+            {[
+              { k:"Blended yield", v:proj.blendedYieldPct.toFixed(1)+"%", c:"#00ff88" },
+              { k:"Blended NAV drift", v:(proj.blendedDriftPct>0?"+":"")+proj.blendedDriftPct.toFixed(1)+"%", c: proj.blendedDriftPct<0?"#ff5577":"#44cc88" },
+              { k:"Total put in", v:money(proj.invested), c:"#9fb5c8" },
+              { k:"Income after tax", v:money(proj.cumNet), c:"#ffcc66" },
+              { k:"End balance", v:money(proj.endBalance), c:"#eaf2ff" },
+              { k:"Profit", v:money(proj.profit), c: proj.profit>=0?"#00ff88":"#ff3355" },
+              { k:"Total return", v:proj.totalReturnPct.toFixed(1)+"%", c: proj.totalReturnPct>=0?"#00ff88":"#ff3355" },
+            ].map(s => (
+              <div key={s.k} style={card}>
+                <div style={{ fontSize:11, color:"#7591a8", letterSpacing:"0.1em", marginBottom:5 }}>{s.k.toUpperCase()}</div>
+                <div style={{ fontSize:20, fontWeight:700, color:s.c, fontFamily:"'JetBrains Mono',monospace" }}>{s.v}</div>
+              </div>
+            ))}
+          </div>
+
+          {proj.profit < 0 && (
+            <div style={{ ...card, borderLeft:"3px solid #ff3355", marginBottom:14 }}>
+              <div className="body-text" style={{ fontSize:13 }}>
+                <b style={{color:"#ff8899"}}>This mix loses money under these assumptions.</b> The cheques are real, but the share price
+                falls faster than the cheques arrive. This is exactly the trap high-yield income investing sets, and it is why the
+                share-price assumption is a dial on this page instead of being quietly set to zero.
+              </div>
+            </div>
+          )}
+
+          <div style={{ overflowX:"auto", border:"1px solid #13202e", borderRadius:5 }}>
+            <table style={{ borderCollapse:"collapse", width:"100%", minWidth:520 }}>
+              <thead><tr>
+                <th style={{ ...th, textAlign:"left" }}>MONTH</th>
+                <th style={th}>INCOME</th>
+                {taxPct > 0 && <th style={th}>AFTER TAX</th>}
+                <th style={th}>{reinvest ? "REINVESTED BALANCE" : "BALANCE"}</th>
+                {!reinvest && <th style={th}>CASH TAKEN</th>}
+                <th style={th}>CUMULATIVE INCOME</th>
+              </tr></thead>
+              <tbody>
+                {proj.rows.filter((_, i) => proj.rows.length <= 24 || i % Math.ceil(proj.rows.length / 24) === 0 || i === proj.rows.length - 1).map(r => (
+                  <tr key={r.m} style={{ borderBottom:"1px solid #0b141c" }}>
+                    <td style={{ ...td, textAlign:"left", color:"#8aabc2" }}>{r.m}</td>
+                    <td style={{ ...td, color:"#00ff88" }}>{money(r.gross)}</td>
+                    {taxPct > 0 && <td style={{ ...td, color:"#ffcc66" }}>{money(r.net)}</td>}
+                    <td style={{ ...td, color:"#e4edf7", fontWeight:600 }}>{money(r.balance)}</td>
+                    {!reinvest && <td style={{ ...td, color:"#ffcc66" }}>{money(r.cumCash)}</td>}
+                    <td style={{ ...td, color:"#9fb5c8" }}>{money(r.cumNet)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div style={{ marginTop:14, ...card }}>
+            <div style={{ fontSize:12, fontWeight:700, color:"#eaf2ff", marginBottom:8 }}>How to read this without fooling yourself</div>
+            <div className="body-text" style={{ fontSize:13 }}>
+              <b style={{color:"#00ff88"}}>Income</b> is the cheque. <b style={{color:"#e4edf7"}}>Balance</b> is what the account is worth.
+              Watch them together: a big cheque with a shrinking balance means you are being paid with your own money.
+              <b style={{color:"#eaf2ff"}}> Profit</b> is the only line that matters — end balance, plus any cash you took out, minus everything you put in.
+              <br/><br/>
+              Run <b>Stress test</b> before you size any position. If the plan only works under "Ignore NAV", it is not a plan.
+              And every number on this page is an assumption you can edit, not a forecast — real distributions change every single month.
+            </div>
+          </div>
+
+          <div style={{ marginTop:12, fontSize:11, color:"#7591a8", lineHeight:1.7 }}>
+            ⚠ Education only · Not financial advice · Yields, drifts and tax rates here are illustrative inputs, not quotes or projections.
+            Distribution rates on option-income ETFs vary month to month and may include return of capital. Past distributions do not
+            predict future ones. Check each fund's own current documents before investing.
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1664,6 +2128,7 @@ function App() {
   const [showLegend,setShowLegend]= useState(false);                     // legend strip hidden by default
   const [directMode,setDirectMode]= useState(true);                      // true = REST direct (fast), false = MCP (slower)
   const [showV4,    setShowV4]    = useState(false);                     // V4 quant grid panel
+  const [showIncome,setShowIncome]= useState(false);                     // income ETF lab panel
 
   const seen       = useRef(new Set());
   const intv       = useRef(null);
@@ -1992,6 +2457,7 @@ function App() {
               { icon:"⟳", label:"", active:false, onClick:manualFetch, disabled:loading, tip:"Manual refresh" },
               { icon:paused?"▶":"⏸", label:"", active:paused, onClick:()=>setPaused(p=>!p), ac:"#6080a0", tip:paused?"Resume":"Pause" },
               { icon:"🧮", label:"V4", active:showV4, onClick:()=>setShowV4(p=>!p), ac:"#66ffcc", tip:"V4 quant grid — APEX / DIR / CONF / STABLE / EARLY, same math as FINAL_V4 ThinkScript" },
+              { icon:"💰", label:"INCOME", active:showIncome, onClick:()=>setShowIncome(p=>!p), ac:"#ffcc66", tip:"Income ETF Lab — option-income funds, monthly cash, compounding model" },
               { icon:"≡", label:"LOG", active:showLog, onClick:()=>setShowLog(p=>!p), ac:"#7aaed0", tip:"Activity log" },
             ].map(({icon,label,active,onClick,disabled,ac="#ffe033",tip})=>(
               <button key={icon+label} onClick={disabled?undefined:onClick} title={tip}
@@ -2068,6 +2534,7 @@ function App() {
       </div>
 
       {showV4 && <V4Grid feed={feed} onClose={()=>setShowV4(false)}/>}
+      {showIncome && <IncomeTab onClose={()=>setShowIncome(false)}/>}
 
       <div style={{ display:"grid", gridTemplateColumns:showLog?"1fr 1fr 0.7fr 200px":"1fr 1fr 0.7fr", flex:1, overflow:"hidden", background:"#05090e" }}>
         <Column title="🚀 SQUEEZES" color="#00ff88" items={squeezes} openId={openId} onToggle={toggle} positions={positions} onSave={savePos} newIds={newIds} viewMode={viewMode} sortMode={sortMode} topEntries={topSq} macroBias={bias}/>

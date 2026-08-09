@@ -2,7 +2,7 @@
 # V4_REVERSAL_SCAN.ts
 # ==========================================================================
 # PURPOSE      : Exhaustion turning against itself, with flow already rotating.
-# AGGREGATION  : Daily for swing, 15m intraday.
+# AGGREGATION  : DAILY — the default and the MAXIMUM. 4h for faster 1-3 day trades.
 # INSTALL      : Scan tab > Stock Hacker > Add Study Filter > click the wrench on the filter > thinkScript Editor > paste > OK. Leave the condition as 'plot is true'.
 # OUTPUT       : true = symbol passes. Oversold-turning-up or overbought-turning-down with money flow agreeing.
 # COLORS       : n/a — scan filters have no colour output.
@@ -10,11 +10,18 @@
 # ==========================================================================
 
 # ---- MODULE: PRICE ---------------------------------------------------------
-def c = close;
-def h = high;
-def l = low;
-def o = open;
-def v = volume;
+# signalMode shifts EVERY input series by one bar, so the whole model inherits
+# it without a single downstream branch. LIVE reads the forming bar (earlier,
+# but the value changes until the bar closes). CLOSED_BAR reads only confirmed
+# bars (one bar later, but the number is final once printed).
+# LIVE is NOT repaint-proof. Nothing that reads a forming bar can be.
+input signalMode = {default LIVE, CLOSED_BAR};
+def closedBar = signalMode == signalMode.CLOSED_BAR;
+def c = if closedBar then close[1] else close;
+def h = if closedBar then high[1] else high;
+def l = if closedBar then low[1] else low;
+def o = if closedBar then open[1] else open;
+def v = if closedBar then volume[1] else volume;
 
 # ---- MODULE: ATR / VOLATILITY ----------------------------------------------
 input atrLength = 14;

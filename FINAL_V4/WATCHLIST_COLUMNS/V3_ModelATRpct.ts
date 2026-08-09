@@ -2,7 +2,7 @@
 # V3_ModelATRpct.ts
 # ==========================================================================
 # PURPOSE      : ATR as a percentage of price — the tradeable-range gauge.
-# AGGREGATION  : Daily for swing, 5m/15m for intraday. Set on the column itself.
+# AGGREGATION  : DAILY — the default and the MAXIMUM. 4h for faster 1-3 day trades. Set it on the column itself.
 # INSTALL      : MarketWatch > Quotes > right-click a column header > Customize > scroll to bottom > Custom Quotes > new > paste > Apply.
 # OUTPUT       : Numeric percent. <1 low · 1-2 moderate · 2-3 active · 3-5 strong · 5+ extreme.
 # COLORS       : grey low · yellow moderate · cyan active · green strong · magenta extreme.
@@ -10,11 +10,18 @@
 # ==========================================================================
 
 # ---- MODULE: PRICE ---------------------------------------------------------
-def c = close;
-def h = high;
-def l = low;
-def o = open;
-def v = volume;
+# signalMode shifts EVERY input series by one bar, so the whole model inherits
+# it without a single downstream branch. LIVE reads the forming bar (earlier,
+# but the value changes until the bar closes). CLOSED_BAR reads only confirmed
+# bars (one bar later, but the number is final once printed).
+# LIVE is NOT repaint-proof. Nothing that reads a forming bar can be.
+input signalMode = {default LIVE, CLOSED_BAR};
+def closedBar = signalMode == signalMode.CLOSED_BAR;
+def c = if closedBar then close[1] else close;
+def h = if closedBar then high[1] else high;
+def l = if closedBar then low[1] else low;
+def o = if closedBar then open[1] else open;
+def v = if closedBar then volume[1] else volume;
 
 # ---- MODULE: ATR / VOLATILITY ----------------------------------------------
 input atrLength = 14;
