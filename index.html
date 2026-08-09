@@ -429,6 +429,340 @@ function computeIchimoku(barsRaw) {
   };
 }
 
+// ── V4 QUANT ENGINE ───────────────────────────────────────────────────────────
+// Straight JS port of FINAL_V4/WATCHLIST_COLUMNS/*.ts — same buckets, same caps,
+// same penalties, same thresholds. Kept in lockstep on purpose: if the dashboard
+// and ThinkorSwim disagree on a ticker, one of them is wrong, and you need to be
+// able to tell which. Runs on the same 5m OHLC bars the Ichimoku engine uses.
+//
+// Two deliberate deviations from the ThinkScript, both because the input is 5m
+// bars rather than a daily column:
+//   1. dollarVol is scaled by BARS_PER_DAY to approximate average DAILY dollar
+//      volume, so the $2M liquidity floor means the same thing in both places.
+//   2. VWAP is a real session VWAP rebuilt from the bars, not TOS's `vwap`.
+const V4_BARS_PER_DAY = 78;   // 5m regular-hours bars
+
+function v4Series(arr, len, fn) { return arr.map((_, i) => fn(i, len)); }
+
+function v4Ema(arr, len) {
+  const out = [], k = 2 / (len + 1);
+  let prev = arr[0];
+  out[0] = prev;
+  for (let i = 1; i < arr.length; i++) { prev = arr[i] * k + prev * (1 - k); out[i] = prev; }
+  return out;
+}
+
+function v4Wilder(arr, len) {
+  const out = [];
+  let prev = NaN;
+  for (let i = 0; i < arr.length; i++) {
+    if (i < len - 1) { out[i] = NaN; continue; }
+    if (i === len - 1) { let t = 0; for (let k = 0; k < len; k++) t += arr[k]; prev = t / len; out[i] = prev; continue; }
+    prev = (prev * (len - 1) + arr[i]) / len;
+    out[i] = prev;
+  }
+  return out;
+}
+
+function v4Sma(arr, len, i) {
+  if (i < len - 1) return NaN;
+  let t = 0; for (let k = i - len + 1; k <= i; k++) t += arr[k];
+  return t / len;
+}
+function v4Hi(arr, len, i) { let m = -Infinity; for (let k = Math.max(0, i - len + 1); k <= i; k++) if (arr[k] > m) m = arr[k]; return m; }
+function v4Lo(arr, len, i) { let m = Infinity;  for (let k = Math.max(0, i - len + 1); k <= i; k++) if (arr[k] < m) m = arr[k]; return m; }
+function v4Std(arr, len, i) {
+  if (i < len - 1) return NaN;
+  const m = v4Sma(arr, len, i);
+  let t = 0; for (let k = i - len + 1; k <= i; k++) t += (arr[k] - m) ** 2;
+  return Math.sqrt(t / len);   // population, matching ThinkScript StDev
+}
+// Inertia() = value of the linear regression line at the end of the window
+function v4Linreg(arr, len, i) {
+  if (i < len - 1) return NaN;
+  let sx = 0, sy = 0, sxx = 0, sxy = 0;
+  for (let k = 0; k < len; k++) { const x = k, y = arr[i - len + 1 + k]; sx += x; sy += y; sxx += x * x; sxy += x * y; }
+  const den = len * sxx - sx * sx;
+  if (den === 0) return NaN;
+  const b = (len * sxy - sx * sy) / den;
+  return (sy - b * sx) / len + b * (len - 1);
+}
+const v4Clamp = (x, lo, hi) => Math.max(lo, Math.min(hi, x));
+
+function computeV4(barsRaw) {
+  if (!Array.isArray(barsRaw) || barsRaw.length < 60) return null;
+  const norm = barsRaw.map(b => ({
+    o: +(b.open ?? b.o ?? 0), h: +(b.high ?? b.h ?? 0), l: +(b.low ?? b.l ?? 0),
+    c: +(b.close ?? b.c ?? 0), v: +(b.volume ?? b.v ?? 0),
+    t: b.start_time || b.timestamp || b.t || null,
+  })).filter(b => b.h > 0 && b.l > 0 && b.c > 0);
+  if (norm.length < 60) return null;
+  const s = [...norm].sort((a, b) => (!a.t || !b.t) ? 0 : new Date(a.t) - new Date(b.t));
+
+  const n = s.length, i = n - 1;
+  const C = s.map(b => b.c), H = s.map(b => b.h), L = s.map(b => b.l), O = s.map(b => b.o), V = s.map(b => b.v);
+
+  // ── ATR ────────────────────────────────────────────────────────────────────
+  const TR = C.map((c, x) => x === 0 ? H[x] - L[x]
+    : Math.max(H[x] - L[x], Math.abs(H[x] - C[x - 1]), Math.abs(L[x] - C[x - 1])));
+  const ATR = v4Wilder(TR, 14);
+  const atr = ATR[i], atrOK = isFinite(atr) && atr > 0;
+  const atrPct = (C[i] > 0 && atrOK) ? 100 * atr / C[i] : NaN;
+
+  // ── trend ──────────────────────────────────────────────────────────────────
+  const emaF = v4Ema(C, 8), emaM = v4Ema(C, 21), emaS = v4Ema(C, 50);
+  const stackUp = (emaF[i] > emaM[i] ? 1 : 0) + (emaM[i] > emaS[i] ? 1 : 0) + (C[i] > emaF[i] ? 1 : 0);
+  const stackDn = (emaF[i] < emaM[i] ? 1 : 0) + (emaM[i] < emaS[i] ? 1 : 0) + (C[i] < emaF[i] ? 1 : 0);
+  const stackUp5 = i >= 5 ? (emaF[i-5] > emaM[i-5] ? 1 : 0) + (emaM[i-5] > emaS[i-5] ? 1 : 0) + (C[i-5] > emaF[i-5] ? 1 : 0) : 0;
+  const stackDn5 = i >= 5 ? (emaF[i-5] < emaM[i-5] ? 1 : 0) + (emaM[i-5] < emaS[i-5] ? 1 : 0) + (C[i-5] < emaF[i-5] ? 1 : 0) : 0;
+  const slopeATR = (atrOK && i >= 10) ? (emaM[i] - emaM[i - 10]) / atr : 0;
+
+  // ── ADX / DI ───────────────────────────────────────────────────────────────
+  const plusDM = [], minusDM = [];
+  for (let x = 0; x < n; x++) {
+    if (x === 0) { plusDM[x] = 0; minusDM[x] = 0; continue; }
+    const up = H[x] - H[x - 1], dn = L[x - 1] - L[x];
+    plusDM[x]  = (up > dn && up > 0) ? up : 0;
+    minusDM[x] = (dn > up && dn > 0) ? dn : 0;
+  }
+  const trW = v4Wilder(TR, 14), pW = v4Wilder(plusDM, 14), mW = v4Wilder(minusDM, 14);
+  const DX = [];
+  for (let x = 0; x < n; x++) {
+    const t = trW[x];
+    const pdi = (!isFinite(t) || t <= 0) ? 0 : 100 * pW[x] / t;
+    const mdi = (!isFinite(t) || t <= 0) ? 0 : 100 * mW[x] / t;
+    DX[x] = (pdi + mdi) <= 0 ? 0 : 100 * Math.abs(pdi - mdi) / (pdi + mdi);
+  }
+  const plusDI  = (trW[i] > 0) ? 100 * pW[i] / trW[i] : 0;
+  const minusDI = (trW[i] > 0) ? 100 * mW[i] / trW[i] : 0;
+  const adx = v4Wilder(DX, 14)[i] || 0;
+
+  // ── RSI ────────────────────────────────────────────────────────────────────
+  const up = [], dn = [];
+  for (let x = 0; x < n; x++) { const d = x === 0 ? 0 : C[x] - C[x - 1]; up[x] = Math.max(d, 0); dn[x] = Math.max(-d, 0); }
+  const uW = v4Wilder(up, 14)[i], dW = v4Wilder(dn, 14)[i];
+  const rsi = (!isFinite(uW) || !isFinite(dW) || (uW + dW) <= 0) ? 50 : 100 * uW / (uW + dW);
+
+  // ── volume / liquidity ─────────────────────────────────────────────────────
+  const avgVol = v4Sma(V, 30, i);
+  const rvol = (!isFinite(avgVol) || avgVol <= 0) ? NaN : V[i] / avgVol;
+  const rvolSafe = isFinite(rvol) ? rvol : 0;
+  const volFast = v4Sma(V, 5, i), volSlow = v4Sma(V, 50, i);
+  const volTrend = (!isFinite(volSlow) || volSlow <= 0) ? 1 : volFast / volSlow;
+  const dollarVol = C[i] * (isFinite(avgVol) ? avgVol : 0) * V4_BARS_PER_DAY;
+  const minDollarVol = 2000000;
+
+  // ── money flow ─────────────────────────────────────────────────────────────
+  let mfSum = 0, volSum = 0;
+  for (let x = Math.max(0, i - 19); x <= i; x++) {
+    const r = H[x] - L[x];
+    const clv = r <= 0 ? 0 : (2 * C[x] - H[x] - L[x]) / r;
+    mfSum += clv * V[x]; volSum += V[x];
+  }
+  const cmf = volSum <= 0 ? 0 : mfSum / volSum;
+
+  // ── session VWAP ───────────────────────────────────────────────────────────
+  const VW = [];
+  let num = 0, den = 0, curDay = null;
+  for (let x = 0; x < n; x++) {
+    const d = s[x].t ? new Date(s[x].t).toDateString() : "0";
+    if (d !== curDay) { curDay = d; num = 0; den = 0; }
+    num += ((H[x] + L[x] + C[x]) / 3) * V[x]; den += V[x];
+    VW[x] = den > 0 ? num / den : NaN;
+  }
+  const vw = VW[i], vwapOK = isFinite(vw) && vw > 0;
+  const vwapEdge = (vwapOK && atrOK) ? v4Clamp((C[i] - vw) / (1.5 * atr), -1, 1) : 0;
+  const vwapSide = !vwapOK ? 0 : C[i] > vw ? 1 : C[i] < vw ? -1 : 0;
+
+  // ── Darvas box (completed bars only) ───────────────────────────────────────
+  const boxTopAt = x => x < 1 ? NaN : v4Hi(H, 20, x - 1);
+  const boxBotAt = x => x < 1 ? NaN : v4Lo(L, 20, x - 1);
+  const boxTop = boxTopAt(i), boxBot = boxBotAt(i);
+  const boxRange = boxTop - boxBot;
+  const posInBox = boxRange <= 0 ? 0.5 : v4Clamp((C[i] - boxBot) / boxRange, 0, 1);
+  const distTopATR = atrOK ? (boxTop - C[i]) / atr : NaN;
+  const brokeOut = C[i] > boxTop, brokeDown = C[i] < boxBot;
+  const confirmUp = brokeOut && C[i - 1] > boxTopAt(i - 1);
+  const confirmDn = brokeDown && C[i - 1] < boxBotAt(i - 1);
+  const failedBO = !brokeOut && [1, 2, 3].some(k => i - k >= 1 && C[i - k] > boxTopAt(i - k));
+  let sinceBO = 999;
+  for (let x = 1; x < n; x++) {
+    const bo = C[x] > boxTopAt(x), boPrev = C[x - 1] > boxTopAt(x - 1);
+    sinceBO = (bo && !boPrev) ? 0 : Math.min(sinceBO + 1, 999);
+  }
+  const boxRising = boxTop > boxTopAt(i - 20) ? 1 : boxTop < boxTopAt(i - 20) ? -1 : 0;
+
+  // ── squeeze ────────────────────────────────────────────────────────────────
+  const sqzSrc = C.map((c, x) => c - ((v4Hi(H, 20, x) + v4Lo(L, 20, x)) / 2 + v4Sma(C, 20, x)) / 2);
+  const sqzMomAt = x => v4Linreg(sqzSrc, 20, x);
+  const sqzMom = sqzMomAt(i), sqzMom1 = sqzMomAt(i - 1), sqzMom3 = sqzMomAt(i - 3);
+  const BW = [], SQZ = [];
+  for (let x = 0; x < n; x++) {
+    const basis = v4Sma(C, 20, x), sd = v4Std(C, 20, x), kc = v4Sma(TR, 20, x);
+    const bbU = basis + 2.0 * sd, bbD = basis - 2.0 * sd;
+    const kcU = basis + 1.5 * kc, kcD = basis - 1.5 * kc;
+    SQZ[x] = isFinite(bbU) && isFinite(kcU) && bbU < kcU && bbD > kcD;
+    BW[x] = (!isFinite(basis) || basis <= 0) ? NaN : 100 * (bbU - bbD) / basis;
+  }
+  const bwLo = v4Lo(BW.map(x => isFinite(x) ? x : Infinity), 100, i);
+  const bwHi = v4Hi(BW.map(x => isFinite(x) ? x : -Infinity), 100, i);
+  const bwRank = (!isFinite(BW[i]) || (bwHi - bwLo) <= 0) ? 50 : 100 * (BW[i] - bwLo) / (bwHi - bwLo);
+  let sqzBars = 0, sinceFire = 999;
+  for (let x = 1; x < n; x++) {
+    sqzBars = SQZ[x] ? sqzBars + 1 : 0;
+    sinceFire = (!SQZ[x] && SQZ[x - 1]) ? 0 : Math.min(sinceFire + 1, 999);
+  }
+  const sqzOn = !!SQZ[i];
+
+  // ── efficiency / extension / spike ─────────────────────────────────────────
+  let erDen = 0; for (let x = Math.max(1, i - 19); x <= i; x++) erDen += Math.abs(C[x] - C[x - 1]);
+  const effRatio = erDen <= 0 ? 0 : v4Clamp(Math.abs(C[i] - C[Math.max(0, i - 20)]) / erDen, 0, 1);
+  const extATR = atrOK ? (C[i] - emaM[i]) / atr : 0;
+  const spike = (atrOK && isFinite(ATR[i - 1]) && ATR[i - 1] > 0) ? TR[i] > 3 * ATR[i - 1] : false;
+
+  // ── SmartFlow proxy ────────────────────────────────────────────────────────
+  const cmfN = v4Clamp(cmf / 0.25, -1, 1);
+  const cmfSign = cmfN > 0 ? 1 : cmfN < 0 ? -1 : 0;
+  const smartFlow = Math.round(v4Clamp(
+    55 * cmfN + 25 * vwapEdge + 20 * cmfSign * v4Clamp((rvolSafe - 1) / 2, 0, 1), -100, 100));
+
+  // ── squeeze quality ────────────────────────────────────────────────────────
+  const compression = v4Clamp(100 - bwRank, 0, 100);
+  const durScore = Math.min(100, sqzBars * 4);
+  const volContract = v4Clamp(100 * (1.4 - ((volSlow > 0) ? volFast / volSlow : 1)) / 0.8, 0, 100);
+  const atrSlow = v4Sma(ATR.map(x => isFinite(x) ? x : 0), 50, i);
+  const atrCompress = atrSlow <= 0 ? 50 : v4Clamp(100 * (1.3 - atr / atrSlow) / 0.7, 0, 100);
+  const momBuild = Math.abs(sqzMom) > Math.abs(sqzMom3) ? 100 : Math.abs(sqzMom) > Math.abs(sqzMom1) ? 60 : 20;
+  const sqzHitRaw = 0.30 * compression + 0.20 * durScore + 0.15 * volContract + 0.15 * atrCompress + 0.20 * momBuild;
+  const sqzHit = Math.round(v4Clamp(
+    sqzOn ? sqzHitRaw : sinceFire <= 3 ? Math.max(sqzHitRaw, 70) : sinceFire <= 10 ? sqzHitRaw * 0.85 : sqzHitRaw * 0.60, 0, 100));
+  const sqzState = sqzOn ? 2 : sinceFire <= 3 ? 1 : sinceFire <= 10 ? -1 : 0;
+
+  // ── Darvas state + bias ────────────────────────────────────────────────────
+  const darvasScan = confirmUp ? 3 : brokeOut ? 2
+    : (isFinite(distTopATR) && distTopATR > 0 && distTopATR <= 1.0 && rvolSafe >= 1.0) ? 1
+    : confirmDn ? -2 : brokeDown ? -1 : 0;
+  const biasRaw = (posInBox >= 0.80 ? 2 : posInBox >= 0.60 ? 1 : posInBox <= 0.20 ? -2 : posInBox <= 0.40 ? -1 : 0)
+    + boxRising + (stackUp === 3 ? 1 : stackDn === 3 ? -1 : 0);
+  const darvasBias = biasRaw >= 3 ? 2 : biasRaw >= 1 ? 1 : biasRaw <= -3 ? -2 : biasRaw <= -1 ? -1 : 0;
+
+  // ── StableScore ────────────────────────────────────────────────────────────
+  const trendPts = Math.min(20,
+      (stackUp === 3 || stackDn === 3 ? 8 : stackUp === 2 || stackDn === 2 ? 5 : 0)
+    + (adx >= 30 ? 7 : adx >= 22 ? 5 : adx >= 16 ? 2 : 0)
+    + (Math.abs(slopeATR) >= 2 ? 5 : Math.abs(slopeATR) >= 1 ? 3 : 0));
+  const rsiQual = (rsi >= 55 && rsi <= 72) ? 6 : (rsi <= 45 && rsi >= 28) ? 6
+    : (rsi > 78 || rsi < 22) ? 1 : (rsi > 72 || rsi < 28) ? 2 : 3;
+  const momPts = Math.min(15, rsiQual
+    + (effRatio >= 0.45 ? 5 : effRatio >= 0.30 ? 3 : 0)
+    + (Math.abs(sqzMom) > Math.abs(sqzMom3) ? 4 : 0));
+  const rvolPts = rvolSafe >= 3 ? 12 : rvolSafe >= 2 ? 10 : rvolSafe >= 1.5 ? 8
+    : rvolSafe >= 1.0 ? 5 : rvolSafe >= 0.75 ? 2 : 0;
+  const partPts = Math.min(20, rvolPts
+    + (volTrend >= 1.3 ? 4 : volTrend >= 1.1 ? 2 : 0)
+    + (Math.abs(cmf) >= 0.15 ? 4 : Math.abs(cmf) >= 0.07 ? 2 : 0));
+  const atrBand = !isFinite(atrPct) ? 0
+    : (atrPct >= 1.5 && atrPct <= 5) ? 10 : (atrPct >= 1.0 && atrPct < 1.5) ? 7
+    : (atrPct > 5 && atrPct <= 8) ? 6 : atrPct > 8 ? 2 : 3;
+  const atrMean = v4Sma(ATR.map(x => isFinite(x) ? x : 0), 20, i);
+  const atrStable = (atrOK && atrMean > 0) ? (Math.abs(atr / atrMean - 1) <= 0.35 ? 5 : 2) : 0;
+  const volaPts = Math.min(15, atrBand + atrStable);
+  const locPts = Math.min(15,
+      ((posInBox >= 0.75 || posInBox <= 0.25) ? 6 : 3)
+    + ((isFinite(distTopATR) && distTopATR >= 0 && distTopATR <= 1.5) ? 5 : (brokeOut || brokeDown) ? 4 : 0)
+    + (Math.abs(extATR) <= 3 ? 4 : 0));
+  const liqPts = dollarVol >= 100000000 ? 15 : dollarVol >= 25000000 ? 12
+    : dollarVol >= 10000000 ? 9 : dollarVol >= minDollarVol ? 5 : 0;
+  const rawStable = trendPts + momPts + partPts + volaPts + locPts + liqPts;
+  const penalty =
+      (dollarVol < minDollarVol ? 0.55 : 1)
+    * (rvolSafe < 0.50 ? 0.80 : 1)
+    * (spike ? 0.80 : 1)
+    * (Math.abs(extATR) > 4 ? 0.80 : 1)
+    * ((adx < 15 && !sqzOn) ? 0.85 : 1)
+    * ((isFinite(atrPct) && atrPct > 12) ? 0.75 : 1)
+    * (failedBO ? 0.80 : 1);
+  const penaltyFloor = Math.max(0.40, penalty);
+  const buckets70 = (trendPts >= 14 ? 1 : 0) + (momPts >= 10.5 ? 1 : 0) + (partPts >= 14 ? 1 : 0)
+                  + (volaPts >= 10.5 ? 1 : 0) + (locPts >= 10.5 ? 1 : 0) + (liqPts >= 10.5 ? 1 : 0);
+  const stableUncapped = rawStable * penaltyFloor;
+  const stableScore = Math.round(v4Clamp(buckets70 >= 3 ? stableUncapped : Math.min(74, stableUncapped), 0, 100));
+
+  // ── direction + confidence ─────────────────────────────────────────────────
+  const sigTrend  = (stackUp >= 2 && slopeATR > 0) ? 1 : (stackDn >= 2 && slopeATR < 0) ? -1 : 0;
+  const sigMom    = (rsi > 55 && sqzMom > 0) ? 1 : (rsi < 45 && sqzMom < 0) ? -1 : 0;
+  const sigFlow   = cmf > 0.05 ? 1 : cmf < -0.05 ? -1 : 0;
+  const sigStruct = (brokeOut || posInBox >= 0.75) ? 1 : (brokeDown || posInBox <= 0.25) ? -1 : 0;
+  const sigDI     = plusDI > minusDI ? 1 : minusDI > plusDI ? -1 : 0;
+  const netSig = sigTrend + sigMom + sigFlow + sigStruct + vwapSide + sigDI;
+  const activeSig = Math.abs(sigTrend) + Math.abs(sigMom) + Math.abs(sigFlow)
+                  + Math.abs(sigStruct) + Math.abs(vwapSide) + Math.abs(sigDI);
+  const direction = netSig >= 4 ? 2 : netSig >= 2 ? 1 : netSig <= -4 ? -2 : netSig <= -2 ? -1 : 0;
+  const agreement = activeSig <= 0 ? 0 : 100 * Math.abs(netSig) / activeSig;
+  const confidence = Math.round(v4Clamp(
+    direction === 0 ? Math.min(45, agreement) : agreement * (0.75 + 0.25 * Math.min(1, activeSig / 6)), 0, 100));
+
+  // ── APEX ───────────────────────────────────────────────────────────────────
+  const apexRaw = 0.55 * stableScore + 0.20 * Math.abs(smartFlow) + 0.15 * confidence + 0.10 * sqzHit;
+  const apexGate = (stableScore >= 55 ? 1 : 0) + (confidence >= 55 ? 1 : 0)
+                 + (Math.abs(smartFlow) >= 25 ? 1 : 0) + (Math.abs(darvasScan) >= 1 ? 1 : 0);
+  // A one-bar spike maxes SmartFlow and Confidence at once, which clears three
+  // gates on its own. StableScore already discounts it; APEX must too.
+  const apexPenalty = (spike ? 0.85 : 1) * (failedBO ? 0.90 : 1);
+  const apexScore = Math.round(v4Clamp((apexGate >= 3 ? apexRaw : Math.min(72, apexRaw)) * apexPenalty, 0, 100));
+
+  // ── regime ─────────────────────────────────────────────────────────────────
+  const revUp = rsi < 32 && C[i] > O[i] && cmf > 0 && C[i] > C[i - 1];
+  const revDn = rsi > 68 && C[i] < O[i] && cmf < 0 && C[i] < C[i - 1];
+  const regime = sqzOn ? 3 : (brokeOut || brokeDown || sinceFire <= 3) ? 2 : (revUp || revDn) ? 4
+    : (adx >= 25 && Math.abs(slopeATR) >= 1) ? 1
+    : (isFinite(atrPct) && atrPct > 6) ? 5 : (isFinite(atrPct) && atrPct < 1) ? 6 : 0;
+  const regimeName = ["CHOP", "TREND", "BREAKOUT", "SQUEEZE", "REVERSAL", "HIGH VOL", "LOW VOL"][regime] || "CHOP";
+
+  // ── early entry ────────────────────────────────────────────────────────────
+  const earlyScore = Math.round(v4Clamp(
+      ((rvolSafe >= 1.2 && rvolSafe <= 2.5) ? 20 : rvolSafe > 2.5 ? 8 : 0)
+    + (volTrend >= 1.15 ? 12 : 0)
+    + ((isFinite(distTopATR) && distTopATR > 0 && distTopATR <= 1.5) ? 20 : (brokeOut && sinceBO <= 1) ? 12 : 0)
+    + ((sqzOn && sqzBars >= 6) ? 15 : sinceFire <= 2 ? 12 : 0)
+    + (((stackUp >= 2 && stackUp5 < 2) || (stackDn >= 2 && stackDn5 < 2)) ? 10 : 0)
+    + ((vwapOK && C[i] > vw && i >= 3 && C[i - 3] < VW[i - 3]) ? 10 : 0)
+    + (Math.abs(sqzMom) > Math.abs(sqzMom3) ? 8 : 0)
+    + (Math.abs(extATR) <= 2 ? 15 : Math.abs(extATR) <= 3 ? 7 : 0), 0, 100));
+
+  // ── confirmation level ─────────────────────────────────────────────────────
+  const cTrend  = (stackUp >= 2 || stackDn >= 2) && adx >= 20;
+  const cMom    = Math.abs(sqzMom) > Math.abs(sqzMom3) && ((sqzMom > 0 && rsi > 50) || (sqzMom < 0 && rsi < 50));
+  const cVola   = isFinite(atrPct) && atrPct >= 1.0 && atrPct <= 8;
+  const cLiq    = dollarVol >= minDollarVol;
+  const confCount = (cTrend ? 1 : 0) + (cMom ? 1 : 0) + (rvolSafe >= 1.25 ? 1 : 0) + (cVola ? 1 : 0)
+    + (Math.abs(darvasScan) >= 1 ? 1 : 0) + (Math.abs(smartFlow) >= 25 ? 1 : 0) + ((sqzOn || sinceFire <= 5) ? 1 : 0);
+  const v4Confirmed = !cLiq ? 0
+    : (confCount >= 6 && stableScore >= 75 && confidence >= 70) ? 4
+    : (confCount >= 5 && stableScore >= 65) ? 3
+    : (confCount >= 3 && stableScore >= 55) ? 2
+    : confCount >= 2 ? 1 : 0;
+
+  return {
+    last: +C[i].toFixed(2), apex: apexScore, direction, confidence, stable: stableScore,
+    early: earlyScore, confirmed: v4Confirmed, atrPct: isFinite(atrPct) ? +atrPct.toFixed(2) : null,
+    rvol: isFinite(rvol) ? +rvol.toFixed(2) : null, darvas: darvasScan, darvasBias,
+    sqzHit, sqzState, smartFlow, regime, regimeName,
+    liquidity: Math.round(dollarVol), adx: +adx.toFixed(1), rsi: +rsi.toFixed(1),
+    bars: n,
+  };
+}
+
+// ── V4 display helpers ───────────────────────────────────────────────────────
+const v4Color = (val, band) => {
+  for (const [threshold, color] of band) if (val >= threshold) return color;
+  return "#3e5268";
+};
+const V4_SCORE_BAND = [[85,"#00ff88"],[75,"#22ddaa"],[65,"#00ddff"],[55,"#ffe033"],[40,"#ff9955"],[0,"#7591a8"]];
+const v4DirLabel = d => d === 2 ? "+2" : d === 1 ? "+1" : d === -1 ? "−1" : d === -2 ? "−2" : "0";
+const v4DirColor = d => d > 0 ? (d === 2 ? "#00ff88" : "#44cc88") : d < 0 ? (d === -2 ? "#ff3355" : "#cc5566") : "#7591a8";
+const V4_REGIME_COLOR = { CHOP:"#7591a8", TREND:"#00ff88", BREAKOUT:"#00ddff", SQUEEZE:"#cc88ff", REVERSAL:"#ff9955", "HIGH VOL":"#ff3355", "LOW VOL":"#556677" };
+
 async function fetchUWDirect(uwKey, signal) {
   const H = { Authorization: `Bearer ${uwKey}` };
   const get = (path) => fetch(`https://api.unusualwhales.com/api${path}`, { headers: H, signal })
@@ -467,12 +801,18 @@ async function fetchUWDirect(uwKey, signal) {
     };
   });
 
-  // Pre-compute Ichimoku per ticker on the client — avoids bloating Claude tokens
+  // Pre-compute Ichimoku + the V4 quant stack per ticker on the client —
+  // avoids bloating Claude tokens, and keeps the scoring identical to FINAL_V4.
   const ichimokuByTicker = {};
+  const v4ByTicker = {};
   ohlcTickers.forEach((t, i) => {
     const bars = ohlcResults[i]?.data || [];
     const ich = computeIchimoku(bars);
     if (ich) ichimokuByTicker[t] = ich;
+    try {
+      const q = computeV4(bars);
+      if (q) v4ByTicker[t] = q;
+    } catch (_) { /* one bad symbol must never break the whole scan */ }
   });
 
   return {
@@ -481,6 +821,7 @@ async function fetchUWDirect(uwKey, signal) {
     market_tide: tide.data || [],
     per_ticker,
     ichimokuByTicker,
+    v4ByTicker,
   };
 }
 
@@ -776,6 +1117,7 @@ function Card({ p, open, onToggle, pos, onSave, isNew, macroBias }) {
   const guidance= getGuidance(p);
   const accent  = sqT?.color || sigDef.color;
   const tech    = getTechnicalRead(p, macroBias);
+  const v4      = p.v4 || null;
 
   // Position tracker state (now collapsible section, not a tab)
   const [posOpen, setPosOpen] = useState(!!pos?.entryPrice);
@@ -806,6 +1148,13 @@ function Card({ p, open, onToggle, pos, onSave, isNew, macroBias }) {
             <span style={{ fontSize:12, padding:"3px 11px", background:tech.verdictColor+"25", border:`1.5px solid ${tech.verdictColor}`, color:tech.verdictColor, fontWeight:800, letterSpacing:"0.1em", borderRadius:3 }}>
               {tech.verdict}{tech.verdict==="PENDING"?"":` · ${tech.verdictConf}%`}
             </span>
+            {v4 && (
+              <span title={`V4 · APEX ${v4.apex} · DIR ${v4DirLabel(v4.direction)} · CONF ${v4.confidence} · STABLE ${v4.stable} · EARLY ${v4.early} · ${v4.regimeName}${v4.early < 40 && v4.apex >= 65 ? " — strong but EXTENDED, the move already happened" : ""}`}
+                style={{ fontSize:11, padding:"3px 9px", background:"#08131d", border:`1px solid ${v4Color(v4.apex, V4_SCORE_BAND)}66`, color:v4Color(v4.apex, V4_SCORE_BAND), fontWeight:700, letterSpacing:"0.06em", borderRadius:3, fontFamily:"'JetBrains Mono','SF Mono',Menlo,Consolas,monospace" }}>
+                APEX {v4.apex} · <span style={{ color:v4DirColor(v4.direction) }}>{v4DirLabel(v4.direction)}</span>
+                {v4.early < 40 && v4.apex >= 65 && <span style={{ color:"#ff9955" }}> ⚠LATE</span>}
+              </span>
+            )}
             {isEW && <span style={{ fontSize:11, color:"#00ddff", background:"#001418", border:"1px solid #00ddff55", padding:"2px 8px", borderRadius:3 }}>👀 EARLY</span>}
             {sc>=3 && !isEW && <span style={{ fontSize:11, color:"#00ddff", fontWeight:700 }}>📊 {sc}d staircase</span>}
             {p.sweepOk && p.dpOk && <span style={{ fontSize:11, color:"#ffe033", fontWeight:700 }}>⚡ BOTH</span>}
@@ -1189,6 +1538,105 @@ function Setup({ onConnect }) {
 }
 
 // ── APP ───────────────────────────────────────────────────────────────────────
+
+// ── V4 QUANT GRID ─────────────────────────────────────────────────────────────
+// The FINAL_V4 watchlist, rendered from the same numbers ThinkorSwim would show.
+// One row per ticker (deduped), sorted by APEX. Read left to right: is it
+// tradeable → which side → do the signals agree → how strong → early or late.
+function V4Grid({ feed, onClose }) {
+  const seenT = new Set();
+  const rows = [];
+  feed.forEach(p => {
+    if (!p.v4 || seenT.has(p.ticker)) return;
+    seenT.add(p.ticker);
+    rows.push({ ticker: p.ticker, cat: p.cat, ...p.v4 });
+  });
+  rows.sort((a, b) => b.apex - a.apex);
+
+  const th = { padding:"7px 10px", textAlign:"right", fontSize:10, letterSpacing:"0.12em", color:"#7591a8", fontWeight:700, whiteSpace:"nowrap", borderBottom:"1px solid #1a2a3a" };
+  const td = { padding:"7px 10px", textAlign:"right", fontSize:13, fontWeight:600, whiteSpace:"nowrap", fontFamily:"'JetBrains Mono','SF Mono',Menlo,Consolas,monospace" };
+  const bar = (val, color) => ({ ...td, color, background:`linear-gradient(to left, ${color}22 ${Math.max(0, Math.min(100, val))}%, transparent 0%)` });
+  const liq = n => n >= 1e9 ? `$${(n/1e9).toFixed(1)}B` : n >= 1e6 ? `$${(n/1e6).toFixed(0)}M` : `$${(n/1e3).toFixed(0)}K`;
+
+  return (
+    <div style={{ background:"#04080c", borderBottom:"1px solid #0e1a24", maxHeight:"46vh", overflow:"auto", flexShrink:0 }}>
+      <div style={{ display:"flex", alignItems:"center", gap:12, padding:"9px 20px", borderBottom:"1px solid #0e1a24", position:"sticky", top:0, background:"#04080c", zIndex:2 }}>
+        <span style={{ fontSize:12, fontWeight:700, letterSpacing:"0.16em", color:"#66ffcc" }}>🧮 V4 QUANT GRID</span>
+        <span style={{ fontSize:11, color:"#7591a8" }}>{rows.length} ticker{rows.length===1?"":"s"} · same math as FINAL_V4 ThinkScript · sorted by APEX</span>
+        <button onClick={onClose} style={{ marginLeft:"auto", background:"transparent", border:"1px solid #15212e", color:"#7591a8", fontSize:12, padding:"4px 10px", cursor:"pointer", borderRadius:3 }}>✕ close</button>
+      </div>
+      {rows.length === 0 ? (
+        <div style={{ padding:"22px 20px", fontSize:13, color:"#7591a8" }}>
+          No V4 rows yet. The engine needs at least 60 five-minute bars per ticker — it populates
+          on the next scan once OHLC data arrives.
+        </div>
+      ) : (
+        <table style={{ borderCollapse:"collapse", width:"100%" }}>
+          <thead>
+            <tr>
+              <th style={{ ...th, textAlign:"left" }}>SYMBOL</th>
+              <th style={th}>LAST</th>
+              <th style={th} title="Master 0-100 opportunity score">APEX</th>
+              <th style={th} title="Direction: -2 strong bear … +2 strong bull">DIR</th>
+              <th style={th} title="Agreement between the six direction lenses">CONF</th>
+              <th style={th} title="Setup quality, direction-agnostic">STABLE</th>
+              <th style={th} title="How early: high APEX + low EARLY means you missed it">EARLY</th>
+              <th style={th} title="ATR as % of price">ATR%</th>
+              <th style={th} title="Volume vs 30-bar average">RVOL</th>
+              <th style={th} title="Darvas state / structural bias">DARVAS</th>
+              <th style={th} title="Squeeze setup quality + state">SQZ</th>
+              <th style={th} title="Buying/selling pressure proxy — NOT order flow">FLOW</th>
+              <th style={th} title="Confirmation breadth 0-4">CONF✓</th>
+              <th style={{ ...th, textAlign:"left" }}>REGIME</th>
+              <th style={th} title="Approx average daily dollar volume">LIQ</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map(r => (
+              <tr key={r.ticker} style={{ borderBottom:"1px solid #0b141c" }}>
+                <td style={{ ...td, textAlign:"left", color:"#eaf2ff", fontSize:14, fontWeight:700 }}>{r.ticker}</td>
+                <td style={{ ...td, color:"#b8c9dc" }}>{r.last?.toFixed(2) ?? "—"}</td>
+                <td style={bar(r.apex, v4Color(r.apex, V4_SCORE_BAND))}>{r.apex}</td>
+                <td style={{ ...td, color:v4DirColor(r.direction), fontWeight:800 }}>{v4DirLabel(r.direction)}</td>
+                <td style={bar(r.confidence, v4Color(r.confidence, V4_SCORE_BAND))}>{r.confidence}</td>
+                <td style={bar(r.stable, v4Color(r.stable, V4_SCORE_BAND))}>{r.stable}</td>
+                <td style={bar(r.early, v4Color(r.early, V4_SCORE_BAND))}>{r.early}</td>
+                <td style={{ ...td, color: r.atrPct==null ? "#3e5268" : r.atrPct>=5 ? "#ff66cc" : r.atrPct>=3 ? "#00ff88" : r.atrPct>=2 ? "#00ddff" : r.atrPct>=1 ? "#ffe033" : "#7591a8" }}>
+                  {r.atrPct==null ? "—" : r.atrPct.toFixed(2)}
+                </td>
+                <td style={{ ...td, color: r.rvol==null ? "#3e5268" : r.rvol>=2 ? "#00ff88" : r.rvol>=1.5 ? "#00ddff" : r.rvol>=1 ? "#ffe033" : "#7591a8" }}>
+                  {r.rvol==null ? "—" : r.rvol.toFixed(2)}
+                </td>
+                <td style={{ ...td, color:v4DirColor(r.darvas > 0 ? Math.min(2, r.darvas) : r.darvas) }}>
+                  {r.darvas > 0 ? `+${r.darvas}` : r.darvas}<span style={{ color:"#3e5268" }}> / </span>
+                  <span style={{ color:v4DirColor(r.darvasBias) }}>{v4DirLabel(r.darvasBias)}</span>
+                </td>
+                <td style={{ ...td, color: r.sqzState===1 ? "#00ff88" : r.sqzState===2 ? "#cc88ff" : r.sqzState===-1 ? "#00ddff" : "#7591a8" }}>
+                  {r.sqzHit}{r.sqzState===2 ? "●" : r.sqzState===1 ? "▲" : r.sqzState===-1 ? "·" : ""}
+                </td>
+                <td style={{ ...td, color: r.smartFlow>=60 ? "#00ff88" : r.smartFlow>=25 ? "#44cc88" : r.smartFlow<=-60 ? "#ff3355" : r.smartFlow<=-25 ? "#cc5566" : "#7591a8" }}>
+                  {r.smartFlow > 0 ? `+${r.smartFlow}` : r.smartFlow}
+                </td>
+                <td style={{ ...td, color: r.confirmed>=4 ? "#00ff88" : r.confirmed===3 ? "#00ddff" : r.confirmed===2 ? "#ffe033" : "#7591a8" }}>{r.confirmed}/4</td>
+                <td style={{ ...td, textAlign:"left", fontSize:11, letterSpacing:"0.08em", color:V4_REGIME_COLOR[r.regimeName] || "#7591a8" }}>{r.regimeName}</td>
+                <td style={{ ...td, color: r.liquidity>=25e6 ? "#9fb5c8" : "#ff9955" }}>{liq(r.liquidity)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      <div style={{ padding:"8px 20px", fontSize:11, color:"#7591a8", borderTop:"1px solid #0e1a24", lineHeight:1.7 }}>
+        <b style={{color:"#8aabc2"}}>FLOW is a proxy, not order flow.</b> It is built from close-location × volume,
+        VWAP displacement and relative volume — the same substitute FINAL_V4 uses in ThinkorSwim, which has no
+        dark-pool feed. The real positioning data is the sweep / DP / GEX columns on the cards below.
+        <b style={{color:"#8aabc2"}}> No BID/ASK column:</b> the Unusual Whales endpoints in use return no stock-level
+        quote, so liquidity is shown as approximate average daily dollar volume instead of a spread. In ThinkorSwim,
+        use <code style={{color:"#9fb5c8"}}>BidAskSpread.ts</code> — bid/ask is only exposed to custom quotes.
+      </div>
+    </div>
+  );
+}
+
 function App() {
   const [ready,     setReady]     = useState(false);
   const [feed,      setFeed]      = useState([]);
@@ -1215,6 +1663,7 @@ function App() {
   const [pbOpen,    setPbOpen]    = useState(false);                     // playbook expanded panel
   const [showLegend,setShowLegend]= useState(false);                     // legend strip hidden by default
   const [directMode,setDirectMode]= useState(true);                      // true = REST direct (fast), false = MCP (slower)
+  const [showV4,    setShowV4]    = useState(false);                     // V4 quant grid panel
 
   const seen       = useRef(new Set());
   const intv       = useRef(null);
@@ -1342,6 +1791,7 @@ function App() {
       if (!prints.length) { addLog("⚠ No valid JSON — will retry next cycle"); if(raw) addLog(`Snippet: ${raw.slice(0,100)}`); return; }
       const freshIds = new Set();
       const ichMap = rawFetched?.ichimokuByTicker || {};
+      const v4Map  = rawFetched?.v4ByTicker || {};
       const fresh = prints
         .filter(p=>p.ticker&&p.sig)
         .map(p=>({
@@ -1355,6 +1805,7 @@ function App() {
           time:p.time||new Date().toTimeString().slice(0,8),
           id:p.id||`${p.ticker}-${p.sig}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
           ichimoku: ichMap[p.ticker] || null,  // ← Ichimoku pre-computed client-side from 5m OHLC
+          v4: v4Map[p.ticker] || null,         // ← V4 quant stack, same math as FINAL_V4 ThinkScript
         }))
         .map(p=>({...p, winProb:calcWinProb(p)}))
         .filter(p=>{
@@ -1540,6 +1991,7 @@ function App() {
               { icon:soundOn?"🔔":"🔕", label:"", active:soundOn, onClick:()=>setSoundOn(p=>!p), ac:"#00ff88", tip:"Sound alerts" },
               { icon:"⟳", label:"", active:false, onClick:manualFetch, disabled:loading, tip:"Manual refresh" },
               { icon:paused?"▶":"⏸", label:"", active:paused, onClick:()=>setPaused(p=>!p), ac:"#6080a0", tip:paused?"Resume":"Pause" },
+              { icon:"🧮", label:"V4", active:showV4, onClick:()=>setShowV4(p=>!p), ac:"#66ffcc", tip:"V4 quant grid — APEX / DIR / CONF / STABLE / EARLY, same math as FINAL_V4 ThinkScript" },
               { icon:"≡", label:"LOG", active:showLog, onClick:()=>setShowLog(p=>!p), ac:"#7aaed0", tip:"Activity log" },
             ].map(({icon,label,active,onClick,disabled,ac="#ffe033",tip})=>(
               <button key={icon+label} onClick={disabled?undefined:onClick} title={tip}
@@ -1614,6 +2066,8 @@ function App() {
           );
         })()}
       </div>
+
+      {showV4 && <V4Grid feed={feed} onClose={()=>setShowV4(false)}/>}
 
       <div style={{ display:"grid", gridTemplateColumns:showLog?"1fr 1fr 0.7fr 200px":"1fr 1fr 0.7fr", flex:1, overflow:"hidden", background:"#05090e" }}>
         <Column title="🚀 SQUEEZES" color="#00ff88" items={squeezes} openId={openId} onToggle={toggle} positions={positions} onSave={savePos} newIds={newIds} viewMode={viewMode} sortMode={sortMode} topEntries={topSq} macroBias={bias}/>

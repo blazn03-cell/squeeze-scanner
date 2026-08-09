@@ -1,0 +1,25 @@
+# Only index.html is deployed (see vercel.json builds). Everything below is
+# build context that Vercel would otherwise upload for nothing.
+
+node_modules
+.git
+
+# ThinkorSwim source — installed by pasting into TOS, never served over HTTP
+FINAL_V4
+
+# Duplicate archives and scratch assets
+attached_assets
+
+# Node-side cron scanner: runs on a schedule, not in the browser
+index.js
+scanner.js
+sheets.js
+setup-sheet.js
+config.js
+package-lock.json
+
+# Local dev servers
+serve.py
+main.py
+pyproject.toml
+.replit
