@@ -13,7 +13,11 @@
       "status": "not_created",
       "requirement": "Squeeze Scanner must use its OWN Stripe account, separate from any other business in this org.",
       "do_not_use": "acct_1Sr1rAA99FsxroMn — an unrelated business's live account. Squeeze Scanner is its own entity and must never write products, prices or features into it.",
-      "first_step": "Create a dedicated Squeeze Scanner account, then build and verify the catalog in its sandbox before live."
+      "verified_on": "2026-08-09",
+      "verified_finding": "The only Stripe account reachable from this session is acct_1Sr1rAA99FsxroMn (live + sandbox). Its live catalog holds four 'Frontline Sales Support' products. No Squeeze Scanner object exists in it and none was created.",
+      "why_nothing_is_wired": "Two independent blockers: (1) billing.mode is 'free_launch', so there is nothing to charge for yet; (2) the only reachable account belongs to a different business. Creating the new account requires the owner to sign in to Stripe and create it — it cannot be done from here.",
+      "first_step": "Owner creates a dedicated Squeeze Scanner Stripe account at dashboard.stripe.com, then connects it to this session.",
+      "then": "Build and verify the catalog in that account's sandbox using the lookup_keys already defined on each tier below, flip billing.mode to 'subscriptions', and only then go live."
     }
   },
   "capabilities": {

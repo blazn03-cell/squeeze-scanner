@@ -2738,37 +2738,74 @@ function Column({ title, color, items, openId, onToggle, positions, onSave, newI
   );
 }
 
-// ── SETUP SCREEN ─────────────────────────────────────────────────────────────
+// ── START SCREEN ─────────────────────────────────────────────────────────────
+// No key is required to use this app. Only ONE feature needs paid keys — the
+// live options-flow scan. Everything else (market read, danger windows, the
+// ThinkorSwim scanner, the income lab, the glossary) is pure local computation
+// and always available. The old screen demanded both keys before rendering a
+// single pixel, which made the whole product look broken to anyone without an
+// Unusual Whales subscription.
 function Setup({ onConnect }) {
-  const [ak, setAk] = useState("");
-  const [uk, setUk] = useState("");
-  const ok = ak.trim() && uk.trim();
+  const [ak, setAk]     = useState("");
+  const [uk, setUk]     = useState("");
+  const [open, setOpen] = useState(false);
+  const both = ak.trim() && uk.trim();
   return (
-    <div style={{ display:"flex", alignItems:"center", justifyContent:"center", flex:1, background:"#060b10" }}>
-      <div style={{ width:520, border:"1px solid #0f1a24", background:"#080c12", padding:40 }}>
-        <div style={{ fontSize:11, color:"#7591a8", letterSpacing:"0.22em", marginBottom:6, fontWeight:500 }}>UNUSUAL WHALES · PAID SUBSCRIPTION</div>
-        <div style={{ fontSize:22, fontWeight:700, color:"#eaf2ff", marginBottom:10, letterSpacing:"-0.01em" }}>⚡ WallstreetHustler · Squeeze Scanner</div>
-        <div style={{ fontSize:13, color:"#9bb3c6", lineHeight:1.7, marginBottom:30 }}>
-          14 signal types · Staircase detection · Win probability engine · IV-aware strategies · Position tracker with P&amp;L
+    <div style={{ display:"flex", alignItems:"center", justifyContent:"center", flex:1, background:"#060b10", padding:20, overflowY:"auto" }}>
+      <div style={{ width:560, maxWidth:"100%", border:"1px solid #0f1a24", background:"#080c12", padding:"36px 40px", borderRadius:6 }}>
+        <div style={{ fontSize:26, fontWeight:800, color:"#eaf2ff", marginBottom:8, letterSpacing:"-0.02em" }}>⚡ WallstreetHustler</div>
+        <div style={{ fontSize:15, color:"#9bb3c6", lineHeight:1.7, marginBottom:26 }}>
+          A stock scanner that tells you, in plain English, what is setting up today and
+          when to stay out of the way.
         </div>
-        {[
-          { l:"ANTHROPIC API KEY",      h:"Get one at console.anthropic.com → API Keys",         p:"sk-ant-api03-…",         v:ak, s:setAk },
-          { l:"UNUSUAL WHALES API KEY", h:"Get one at unusualwhales.com/settings/api-dashboard",  p:"Your paid bearer token", v:uk, s:setUk },
-        ].map(({ l, h, p, v, s }) => (
-          <div key={l} style={{ marginBottom:20 }}>
-            <div style={{ fontSize:11, color:"#a7c0d4", letterSpacing:"0.14em", marginBottom:7, fontWeight:600 }}>{l}</div>
-            <input type="password" value={v} onChange={e=>s(e.target.value)}
-              onKeyDown={e=>e.key==="Enter"&&ok&&onConnect(ak.trim(),uk.trim())}
-              placeholder={p}
-              style={{ width:"100%", background:"#07090d", border:"1px solid #1a2a3a", color:"#eaf2ff", padding:"11px 13px", fontSize:13, outline:"none", fontFamily:"inherit", boxSizing:"border-box", borderRadius:3 }}/>
-            <div style={{ fontSize:11, color:"#7591a8", marginTop:6 }}>{h}</div>
-          </div>
-        ))}
-        <button onClick={()=>ok&&onConnect(ak.trim(),uk.trim())}
-          style={{ width:"100%", padding:"14px 0", background:ok?"#002817":"#0a1219", border:`1px solid ${ok?"#00ff8888":"#1a2a3a"}`, color:ok?"#00ff88":"#5a7a92", fontSize:12, fontWeight:600, letterSpacing:"0.18em", cursor:ok?"pointer":"default", transition:"all 0.2s", fontFamily:"inherit", borderRadius:3 }}>
-          CONNECT &amp; SCAN
+
+        <button onClick={()=>onConnect("","")}
+          style={{ width:"100%", padding:"16px 0", background:"#00281799", border:"1px solid #00ff8888", color:"#00ff88",
+                   fontSize:15, fontWeight:700, letterSpacing:"0.06em", cursor:"pointer", fontFamily:"inherit", borderRadius:5 }}>
+          ▶  START — free, no key needed
         </button>
-        <div style={{ fontSize:11, color:"#7591a8", marginTop:18, textAlign:"center", lineHeight:1.5 }}>🔒 Keys stored in memory only — never sent anywhere except Anthropic API</div>
+        <div style={{ fontSize:12, color:"#7591a8", marginTop:10, lineHeight:1.6 }}>
+          Opens the market read, the danger windows, the ThinkorSwim scanner files, the
+          income lab and the plain-English guide. Nothing to sign up for.
+        </div>
+
+        <div style={{ height:1, background:"#12202c", margin:"26px 0 20px" }}/>
+
+        <button onClick={()=>setOpen(o=>!o)}
+          style={{ width:"100%", padding:"12px 0", background:"transparent", border:"1px solid #1a2a3a", color:"#8aa3b8",
+                   fontSize:12.5, fontWeight:600, cursor:"pointer", fontFamily:"inherit", borderRadius:4, textAlign:"left", paddingLeft:14 }}>
+          {open ? "▾" : "▸"}  Optional — turn on the live options-flow scan
+        </button>
+        <div style={{ fontSize:12, color:"#7591a8", marginTop:8, lineHeight:1.6 }}>
+          Only needed for the live sweep / dark-pool feed. It costs money and you can add
+          it any time later. Skip it for now if you are not sure.
+        </div>
+
+        {open && (
+          <div style={{ marginTop:20 }}>
+            {[
+              { l:"ANTHROPIC API KEY",      h:"console.anthropic.com → API Keys",              p:"sk-ant-api03-…",         v:ak, s:setAk },
+              { l:"UNUSUAL WHALES API KEY", h:"unusualwhales.com/settings/api-dashboard (paid)", p:"Your paid bearer token", v:uk, s:setUk },
+            ].map(({ l, h, p, v, s }) => (
+              <div key={l} style={{ marginBottom:18 }}>
+                <div style={{ fontSize:11, color:"#a7c0d4", letterSpacing:"0.14em", marginBottom:7, fontWeight:600 }}>{l}</div>
+                <input type="password" value={v} onChange={e=>s(e.target.value)}
+                  onKeyDown={e=>e.key==="Enter"&&both&&onConnect(ak.trim(),uk.trim())}
+                  placeholder={p}
+                  style={{ width:"100%", background:"#07090d", border:"1px solid #1a2a3a", color:"#eaf2ff", padding:"11px 13px", fontSize:13, outline:"none", fontFamily:"inherit", boxSizing:"border-box", borderRadius:3 }}/>
+                <div style={{ fontSize:11, color:"#7591a8", marginTop:6 }}>{h}</div>
+              </div>
+            ))}
+            <button onClick={()=>both&&onConnect(ak.trim(),uk.trim())}
+              style={{ width:"100%", padding:"13px 0", background:both?"#002817":"#0a1219", border:`1px solid ${both?"#00ff8888":"#1a2a3a"}`, color:both?"#00ff88":"#5a7a92", fontSize:12, fontWeight:600, letterSpacing:"0.14em", cursor:both?"pointer":"default", fontFamily:"inherit", borderRadius:3 }}>
+              START WITH LIVE FLOW
+            </button>
+            <div style={{ fontSize:11, color:"#7591a8", marginTop:14, textAlign:"center", lineHeight:1.5 }}>
+              🔒 Keys are kept in memory for this tab only. They are never stored and never
+              sent anywhere except the two services above.
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -4191,6 +4228,289 @@ function PolyTab({ onClose, markets, catalystEvents, now }) {
   );
 }
 
+// ── SIMPLE VIEW ──────────────────────────────────────────────────────────────
+// The default screen. One column, big type, short sentences, numbered steps.
+// It reads from exactly the same engines as the expert view — nothing here
+// recomputes or softens a number, it only says what the number means in words
+// a beginner can act on. The dense multi-column layout is one click away and
+// completely unchanged.
+
+const SIMPLE_KEY = "wsh_ui_mode_v1";
+
+// Plain-English translations. Keep these boring and literal — the whole point
+// is that a reader never has to guess what a word means.
+const PLAIN = {
+  score:      "How good the setup is overall, 0 to 100. Higher is better. Under 55 means skip it.",
+  direction:  "Which way it is leaning. Up means buyers are winning, down means sellers are.",
+  confidence: "How much the different checks agree with each other. Low means mixed signals.",
+  timing:     "Whether you are early or late. Late means most of the move already happened.",
+  extension:  "How far price has run away from its normal level. Far away means you are chasing.",
+  liquidity:  "How easy it is to get in and out without losing money on the spread.",
+  squeeze:    "The stock has gone quiet and coiled up. Quiet often comes before a fast move.",
+  flush:      "A fast drop where sellers dump all at once.",
+};
+
+function BigCard({ tone = "neutral", title, children, right }) {
+  const c = { good:"#00ff88", warn:"#ffaa44", bad:"#ff3355", neutral:"#66ccff", calm:"#7591a8" }[tone] || "#66ccff";
+  return (
+    <div style={{ border:`1px solid ${c}33`, background:"#080d13", borderRadius:8, padding:"20px 22px", marginBottom:16 }}>
+      {title && (
+        <div style={{ display:"flex", alignItems:"baseline", gap:12, marginBottom:12 }}>
+          <div style={{ fontSize:17, fontWeight:750, color:c, letterSpacing:"-0.01em" }}>{title}</div>
+          {right && <div style={{ marginLeft:"auto", fontSize:12, color:"#7591a8" }}>{right}</div>}
+        </div>
+      )}
+      <div style={{ fontSize:14.5, color:"#c2d4e4", lineHeight:1.75 }}>{children}</div>
+    </div>
+  );
+}
+
+function Step({ n, title, children }) {
+  return (
+    <div style={{ display:"flex", gap:16, marginBottom:18 }}>
+      <div style={{ flexShrink:0, width:34, height:34, borderRadius:"50%", background:"#0d1a26", border:"1px solid #66ccff44",
+                    display:"flex", alignItems:"center", justifyContent:"center", fontSize:15, fontWeight:800, color:"#66ccff" }}>{n}</div>
+      <div style={{ flex:1 }}>
+        <div style={{ fontSize:15.5, fontWeight:700, color:"#eaf2ff", marginBottom:6 }}>{title}</div>
+        <div style={{ fontSize:14, color:"#9bb3c6", lineHeight:1.75 }}>{children}</div>
+      </div>
+    </div>
+  );
+}
+
+// Turns the Market Brain's machine words into one sentence and a traffic light.
+function plainMarketRead(brain, zone, liveMode) {
+  if (!brain) return { light:"grey", headline:"Still loading.", what:"Give it a second." };
+  // activeZone() returns { severity: 0..3, labels: [] } — 3 is the worst.
+  const sev = zone?.severity || 0;
+  const n = (brain.best || []).length;
+  if (sev >= 2) return {
+    light:"red",
+    headline:"Right now is a bad time to start a new trade.",
+    what:`A ${sev >= 3 ? "very risky" : "risky"} window is open: ${(zone.labels || []).join(", ")}. Prices can move for reasons that have nothing to do with your setup. Wait for it to pass.`,
+  };
+  if (!liveMode) return {
+    light:"blue",
+    headline:"Live options flow is off, so there is no list of setups today.",
+    what:"Everything else still works: the danger windows below are real, and the ThinkorSwim scanner in Step 3 runs on its own without any key.",
+  };
+  if (n === 0) return {
+    light:"amber",
+    headline:"Nothing is good enough to trade right now.",
+    what:"The scanner looked and found no setup that clears the quality bar. Doing nothing is a position. Check back later.",
+  };
+  return {
+    light:"green",
+    headline:`${n} setup${n === 1 ? "" : "s"} look${n === 1 ? "s" : ""} good enough to look at.`,
+    what:"Look at them in Step 2. Good enough to look at is not the same as good enough to buy — read the reasons.",
+  };
+}
+
+const LIGHTS = { green:{ e:"🟢", c:"#00ff88" }, amber:{ e:"🟡", c:"#ffaa44" }, red:{ e:"🔴", c:"#ff3355" },
+                 blue:{ e:"🔵", c:"#66ccff" }, grey:{ e:"⚪", c:"#7591a8" } };
+
+function SimpleHome({ brain, zones, zone, calendar, liveMode, nowMs, feed, onExpert, onOpen, mode, onMode }) {
+  const read = plainMarketRead(brain, zone, liveMode);
+  const L = LIGHTS[read.light];
+  const best = (brain?.best || []).slice(0, 5);
+  const upcoming = (zones || []).filter(z => z.end > nowMs && z.severity >= 2).slice(0, 6);
+  const fmt = ts => new Date(ts).toLocaleTimeString("en-US", { hour:"numeric", minute:"2-digit", timeZone:"America/New_York" });
+
+  return (
+    <div style={{ flex:1, overflowY:"auto", background:"#05090e" }}>
+      <div style={{ maxWidth:820, margin:"0 auto", padding:"28px 22px 80px" }}>
+
+        {/* header */}
+        <div style={{ display:"flex", alignItems:"center", gap:14, marginBottom:8, flexWrap:"wrap" }}>
+          <div style={{ fontSize:24, fontWeight:800, color:"#eaf2ff", letterSpacing:"-0.02em" }}>⚡ WallstreetHustler</div>
+          <span style={{ fontSize:11, fontWeight:700, color:"#00ff88", background:"#00ff8815", border:"1px solid #00ff8844", padding:"4px 10px", borderRadius:20, letterSpacing:"0.06em" }}>
+            FREE WHILE WE PROVE IT
+          </span>
+          <button onClick={onExpert}
+            style={{ marginLeft:"auto", background:"transparent", border:"1px solid #1a2a3a", color:"#8aa3b8", fontSize:12, fontWeight:600,
+                     padding:"8px 14px", borderRadius:4, cursor:"pointer", fontFamily:"inherit" }}>
+            Show me all the numbers →
+          </button>
+        </div>
+        <div style={{ fontSize:14, color:"#7591a8", marginBottom:26, lineHeight:1.7 }}>
+          Read this top to bottom. It takes about two minutes.
+        </div>
+
+        {/* the one big answer */}
+        <div style={{ border:`1px solid ${L.c}44`, background:`${L.c}0c`, borderRadius:10, padding:"24px 26px", marginBottom:26 }}>
+          <div style={{ display:"flex", gap:16, alignItems:"flex-start" }}>
+            <div style={{ fontSize:34, lineHeight:1 }}>{L.e}</div>
+            <div>
+              <div style={{ fontSize:20, fontWeight:750, color:"#eaf2ff", lineHeight:1.4, marginBottom:8, letterSpacing:"-0.01em" }}>
+                {read.headline}
+              </div>
+              <div style={{ fontSize:14.5, color:"#a9c0d2", lineHeight:1.75 }}>{read.what}</div>
+            </div>
+          </div>
+        </div>
+
+        {/* how careful do you want to be */}
+        <BigCard tone="neutral" title="How careful do you want to be?">
+          <div style={{ display:"flex", gap:10, marginBottom:12, flexWrap:"wrap" }}>
+            {[
+              { id:"safe", label:"🛡  Careful", sub:"Only the very best. Most days it shows nothing — that is normal and it is the point." },
+              { id:"pro",  label:"⚙  Show everything", sub:"Every setup the engine sees, including messy ones. You decide." },
+            ].map(o => (
+              <button key={o.id} onClick={()=>onMode(o.id)}
+                style={{ flex:"1 1 240px", textAlign:"left", padding:"14px 16px", borderRadius:6, cursor:"pointer", fontFamily:"inherit",
+                         background: mode===o.id ? "#0d1c26" : "transparent",
+                         border:`1px solid ${mode===o.id ? "#66ccff88" : "#16232f"}` }}>
+                <div style={{ fontSize:14.5, fontWeight:700, color: mode===o.id ? "#eaf2ff" : "#8aa3b8", marginBottom:5 }}>{o.label}</div>
+                <div style={{ fontSize:12.5, color:"#7591a8", lineHeight:1.6 }}>{o.sub}</div>
+              </button>
+            ))}
+          </div>
+          <div style={{ fontSize:13, color:"#7591a8" }}>
+            This does not just hide rows. It changes which setups are allowed to reach you at all.
+          </div>
+        </BigCard>
+
+        {/* STEP 1 */}
+        <div style={{ fontSize:12, fontWeight:700, letterSpacing:"0.18em", color:"#5f7c93", margin:"32px 0 16px" }}>WHAT TO DO TODAY</div>
+
+        <BigCard tone="warn" title="Step 1 — Know when to sit on your hands">
+          {upcoming.length === 0 ? (
+            <div>No risky windows are scheduled for the rest of today. That does not mean nothing can happen — surprises are not on a calendar.</div>
+          ) : (
+            <>
+              <div style={{ marginBottom:12 }}>These are the times today when prices can jump for reasons that have nothing to do with your setup. Do not open a new trade inside one.</div>
+              {upcoming.map((z, i) => (
+                <div key={i} style={{ display:"flex", gap:12, padding:"11px 0", borderTop:"1px solid #12202c" }}>
+                  <div style={{ flexShrink:0, width:132, fontSize:13.5, fontWeight:700, color:"#eaf2ff", fontFamily:"'JetBrains Mono',monospace" }}>
+                    {fmt(z.start)} – {fmt(z.end)}
+                  </div>
+                  <div>
+                    <div style={{ fontSize:13.5, color:"#ffcc88", fontWeight:600 }}>{z.label}</div>
+                    <div style={{ fontSize:13, color:"#8aa3b8", lineHeight:1.6 }}>{z.note}</div>
+                  </div>
+                </div>
+              ))}
+            </>
+          )}
+          <div style={{ marginTop:14, fontSize:13, color:"#7591a8" }}>
+            All times are New York time. These windows are worked out from the clock and the
+            economic calendar — they are not guesses about what price will do.
+          </div>
+        </BigCard>
+
+        {/* STEP 2 */}
+        <BigCard tone={best.length ? "good" : "calm"} title="Step 2 — Look at what is setting up">
+          {!liveMode ? (
+            <div>
+              <div style={{ marginBottom:12 }}>
+                The live setup list needs the paid options-flow feed, which is switched off right now.
+                <b style={{ color:"#c2d4e4" }}> The ThinkorSwim scanner in Step 3 does the same job with no key at all</b> — that is the better place to start anyway.
+              </div>
+              <div style={{ fontSize:13, color:"#7591a8" }}>
+                We are not going to show you made-up rows to fill the space.
+              </div>
+            </div>
+          ) : best.length === 0 ? (
+            <div>
+              Nothing clears the bar right now. An empty list is a real answer, not a broken screen —
+              on most days the honest answer is "nothing worth your money today".
+            </div>
+          ) : (
+            <>
+              {best.map((b, i) => (
+                <div key={b.t} style={{ padding:"14px 0", borderTop: i ? "1px solid #12202c" : "none" }}>
+                  <div style={{ display:"flex", alignItems:"baseline", gap:12, marginBottom:6, flexWrap:"wrap" }}>
+                    <span style={{ fontSize:19, fontWeight:800, color:"#eaf2ff", letterSpacing:"-0.01em" }}>{b.t}</span>
+                    <span style={{ fontSize:13.5, fontWeight:700, color: b.direction > 0 ? "#00ff88" : "#ff3355" }}>
+                      {b.direction > 0 ? "leaning UP" : "leaning DOWN"}
+                    </span>
+                    <span style={{ fontSize:13, color:"#7591a8" }}>score {b.score} out of 100</span>
+                  </div>
+                  <div style={{ fontSize:13.5, color:"#9bb3c6", lineHeight:1.7 }}>
+                    {b.timing <= -1
+                      ? "⚠ You are late. The move mostly already happened — chasing it here is where beginners lose money."
+                      : b.confidence < 60
+                        ? "The checks disagree with each other. Treat it as a maybe, not a plan."
+                        : "The checks agree and it is not over-extended yet."}
+                  </div>
+                </div>
+              ))}
+              <div style={{ marginTop:14, fontSize:13, color:"#7591a8" }}>
+                A score is a ranking, not a promise. It says "this is worth your attention before
+                the others" — it does not say the trade will win.
+              </div>
+            </>
+          )}
+        </BigCard>
+
+        {/* STEP 3 */}
+        <BigCard tone="neutral" title="Step 3 — Put the scanner into ThinkorSwim (free, no key)">
+          <div style={{ marginBottom:14 }}>
+            This is the part that works for everybody. You copy some text into ThinkorSwim once,
+            and it scans the whole market for you forever after.
+          </div>
+          {[
+            [<>Open the <b style={{color:"#c2d4e4"}}>FINAL_V4</b> folder in the project on GitHub: <span style={{fontFamily:"'JetBrains Mono',monospace", fontSize:12.5, color:"#66ccff"}}>github.com/blazn03-cell/squeeze-scanner</span></>,
+             "Inside are three folders: WATCHLIST_COLUMNS, SCANNERS and STUDIES. Everything is plain text — nothing to install."],
+            ["Open WATCHLIST_COLUMNS / V4_SCORE.ts and copy the whole file.", "Every line, including the ones starting with #. Those are comments and ThinkorSwim ignores them."],
+            ["In ThinkorSwim, open a watchlist. Click the gear icon → Customize → Add Custom Quote → scroll to the bottom → thinkScript Editor.", "Paste what you copied. Give it the name SCORE. Click Apply."],
+            ["Do the same for V4_DIRECTION.ts, V4_CONFIDENCE.ts and V4_TIMING.ts.", "Four columns is enough to start. The rest are extras."],
+            ["Set the watchlist to Daily.", "Daily is what these numbers are built for. Sort by the SCORE column, biggest first."],
+            ["Read the top row.", "High score + up direction + timing that is not negative = the kind of setup this whole system is looking for."],
+          ].map(([t, b], i) => <Step key={i} n={i+1} title={t}>{b}</Step>)}
+          <div style={{ fontSize:13, color:"#ffaa44", background:"#ffaa440c", border:"1px solid #ffaa4433", borderRadius:5, padding:"12px 14px", marginTop:6, lineHeight:1.7 }}>
+            Honest note: this code has been checked line by line by machine, but it has not yet been
+            compiled inside ThinkorSwim on a real account. If a file throws an error when you paste
+            it, that is a bug worth reporting, not something you did wrong.
+          </div>
+        </BigCard>
+
+        {/* STEP 4 — glossary */}
+        <BigCard tone="calm" title="Step 4 — Learn the six words">
+          <div style={{ marginBottom:12 }}>Every number in this app is one of these six. Learn them once and the whole thing reads easily.</div>
+          {Object.entries(PLAIN).slice(0, 6).map(([k, v]) => (
+            <div key={k} style={{ display:"flex", gap:14, padding:"10px 0", borderTop:"1px solid #12202c" }}>
+              <div style={{ flexShrink:0, width:104, fontSize:13, fontWeight:700, color:"#66ccff", textTransform:"uppercase", letterSpacing:"0.06em" }}>{k}</div>
+              <div style={{ fontSize:13.5, color:"#9bb3c6", lineHeight:1.7 }}>{v}</div>
+            </div>
+          ))}
+        </BigCard>
+
+        {/* more tools */}
+        <div style={{ fontSize:12, fontWeight:700, letterSpacing:"0.18em", color:"#5f7c93", margin:"32px 0 16px" }}>THE OTHER TOOLS</div>
+        <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(240px,1fr))", gap:12, marginBottom:26 }}>
+          {[
+            { k:"v4",     icon:"🧮", t:"The number grid",   d:"Every score for every ticker, in a table. Same math as the ThinkorSwim files." },
+            { k:"income", icon:"💵", t:"Income lab",         d:"High-payout ETFs explained simply, with a calculator that shows the catch as well as the payout." },
+            { k:"intel",  icon:"📡", t:"News",               d:"What just happened, how big it is, and which way it points. Kept separate from the scores on purpose." },
+            { k:"poly",   icon:"◈",  t:"Prediction markets", d:"Research only. It never places an order and cannot hold your money." },
+          ].map(o => (
+            <button key={o.k} onClick={()=>onOpen(o.k)}
+              style={{ textAlign:"left", background:"#080d13", border:"1px solid #16232f", borderRadius:8, padding:"16px 18px", cursor:"pointer", fontFamily:"inherit" }}>
+              <div style={{ fontSize:15, fontWeight:700, color:"#eaf2ff", marginBottom:6 }}>{o.icon}  {o.t}</div>
+              <div style={{ fontSize:12.5, color:"#7591a8", lineHeight:1.65 }}>{o.d}</div>
+            </button>
+          ))}
+        </div>
+
+        {/* honesty */}
+        <BigCard tone="calm" title="What this will not do for you">
+          <ul style={{ margin:0, paddingLeft:20, lineHeight:2 }}>
+            <li>It does not predict prices. It ranks setups.</li>
+            <li>It does not know what a stock will do after news. It tells you news is happening.</li>
+            <li>A high score is not a guarantee. Plenty of high scores lose.</li>
+            <li>Nothing here places a trade for you, and it never touches your brokerage account.</li>
+          </ul>
+          <div style={{ marginTop:14, fontSize:13, color:"#7591a8" }}>
+            Education only. Not financial advice.
+          </div>
+        </BigCard>
+
+      </div>
+    </div>
+  );
+}
+
 function App() {
   const [ready,     setReady]     = useState(false);
   const [feed,      setFeed]      = useState([]);
@@ -4227,6 +4547,12 @@ function App() {
   const [nowMs,     setNowMs]     = useState(() => Date.now());
   const [showPoly,  setShowPoly]  = useState(false);                     // Poly Intelligence
   const [polyMarkets,setPolyMarkets] = useState([]);                     // read-only; no execution path exists
+  // Simple view is the default. Expert is the old dense layout, unchanged.
+  const [uiMode,    setUiMode]    = useState(() => {
+    try { return localStorage.getItem(SIMPLE_KEY) === "expert" ? "expert" : "simple"; } catch(_) { return "simple"; }
+  });
+  // True only when both paid keys were supplied. Everything else runs without them.
+  const [liveMode,  setLiveMode]  = useState(false);
 
   const seen       = useRef(new Set());
   const intv       = useRef(null);
@@ -4395,12 +4721,15 @@ function App() {
     } finally { isFetching.current=false; setLoading(false); }
   }; });
 
+  // Polling only runs when the paid feed is actually connected. Without keys the
+  // app is fully usable, it just has no options-flow rows — far better than the
+  // old behaviour of scanning with empty credentials and surfacing an error.
   useEffect(() => {
-    if (!ready) return;
+    if (!ready || !liveMode) return;
     const t = setTimeout(()=>fetchRef.current?.(),1200);
     intv.current = setInterval(()=>{ if(!paused) fetchRef.current?.(); }, Math.max(pollSec,60)*1000);
     return ()=>{ clearTimeout(t); clearInterval(intv.current); };
-  }, [ready, pollSec]);
+  }, [ready, liveMode, pollSec]);
 
   useEffect(()=>{ if(paused) clearInterval(intv.current); }, [paused]);
   useEffect(() => { const id = setInterval(() => setNowMin(nowETMin()), 30000); return () => clearInterval(id); }, []);
@@ -4409,8 +4738,14 @@ function App() {
   const connect = (a, u) => {
     akRef.current=a; ukRef.current=u;
     isFetching.current=false; seen.current.clear(); setFeed([]);
-    setReady(true); addLog("Connected · scan starting…");
+    const live = !!(a && u);
+    setLiveMode(live);
+    setReady(true);
+    addLog(live ? "Connected · live options flow on · scan starting…"
+                : "Started free · live options flow off — everything else is available");
   };
+
+  const setUi = m => { setUiMode(m); try { localStorage.setItem(SIMPLE_KEY, m); } catch(_){} };
 
   const manualFetch = () => { isFetching.current=false; setTimeout(()=>fetchRef.current?.(),100); };
   const savePos = (id,pos) => setPositions(p=>({...p,[id]:pos}));
@@ -4498,6 +4833,27 @@ function App() {
     </div>
   );
 
+  // Simple view — the default. The four deep panels are the same components the
+  // expert view uses, opened as overlays, so there is exactly one implementation
+  // of each and no chance of the two views disagreeing.
+  if (uiMode === "simple") return (
+    <div style={{ fontFamily:"'Inter','Segoe UI',system-ui,sans-serif", background:"#05090e", height:"100vh", display:"flex", flexDirection:"column", overflow:"hidden", color:"#b0c4d8" }}>
+      {showPoly && <PolyTab onClose={()=>setShowPoly(false)} markets={polyMarkets} catalystEvents={catalystEvents} now={nowMs}/>}
+      {showIntel && <IntelTab onClose={()=>setShowIntel(false)} events={catalystEvents} feed={feed}
+                              calendar={scheduled} macroRiskScore={brain.macroRisk} stats={intelStats}
+                              now={nowMs} ingestStatus={ingestStatus}/>}
+      {showV4 && <V4Grid feed={feed} onClose={()=>setShowV4(false)} modeResult={modeResult} mode={tradeMode}/>}
+      {showIncome && <IncomeTab onClose={()=>setShowIncome(false)}/>}
+      <SimpleHome
+        brain={brain} zones={zones} zone={activeZone(zones, nowMs)} calendar={scheduled}
+        liveMode={liveMode} nowMs={nowMs} feed={feed}
+        mode={tradeMode} onMode={setTradeMode}
+        onExpert={()=>setUi("expert")}
+        onOpen={k => { if (k==="v4") setShowV4(true); else if (k==="income") setShowIncome(true);
+                       else if (k==="intel") setShowIntel(true); else if (k==="poly") setShowPoly(true); }}/>
+    </div>
+  );
+
   const squeezes = doFilter(feed.filter(p=>p.cat==="squeeze"));
   const flushes  = doFilter(feed.filter(p=>p.cat==="flush"));
   const macros   = doFilter(feed.filter(p=>p.cat==="macro"));
@@ -4568,8 +4924,9 @@ function App() {
           </div>
           <div style={{ width:1, height:30, background:"#1a2a3a", marginRight:20 }}/>
           <div style={{ display:"flex", alignItems:"center", gap:8, marginRight:20 }}>
-            <div className={loading?"":"live"} style={{ width:8, height:8, borderRadius:"50%", background:error?"#ff3355":loading?"#ffe033":paused?"#6e88a0":"#00ff88", boxShadow:`0 0 8px ${error?"#ff3355":loading?"#ffe033":paused?"#6e88a0":"#00ff88"}66` }}/>
-            <span style={{ fontSize:11, fontWeight:600, color:error?"#ff3355":loading?"#ffe033":paused?"#8aa3b8":"#00ff88", letterSpacing:"0.1em" }}>{error?"ERROR":loading?"SCANNING…":paused?"PAUSED":"LIVE"}</span>
+            <div className={loading?"":(liveMode?"live":"")} style={{ width:8, height:8, borderRadius:"50%", background:!liveMode?"#5a7a92":error?"#ff3355":loading?"#ffe033":paused?"#6e88a0":"#00ff88", boxShadow:`0 0 8px ${!liveMode?"#5a7a9266":error?"#ff3355":loading?"#ffe033":paused?"#6e88a0":"#00ff88"}66` }}/>
+            <span title={liveMode?undefined:"The paid options-flow feed is not connected. Every other panel still works."}
+                  style={{ fontSize:11, fontWeight:600, color:!liveMode?"#7591a8":error?"#ff3355":loading?"#ffe033":paused?"#8aa3b8":"#00ff88", letterSpacing:"0.1em" }}>{!liveMode?"FLOW OFF":error?"ERROR":loading?"SCANNING…":paused?"PAUSED":"LIVE"}</span>
           </div>
           <div style={{ width:1, height:30, background:"#1a2a3a", marginRight:20 }}/>
           <div style={{ marginRight:20 }}>
@@ -4587,6 +4944,11 @@ function App() {
           })()}
           {error && <div style={{ padding:"3px 10px", background:"#ff000011", border:"1px solid #ff333322", fontSize:9, color:"#ff3355", maxWidth:200, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>✗ {error}</div>}
           <div style={{ marginLeft:"auto", display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>
+            <button onClick={()=>setUi("simple")} title="Back to the plain-English view"
+              style={{ background:"#0d1a26", border:"1px solid #66ccff55", color:"#66ccff", fontSize:11.5, fontWeight:700,
+                       padding:"7px 12px", borderRadius:4, cursor:"pointer", fontFamily:"inherit", letterSpacing:"0.04em" }}>
+              ← SIMPLE VIEW
+            </button>
             {/* Ticker search — bigger, with clear button */}
             <div style={{ position:"relative", display:"flex", alignItems:"center" }}>
               <input value={ticker} onChange={e=>setTicker(e.target.value.toUpperCase())} placeholder="🔎 TICKER"
