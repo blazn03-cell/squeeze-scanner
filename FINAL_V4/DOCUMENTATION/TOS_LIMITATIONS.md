@@ -71,8 +71,8 @@ has been run through the ThinkorSwim compiler.
 | 11 | Correlation overlap controlled | ✅ see `V4_DEPENDENCY_MATRIX.md` |
 | 12 | Quality / direction / confidence / timing separated | ✅ four distinct columns |
 | 13 | Extreme-extension penalty | ✅ hard block above 3.0 ATR |
-| 14 | Liquidity gate | ✅ hard floor + score, blocks APEX below 35 |
-| 15 | False-breakout handling | ✅ `failedBO` in StableScore, APEX and the breakout scan |
+| 14 | Liquidity gate | ✅ hard floor + score, blocks SCORE below 35 |
+| 15 | False-breakout handling | ✅ `failedBO` in StableScore, SCORE and the breakout scan |
 | 16 | Event-risk handling | ✅ two earnings columns |
 | 17 | Reasonable computational cost | ⚠️ **not measured** — see `Inertia` note below |
 | 18 | Duplicate declarations | ✅ machine-checked |
@@ -88,7 +88,7 @@ In this order — they are ranked by how likely they are to reject:
 1. `RelVol30Intraday.ts` — the `fold` + `GetValue` construct
 2. `V4_DaysToEarnings.ts` and `EarningsRisk.ts` — the `GetEventOffset` sign convention
 3. `BidAskSpread.ts` — must be pasted as a **custom quote**, not a study
-4. `V4_APEX_SCORE.ts` — the largest file; if anything hits a size or complexity limit it is this
+4. `V4_SCORE.ts` — the largest file; if anything hits a size or complexity limit it is this
 5. Any one scan, e.g. `V4_MASTER_SCAN.ts` — confirms the one-plot form is accepted
 6. `V4_Core.ts` — only if you intend to use the `reference` approach
 
@@ -147,7 +147,7 @@ smoothing, and the Keltner channel. Each shared module appears at most once per 
 dependency order.
 
 Light columns pull only the modules they need — `RelVol30` does not compute ADX, and
-`V3_ModelATRpct` computes nothing but ATR. The heaviest files are `V4_APEX_SCORE` and
+`V3_ModelATRpct` computes nothing but ATR. The heaviest files are `V4_SCORE` and
 `V4_MASTER_SCAN`, which pull nearly every module.
 
 ## Modularity — the honest trade-off

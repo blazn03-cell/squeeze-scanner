@@ -6,7 +6,7 @@
 # INSTALL      : MarketWatch > Quotes > Customize > Custom Quotes > new > paste.
 # OUTPUT       : 0-100. High = pre-expansion. Low = either nothing brewing or already gone.
 # COLORS       : grey low · amber building · green prime entry window.
-# LIMITATIONS  : Deliberately penalises rvol above 2.5 — by then the move is usually underway. Pair with V4_APEX_SCORE, never use alone.
+# LIMITATIONS  : Deliberately penalises rvol above 2.5 — by then the move is usually underway. Pair with V4_SCORE, never use alone.
 # ==========================================================================
 
 # ---- MODULE: PRICE ---------------------------------------------------------
@@ -121,7 +121,7 @@ def adx      = WildersAverage(dx, adxLength);
 # it exists, the session mean (VWAP). Using VWAP alone was wrong — on any normal
 # intraday trend day price drifts several ATR from the session open while
 # sitting right on its trend mean, which made a healthy trend read as "chase
-# risk" and hard-blocked APEX. You are not chasing if price is near EITHER
+# risk" and hard-blocked the score. You are not chasing if price is near EITHER
 # equilibrium, so the measure takes the minimum. On Daily, VWAP is unavailable
 # and this collapses cleanly to the EMA distance.
 def extEma  = if atrOK then AbsValue(c - emaM) / atr else Double.NaN;
@@ -141,7 +141,7 @@ def extBand = if IsNaN(extensionATR) then 0
 # This scores CHANGE, not level. Every term compares now against a few bars ago,
 # so a stock that has been strong for two weeks scores near zero here while a
 # stock crossing from neutral into strength scores high. It is deliberately NOT
-# "V4_APEX with lower thresholds" — that would just find the same names later.
+# "the master scan with lower thresholds" — that would just find the same names later.
 def rvolRising  = rvolSafe > rvolSafe[3] and rvolSafe >= 1.1;
 def volAccelE   = volTrend > volTrend[3] and volTrend >= 1.05;
 def adxImproving = adx > adx[3] and adx >= 15 and adx < 35;

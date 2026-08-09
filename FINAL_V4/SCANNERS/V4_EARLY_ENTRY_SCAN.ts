@@ -4,9 +4,9 @@
 # PURPOSE      : Good setups BEFORE full confirmation — the anti-lag scan.
 # AGGREGATION  : DAILY — the default and the MAXIMUM. 4h for faster 1-3 day trades.
 # INSTALL      : Scan tab > Stock Hacker > Add Study Filter > click the wrench on the filter > thinkScript Editor > paste > OK. Leave the condition as 'plot is true'.
-# OUTPUT       : true = symbol passes. High EarlyEntry, moderate rvol, not yet extended. Expect these to look less impressive than the APEX names. That is the point.
+# OUTPUT       : true = symbol passes. High EarlyEntry, moderate rvol, not yet extended. Expect these to look less impressive than the top-ranked names. That is the point.
 # COLORS       : n/a — scan filters have no colour output.
-# LIMITATIONS  : Exactly one plot, no labels, no bubbles, no secondary aggregation. Set the scan aggregation in the Study Filter's own dropdown and keep it identical to your watchlist columns or the numbers will not match. This scan intentionally accepts a LOWER StableScore and REJECTS extended names, so it will not overlap much with V4_APEX_LONG.
+# LIMITATIONS  : Exactly one plot, no labels, no bubbles, no secondary aggregation. Set the scan aggregation in the Study Filter's own dropdown and keep it identical to your watchlist columns or the numbers will not match. This scan intentionally accepts a LOWER StableScore and REJECTS extended names, so it will not overlap much with V4_SCORE_LONG.
 # ==========================================================================
 
 # ---- MODULE: PRICE ---------------------------------------------------------
@@ -121,7 +121,7 @@ def adx      = WildersAverage(dx, adxLength);
 # it exists, the session mean (VWAP). Using VWAP alone was wrong — on any normal
 # intraday trend day price drifts several ATR from the session open while
 # sitting right on its trend mean, which made a healthy trend read as "chase
-# risk" and hard-blocked APEX. You are not chasing if price is near EITHER
+# risk" and hard-blocked the score. You are not chasing if price is near EITHER
 # equilibrium, so the measure takes the minimum. On Daily, VWAP is unavailable
 # and this collapses cleanly to the EMA distance.
 def extEma  = if atrOK then AbsValue(c - emaM) / atr else Double.NaN;
@@ -141,7 +141,7 @@ def extBand = if IsNaN(extensionATR) then 0
 # This scores CHANGE, not level. Every term compares now against a few bars ago,
 # so a stock that has been strong for two weeks scores near zero here while a
 # stock crossing from neutral into strength scores high. It is deliberately NOT
-# "V4_APEX with lower thresholds" — that would just find the same names later.
+# "the master scan with lower thresholds" — that would just find the same names later.
 def rvolRising  = rvolSafe > rvolSafe[3] and rvolSafe >= 1.1;
 def volAccelE   = volTrend > volTrend[3] and volTrend >= 1.05;
 def adxImproving = adx > adx[3] and adx >= 15 and adx < 35;

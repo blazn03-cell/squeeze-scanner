@@ -52,7 +52,7 @@ def vwapSide = if !vwapOK then 0 else if c > vw then 1 else if c < vw then -1 el
 # it exists, the session mean (VWAP). Using VWAP alone was wrong — on any normal
 # intraday trend day price drifts several ATR from the session open while
 # sitting right on its trend mean, which made a healthy trend read as "chase
-# risk" and hard-blocked APEX. You are not chasing if price is near EITHER
+# risk" and hard-blocked the score. You are not chasing if price is near EITHER
 # equilibrium, so the measure takes the minimum. On Daily, VWAP is unavailable
 # and this collapses cleanly to the EMA distance.
 def extEma  = if atrOK then AbsValue(c - emaM) / atr else Double.NaN;

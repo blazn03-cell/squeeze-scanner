@@ -11,9 +11,9 @@
     "stripe_objects_created": false,
     "stripe_account": {
       "status": "not_created",
-      "requirement": "APEX must use its OWN Stripe account, separate from any other business in this org.",
-      "do_not_use": "acct_1Sr1rAA99FsxroMn — holds an unrelated live catalog (Frontline Sales Support).",
-      "first_step": "Create a dedicated APEX account, then build and verify the catalog in its sandbox before live."
+      "requirement": "Squeeze Scanner must use its OWN Stripe account, separate from any other business in this org.",
+      "do_not_use": "acct_1Sr1rAA99FsxroMn — an unrelated business's live account. Squeeze Scanner is its own entity and must never write products, prices or features into it.",
+      "first_step": "Create a dedicated Squeeze Scanner account, then build and verify the catalog in its sandbox before live."
     }
   },
   "capabilities": {
@@ -21,8 +21,8 @@
       "label": "Market Brain",
       "question": "What kind of market am I trading today?"
     },
-    "apex_scanner": {
-      "label": "APEX Scanner",
+    "scanner": {
+      "label": "Scanner",
       "question": "What is setting up right now?"
     },
     "live_intelligence": {
@@ -37,12 +37,12 @@
       "label": "Catalyst Playbooks",
       "question": "How has the market historically behaved around this event?"
     },
-    "apex_copilot": {
-      "label": "APEX Copilot",
+    "copilot": {
+      "label": "Copilot",
       "question": "Why is this signal being surfaced?"
     },
     "poly_intelligence": {
-      "label": "APEX Poly Intelligence",
+      "label": "Poly Intelligence",
       "question": "Where is there a modelled edge in prediction markets, and what is the catalyst risk on it?"
     }
   },
@@ -67,20 +67,20 @@
       "id": "free",
       "name": "Free",
       "price": 0,
-      "position": "Discover APEX",
+      "position": "Discover Squeeze Scanner",
       "stripe": {
-        "product_lookup_key": "apex_free",
+        "product_lookup_key": "wsh_free",
         "price_lookup_key": null,
         "price_lookup_key_annual": null
       },
-      "principle": "Useful but limited — never intentionally stale. A free user must be able to experience why APEX is different, on live data.",
+      "principle": "Useful but limited — never intentionally stale. A free user must be able to experience why Squeeze Scanner is different, on live data.",
       "entitlements": {
         "market_brain": "lite",
-        "apex_scanner": "limited",
+        "scanner": "limited",
         "live_intelligence": "none",
         "danger_zones": "summary",
         "catalyst_playbooks": "none",
-        "apex_copilot": "none",
+        "copilot": "none",
         "safe_pro_modes": false,
         "macro_calendar": true,
         "technical_news_alignment": false,
@@ -105,22 +105,22 @@
     },
     {
       "id": "core",
-      "name": "APEX Core",
+      "name": "Core",
       "price": 39,
       "position": "Technical intelligence",
       "stripe": {
-        "product_lookup_key": "apex_core",
-        "price_lookup_key": "apex_core_monthly",
-        "price_lookup_key_annual": "apex_core_annual"
+        "product_lookup_key": "wsh_core",
+        "price_lookup_key": "wsh_core_monthly",
+        "price_lookup_key_annual": "wsh_core_annual"
       },
       "principle": "The complete real-time technical engine, with the risk context that makes it usable.",
       "entitlements": {
         "market_brain": "full",
-        "apex_scanner": "full",
+        "scanner": "full",
         "live_intelligence": "none",
         "danger_zones": "full",
         "catalyst_playbooks": "none",
-        "apex_copilot": "none",
+        "copilot": "none",
         "safe_pro_modes": true,
         "macro_calendar": true,
         "technical_news_alignment": false,
@@ -147,22 +147,22 @@
     },
     {
       "id": "pro",
-      "name": "APEX Pro",
+      "name": "Pro",
       "price": 89,
       "position": "Full catalyst + market intelligence",
       "stripe": {
-        "product_lookup_key": "apex_pro",
-        "price_lookup_key": "apex_pro_monthly",
-        "price_lookup_key_annual": "apex_pro_annual"
+        "product_lookup_key": "wsh_pro",
+        "price_lookup_key": "wsh_pro_monthly",
+        "price_lookup_key_annual": "wsh_pro_annual"
       },
       "principle": "The differentiator tier. Everything in Core plus the catalyst layer — this is where technical-versus-catalyst fusion lives.",
       "entitlements": {
         "market_brain": "full",
-        "apex_scanner": "full",
+        "scanner": "full",
         "live_intelligence": "full",
         "danger_zones": "full",
         "catalyst_playbooks": "full",
-        "apex_copilot": "basic",
+        "copilot": "basic",
         "safe_pro_modes": true,
         "macro_calendar": true,
         "technical_news_alignment": true,
@@ -190,22 +190,22 @@
     },
     {
       "id": "black",
-      "name": "APEX Black",
+      "name": "Black",
       "price": 199,
       "position": "Advanced analytics + AI",
       "stripe": {
-        "product_lookup_key": "apex_black",
-        "price_lookup_key": "apex_black_monthly",
-        "price_lookup_key_annual": "apex_black_annual"
+        "product_lookup_key": "wsh_black",
+        "price_lookup_key": "wsh_black_monthly",
+        "price_lookup_key_annual": "wsh_black_annual"
       },
       "principle": "Genuinely different work, not simply more of the same. Portfolio-level exposure, event studies, scenario analysis and programmatic access.",
       "entitlements": {
         "market_brain": "personalized",
-        "apex_scanner": "full",
+        "scanner": "full",
         "live_intelligence": "full",
         "danger_zones": "full",
         "catalyst_playbooks": "advanced",
-        "apex_copilot": "full",
+        "copilot": "full",
         "safe_pro_modes": true,
         "macro_calendar": true,
         "technical_news_alignment": true,
@@ -244,7 +244,7 @@
       "full": "every field in the MarketBrain schema, including conflicts and ranked setups.",
       "personalized": "full, plus a brief scoped to the user's own watchlist and positions."
     },
-    "apex_scanner": {
+    "scanner": {
       "limited": "top N results only, no custom filters, no scan presets.",
       "full": "all ten scans, all columns, saved presets."
     },
@@ -262,7 +262,7 @@
       "full": "measured reaction statistics per category, with sample size.",
       "advanced": "full, plus cross-asset studies and user-defined event cohorts."
     },
-    "apex_copilot": {
+    "copilot": {
       "none": "not available",
       "basic": "explains why a signal was surfaced, from the stored factor values.",
       "full": "basic, plus scenario walkthroughs and personalised briefs."

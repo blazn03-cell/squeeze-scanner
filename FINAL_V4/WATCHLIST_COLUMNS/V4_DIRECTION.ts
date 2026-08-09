@@ -2,7 +2,7 @@
 # V4_DIRECTION.ts
 # ==========================================================================
 # PURPOSE      : Bull/bear orientation from six independent lenses.
-# AGGREGATION  : Same as APEX — Daily default, 4h fast variant.
+# AGGREGATION  : Same as V4_SCORE — Daily default, 4h fast variant.
 # INSTALL      : MarketWatch > Quotes > Customize > Custom Quotes > new > paste.
 # OUTPUT       : -2 strong bear · -1 bear · 0 neutral · +1 bull · +2 strong bull. +/-2 requires a net of 4 of 6 lenses.
 # COLORS       : red shades bearish · grey neutral · green shades bullish.

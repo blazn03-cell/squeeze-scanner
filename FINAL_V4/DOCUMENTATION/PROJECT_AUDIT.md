@@ -125,7 +125,7 @@ positioning TOS cannot. Use both.
   break a scan.
 - `V4Grid` — a toggleable panel (🧮 V4 in the toolbar) rendering the FINAL_V4 watchlist
   from those numbers.
-- An `APEX nn · ±n` chip on every signal card, with a `⚠LATE` marker when APEX ≥ 65 and
+- An `SCORE nn · ±n` chip on every signal card, with a `⚠LATE` marker when SCORE ≥ 65 and
   EarlyEntry < 40 — the extended-setup case.
 
 `calcWinProb`, `computeIchimoku`, `getTechnicalRead`, `getHoldStatus` and `getGuidance`

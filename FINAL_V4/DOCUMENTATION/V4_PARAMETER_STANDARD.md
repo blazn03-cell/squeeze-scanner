@@ -47,13 +47,13 @@ are answering different questions and both are right.
 | `ATR_Min` (band floor) | 1.0% | Below this, the volatility bucket scores 3/15 — nothing to trade. |
 | `ATR_Max` (band ceiling) | 5.0% | Above this the bucket degrades; above 8% it scores 2/15; above 12% a ×0.75 penalty applies. |
 | `ADX_TrendMinimum` | 16 / 22 / 30 | 2 / 5 / 7 points in the trend bucket. Below 15 with no squeeze: ×0.85. |
-| `Extension_ATR_Limit` | 3.0 | Above this APEX is hard-blocked to 55. Note the **column's** display bands (0.5 / 1.0 / 1.5 / 2.0) are tighter — those drive Timing, not the block. |
-| `Stable_Minimum` | 55 | Acceptable. Also the APEX gate threshold. |
-| `Stable_Strong` | 65 | Strong. Default floor for the APEX scans. |
+| `Extension_ATR_Limit` | 3.0 | Above this SCORE is hard-blocked to 55. Note the **column's** display bands (0.5 / 1.0 / 1.5 / 2.0) are tighter — those drive Timing, not the block. |
+| `Stable_Minimum` | 55 | Acceptable. Also the score gate threshold. |
+| `Stable_Strong` | 65 | Strong. Default floor for the ranked scans. |
 | `Stable_Elite` | 75 | Very strong. Requires 3+ buckets at 70% of max. |
-| `Confidence_Minimum` | 55 | APEX gate threshold. 60 on the APEX scans. |
-| `APEX_Minimum` | 70 | Default floor for `V4_APEX_LONG` / `SHORT`. 68 on `V4_MASTER`. |
-| `Liquidity_Gate` | 50 | Costs an APEX gate below this. Below **35** APEX is hard-blocked. |
+| `Confidence_Minimum` | 55 | score gate threshold. 60 on the ranked scans. |
+| `Score_Minimum` | 70 | Default floor for `V4_LONG` / `SHORT`. 68 on `V4_MASTER`. |
+| `Liquidity_Gate` | 50 | Costs a score gate below this. Below **35** SCORE is hard-blocked. |
 | `Timing_Minimum` | +1 | Floor for `V4_EARLY_ENTRY_SCAN`. |
 
 ## Score caps — the saturation controls
@@ -64,8 +64,8 @@ These exist so the top of the range stays rare. Do not remove them to get more h
 |---|---|
 | Bucket caps | 20 / 15 / 20 / 15 / 15 / 15 — correlated indicators pool inside one bucket and cannot exceed it |
 | StableScore elite gate | capped at **74** unless ≥3 buckets reach 70% of their max |
-| APEX elite gate | capped at **72** unless ≥4 of 6 gates pass |
-| APEX hard block | capped at **55** if direction is 0, liquidity < 35, or extension > 3.0 ATR |
+| Score elite gate | capped at **72** unless ≥4 of 6 gates pass |
+| Score hard block | capped at **55** if direction is 0, liquidity < 35, or extension > 3.0 ATR |
 | Penalty floor | multiplicative penalties floor at **×0.40** — a stack degrades, it never annihilates |
 | Confidence neutral cap | capped at **45** whenever direction is 0 |
 

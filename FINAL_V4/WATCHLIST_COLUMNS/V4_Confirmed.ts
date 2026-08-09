@@ -4,7 +4,7 @@
 # PURPOSE      : How many independent subsystems agree — breadth, not magnitude.
 # AGGREGATION  : Same as StableScore — Daily default, 4h fast variant.
 # INSTALL      : MarketWatch > Quotes > Customize > Custom Quotes > new > paste.
-# OUTPUT       : 0 NO SETUP · 1 WATCH · 2 DEVELOPING · 3 CONFIRMED · 4 APEX. Anything failing the liquidity floor is forced to 0.
+# OUTPUT       : 0 NO SETUP · 1 WATCH · 2 DEVELOPING · 3 CONFIRMED · 4 ELITE. Anything failing the liquidity floor is forced to 0.
 # COLORS       : grey 0 · dim blue 1 · amber 2 · teal 3 · bright green 4.
 # LIMITATIONS  : Relative strength vs an index is NOT one of the categories — see V4_RelStrength.ts, which is kept separate because it loads a second symbol.
 # ==========================================================================

@@ -2,7 +2,7 @@
 # V4_REGIME.ts
 # ==========================================================================
 # PURPOSE      : What KIND of setup this is, as a sortable number.
-# AGGREGATION  : Same as APEX — Daily default, 4h fast variant.
+# AGGREGATION  : Same as V4_SCORE — Daily default, 4h fast variant.
 # INSTALL      : MarketWatch > Quotes > Customize > Custom Quotes > new > paste.
 # OUTPUT       : 0 CHOP · 1 TREND · 2 BREAKOUT · 3 SQUEEZE · 4 REVERSAL · 5 HIGH VOL · 6 LOW VOL.
 # COLORS       : one colour per regime, matching the legend in DOCUMENTATION.

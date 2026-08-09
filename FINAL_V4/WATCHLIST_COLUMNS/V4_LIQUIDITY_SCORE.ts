@@ -4,7 +4,7 @@
 # PURPOSE      : 0-100 tradeability relative to the scan universe.
 # AGGREGATION  : DAILY — the default and the MAXIMUM. 4h for faster 1-3 day trades.
 # INSTALL      : MarketWatch > Quotes > Customize > Custom Quotes > new > paste.
-# OUTPUT       : 0-100. <35 blocks APEX entirely · <50 costs an APEX gate · 70+ comfortable.
+# OUTPUT       : 0-100. <35 blocks the score entirely · <50 costs a score gate · 70+ comfortable.
 # COLORS       : red poor · amber marginal · teal good · green excellent.
 # LIMITATIONS  : This does NOT measure market depth, order-book thickness, or real slippage — ThinkScript charts expose none of those. It is dollar volume (45pts), price level (25), current participation (20) and share turnover (10). For an actual spread reading use BidAskSpread.ts, which works only as a custom quote because bid/ask are exposed nowhere else.
 # ==========================================================================

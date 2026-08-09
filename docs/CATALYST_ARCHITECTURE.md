@@ -62,7 +62,7 @@ why an ambiguous headline resolves to **0** instead of a small non-zero guess.
 
 A backend running a proper model would replace this function and nothing else.
 
-## Why nothing is subtracted from APEX
+## Why nothing is subtracted from SCORE
 
 The intuitive move is `final = technical − newsRisk`. It destroys information.
 

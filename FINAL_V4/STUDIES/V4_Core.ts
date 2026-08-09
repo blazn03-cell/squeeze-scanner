@@ -4,7 +4,7 @@
 # PURPOSE      : The single canonical source of every shared module, exported as plots so other scripts can consume it with `reference`.
 # AGGREGATION  : Set once here, inherited by anything that references it.
 # INSTALL      : Charts > Studies > Edit Studies > Create > name it exactly V4_Core > paste. Then in any other script: def s = reference V4_Core()._StableScore;
-# OUTPUT       : Hidden plots: _StableScore _Apex _Direction _Confidence _Early _Regime _Confirmed _Darvas _DarvasBias _SqueezeHit _SmartFlow _AtrPct _Rvol _Timing _Extension _Liquidity.
+# OUTPUT       : Hidden plots: _StableScore _Score _Direction _Confidence _Early _Regime _Confirmed _Darvas _DarvasBias _SqueezeHit _SmartFlow _AtrPct _Rvol _Timing _Extension _Liquidity.
 # COLORS       : n/a — all plots are hidden.
 # LIMITATIONS  : MULTI-PLOT. It is a study, NOT a watchlist column and NOT a scan filter. Referencing a custom study from a scan or column works in ThinkorSwim but breaks if the study is renamed or edited. The self-contained files in WATCHLIST_COLUMNS and SCANNERS carry no such dependency, which is why they are the recommended install. Use this only if you want one place to tune.
 # ==========================================================================
@@ -290,7 +290,7 @@ def liquidityScore = Round(Max(0, Min(100, liqDV + liqPrice + liqPart + liqTurn)
 # it exists, the session mean (VWAP). Using VWAP alone was wrong — on any normal
 # intraday trend day price drifts several ATR from the session open while
 # sitting right on its trend mean, which made a healthy trend read as "chase
-# risk" and hard-blocked APEX. You are not chasing if price is near EITHER
+# risk" and hard-blocked the score. You are not chasing if price is near EITHER
 # equilibrium, so the measure takes the minimum. On Daily, VWAP is unavailable
 # and this collapses cleanly to the EMA distance.
 def extEma  = if atrOK then AbsValue(c - emaM) / atr else Double.NaN;
@@ -306,42 +306,42 @@ def extBand = if IsNaN(extensionATR) then 0
               else if extensionATR < 2.00 then -1
               else -2;
 
-# ---- MODULE: APEX MASTER SCORE 0..100 --------------------------------------
+# ---- MODULE: MASTER SCORE 0..100 -------------------------------------------
 # StableScore already carries trend / momentum / rvol / volatility / structure /
-# liquidity with intra-bucket correlation control, so APEX does NOT re-add them.
+# liquidity with intra-bucket correlation control, so the master score does NOT re-add them.
 # It blends StableScore with the three dimensions StableScore does not measure:
 # pressure direction magnitude (SmartFlow), signal agreement (Confidence), and
 # compression state (SqueezeHit). See DOCUMENTATION/SCORING_MODEL.md for the
 # effective weight decomposition.
-def apexRaw = 0.55 * stableScore
+def scoreRaw = 0.55 * stableScore
             + 0.20 * AbsValue(smartFlow)
             + 0.15 * confidence
             + 0.10 * sqzHit;
 # QUALITY GATES. A high raw blend is necessary but never sufficient: an elite
-# APEX has to clear four of six independent gates, and three conditions block
+# score has to clear four of six independent gates, and three conditions block
 # elite status outright no matter how extreme the components are.
-def apexGate = (if stableScore >= 55 then 1 else 0)
+def scoreGate = (if stableScore >= 55 then 1 else 0)
              + (if confidence >= 55 then 1 else 0)
              + (if AbsValue(smartFlow) >= 25 then 1 else 0)
              + (if AbsValue(darvasScan) >= 1 then 1 else 0)
              + (if liquidityScore >= 50 then 1 else 0)
              + (if direction != 0 then 1 else 0);
 # Hard blocks: no directional read, untradeable, or already a chase.
-def apexBlock = direction == 0 or liquidityScore < 35 or extSafe > 3.0;
+def scoreBlock = direction == 0 or liquidityScore < 35 or extSafe > 3.0;
 # A one-bar spike maxes out SmartFlow and Confidence at the same time, which is
 # enough to clear several gates on its own. StableScore already discounts it;
-# APEX must discount it too or the spike leaks straight through the blend.
-def apexPenalty = (if spike then 0.85 else 1) * (if failedBO then 0.90 else 1);
-def apexScore = Round(Max(0, Min(100,
-      (if apexBlock then Min(55, apexRaw)
-       else if apexGate >= 4 then apexRaw
-       else Min(72, apexRaw)) * apexPenalty)), 0);
+# the master score must discount it too or the spike leaks straight through the blend.
+def scorePenalty = (if spike then 0.85 else 1) * (if failedBO then 0.90 else 1);
+def v4Score = Round(Max(0, Min(100,
+      (if scoreBlock then Min(55, scoreRaw)
+       else if scoreGate >= 4 then scoreRaw
+       else Min(72, scoreRaw)) * scorePenalty)), 0);
 
 # ---- MODULE: EARLY ENTRY 0..100 (TRANSITION engine) ------------------------
 # This scores CHANGE, not level. Every term compares now against a few bars ago,
 # so a stock that has been strong for two weeks scores near zero here while a
 # stock crossing from neutral into strength scores high. It is deliberately NOT
-# "V4_APEX with lower thresholds" — that would just find the same names later.
+# "the master scan with lower thresholds" — that would just find the same names later.
 def rvolRising  = rvolSafe > rvolSafe[3] and rvolSafe >= 1.1;
 def volAccelE   = volTrend > volTrend[3] and volTrend >= 1.05;
 def adxImproving = adx > adx[3] and adx >= 15 and adx < 35;
@@ -418,7 +418,7 @@ def v4Timing = if timingRaw >= 4 then 2 else if timingRaw >= 2 then 1
 # ---- SCRIPT BODY -----------------------------------------------------------
 
 plot _StableScore = stableScore;   _StableScore.Hide();
-plot _Apex        = apexScore;     _Apex.Hide();
+plot _Score        = v4Score;     _Score.Hide();
 plot _Direction   = direction;     _Direction.Hide();
 plot _Confidence  = confidence;    _Confidence.Hide();
 plot _Early       = earlyScore;    _Early.Hide();

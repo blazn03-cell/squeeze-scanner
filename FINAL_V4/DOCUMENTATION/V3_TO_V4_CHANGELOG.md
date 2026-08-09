@@ -91,7 +91,7 @@ just triggered reads early even if you have held it for a week.
 
 ---
 
-## 6. APEX gates: added after testing, not designed in
+## 6. Score gates: added after testing, not designed in
 
 **v1 (first commit):** cap at 72 unless 3 of 4 gates pass.
 **v2 (now):** 4 of 6 gates (added liquidity ≥50 and direction ≠0), plus **hard blocks** at
@@ -100,9 +100,9 @@ multiplier.
 
 **Why:** testing found a one-bar volume spike maxing SmartFlow (+100) and Confidence (100)
 simultaneously — enough to clear three gates alone. A setup StableScore had correctly
-discounted to 47 was producing APEX 68. It now produces 47.
+discounted to 47 was producing SCORE 68. It now produces 47.
 
-**Benefit:** no single extreme reading can manufacture APEX status.
+**Benefit:** no single extreme reading can manufacture an elite score.
 
 **Trade-off:** genuinely explosive single bars are demoted along with fake ones. OHLCV
 cannot distinguish them.
@@ -111,13 +111,13 @@ cannot distinguish them.
 
 ## 7. EarlyEntry: absolute → transition
 
-**Old (v1):** rewarded absolute conditions with lower thresholds than APEX — RelVol in a
+**Old (v1):** rewarded absolute conditions with lower thresholds than SCORE — RelVol in a
 band, squeeze active, near breakout.
 **New:** every term compares **now against 3-6 bars ago**. RelVol *rising*, ADX
 *improving*, EMA stack *flipping*, VWAP *reclaimed*, compression *releasing*, momentum
 slope *accelerating*.
 
-**Why:** "APEX with lower thresholds" finds the same names, later. It does not solve
+**Why:** "the master scan with lower thresholds" finds the same names, later. It does not solve
 scanner lag; it just lowers the bar. Detecting the transition is a different measurement.
 
 **Benefit:** a stock that has been strong for two weeks now scores near **0** here, which
@@ -135,7 +135,7 @@ is correct — there is no transition to catch.
 
 **Why:** found in testing. On a normal intraday trend day price drifts several ATR from
 the session VWAP while sitting right on its trend mean — which read as "chase risk" and
-hard-blocked APEX on healthy trends. You are not chasing if price is near *either*
+hard-blocked SCORE on healthy trends. You are not chasing if price is near *either*
 equilibrium.
 
 **Benefit:** the same thresholds work on Daily and intraday.

@@ -1,4 +1,4 @@
-# FRONTLINE APEX V5 — Market Intelligence OS
+# WALLSTREETHUSTLER V5 — Market Intelligence OS
 ## Product specification (source of truth)
 
 Everything downstream — UI, onboarding, docs, and eventually any commercial material —
@@ -26,19 +26,19 @@ This is the rule everything else hangs off.
 
 ```
 ┌──────────────────────────┐        ┌──────────────────────────────────────┐
-│  THINKORSWIM             │        │  FRONTLINE APEX WEB / BACKEND        │
+│  THINKORSWIM             │        │  SQUEEZE SCANNER WEB / BACKEND       │
 │  technical signal engine │        │  intelligence engine                 │
 ├──────────────────────────┤        ├──────────────────────────────────────┤
 │ ATR, EMA, ADX, RSI       │        │ news ingestion & normalisation       │
 │ RelVol, Darvas, Squeeze  │        │ macro calendar                       │
 │ SmartFlow proxy          │        │ source verification & dedup          │
 │ StableScore              │        │ catalyst scoring                     │
-│ APEX / Direction / Conf  │        │ event database & reaction stats      │
+│ SCORE / Direction / Conf │        │ event database & reaction stats      │
 │ Timing / Extension       │        │ cross-asset propagation              │
 │ Liquidity score          │        │ Market Brain, Danger Zones           │
 │ 10 Stock Hacker scans    │        │ alerts, playbooks, Copilot           │
 └──────────────────────────┘        └──────────────────────────────────────┘
-              └──────────── merged in the APEX UI ────────────┘
+              └─── merged in the Squeeze Scanner UI ────┘
 ```
 
 **No news, calendar, or catalyst logic is ever implemented in ThinkScript.** ThinkScript
@@ -62,8 +62,8 @@ input and emits a *state*. This is enforced by test (`test_intel.js`).
 | **4. Risk & Timing** | When does the risk profile change? | ✅ |
 | **5. Trader Experience** | Safe/Pro, alerts, playbooks, explanations | 🟡 |
 
-Surfaced to users as seven products: **Market Brain · APEX Scanner · Live Intelligence ·
-Danger Zones · Catalyst Playbooks · APEX Copilot · Poly Intelligence.** Internal modules
+Surfaced to users as seven products: **Market Brain · Scanner · Live Intelligence ·
+Danger Zones · Catalyst Playbooks · Copilot · Poly Intelligence.** Internal modules
 sit underneath; users never see the module count.
 
 ---
@@ -74,7 +74,7 @@ The eleven dimensions are **independent and never collapsed into one number**.
 
 | Dimension | Range | Owner | Contract |
 |---|---|---|---|
-| `TECHNICAL_QUALITY` (APEX) | 0–100 | TOS + web | Direction-agnostic. Capped at 72 without 4/6 gates; hard-blocked at 55 on no direction, liquidity <35, or extension >3 ATR. |
+| `TECHNICAL_QUALITY` (SCORE) | 0–100 | TOS + web | Direction-agnostic. Capped at 72 without 4/6 gates; hard-blocked at 55 on no direction, liquidity <35, or extension >3 ATR. |
 | `TECHNICAL_DIRECTION` | −2…+2 | TOS + web | ±2 needs a net of 4 of 6 independent lenses. |
 | `TECHNICAL_CONFIDENCE` | 0–100 | TOS + web | Agreement between lenses. Capped at 45 when direction is 0. **Not** bullishness. |
 | `TIMING` | −2…+2 | TOS + web | Entry maturity. −2 exhausted … +2 prime. |
@@ -90,7 +90,7 @@ The eleven dimensions are **independent and never collapsed into one number**.
 
 1. Impact and direction are separable — a pre-release FOMC scores impact ≥70, direction 0.
 2. Fusion never mutates its technical input.
-3. No subtraction of news from APEX anywhere in the codebase.
+3. No subtraction of news from SCORE anywhere in the codebase.
 4. A rumour never renders as CONFIRMED.
 5. No statistic is displayed below its minimum sample.
 6. No calendar date is generated unless it is rule-derivable or explicitly seeded.
@@ -104,7 +104,7 @@ WAITING_FOR_RELEASE      scheduled event ≤60 min out — direction unknown by 
 HIGH_EVENT_RISK          impact ≥80, |direction| <25 — large, undirected
 ALIGNED_BULLISH          technical +, catalyst +, catalyst confidence ≥50
 ALIGNED_BEARISH          technical −, catalyst −, catalyst confidence ≥50
-CONFLICT                 technical and catalyst oppose — do NOT read APEX as normal
+CONFLICT                 technical and catalyst oppose — do NOT read SCORE as normal
 POST_EVENT_CONFIRMATION  catalyst landed ≤120 min ago, no qualifying technical setup
 CATALYST_ONLY            catalyst present, technical does not qualify
 TECHNICAL_ONLY           no material catalyst
@@ -122,7 +122,7 @@ imminent release makes every directional read provisional.
 MarketBrain {
   marketState: "NORMAL CONDITIONS" | "ELEVATED RISK WINDOW" | "HIGH VOLATILITY"
              | "BREAKING-NEWS DRIVEN" | "HIGH EVENT-RISK ENVIRONMENT" | "CRITICAL EVENT WINDOW"
-  apexMode:    "NORMAL OPERATION" | "REDUCED SIZE" | "EVENT PREPARATION"
+  scannerMode:    "NORMAL OPERATION" | "REDUCED SIZE" | "EVENT PREPARATION"
              | "POST-EVENT PRICE DISCOVERY" | "STAND ASIDE"
   spy | qqq | iwm : { label, value: -2..2 | null, confidence, color }
   confidence:   0-100 | null          // median across scanned tickers
@@ -135,7 +135,7 @@ MarketBrain {
   zones:        DangerZone[]
   topBreaking:  CatalystEvent[]       // impactNow >= 70
   conflicts:    { ticker, tech, ev, note }[]
-  best:         TechnicalRow[]        // apex >= 55, direction != 0
+  best:         TechnicalRow[]        // score >= 55, direction != 0
   message:      string                // assembled from what is measurably true
   sampleSize:   number                // ALWAYS shown — a 1-ticker read is not a market read
 }
@@ -172,7 +172,7 @@ visible.
 
 | Gate | SAFE | PRO |
 |---|---|---|
-| APEX ≥ | 80 | 55 |
+| SCORE ≥ | 80 | 55 |
 | Confidence ≥ | 75 | 0 |
 | Liquidity ≥ | 70 | 35 |
 | Extension ≤ | 1.25 ATR | — |
@@ -281,7 +281,7 @@ rewrite.
 
 The defensible statement is narrower and stronger:
 
-> APEX detects technical setups, identifies the catalysts around them, measures whether
+> SCORE detects technical setups, identifies the catalysts around them, measures whether
 > price action and news agree, and warns when a scheduled or breaking event materially
 > changes the setup — before, during, and after.
 
@@ -294,7 +294,7 @@ The defensible statement is narrower and stronger:
 3. ⬜ Backend: continuous ingestion, authoritative calendar, shared event DB
 4. ⬜ Alert delivery (push/email) and watchlist persistence
 5. ⬜ Catalyst Playbooks, once the event DB has real sample sizes
-6. ⬜ APEX Copilot explanations grounded in stored events
+6. ⬜ Copilot explanations grounded in stored events
 
 Steps 5 and 6 are **blocked on data volume**, not on engineering. Building playbooks
 before the database has samples would mean inventing the statistics, which is the one
@@ -321,7 +321,7 @@ Terms carry claims. These are binding on the UI, the docs and any future copy.
 
 > **Know the setup. Know the catalyst. Know when the risk changes.**
 >
-> Frontline APEX combines technical scanning, market-moving events, breaking catalysts,
+> WallstreetHustler combines technical scanning, market-moving events, breaking catalysts,
 > volatility, liquidity and historical reaction data so you can understand *why* a setup
 > matters — not just that an indicator fired.
 
@@ -335,12 +335,12 @@ exactly one of these.
 | Capability | The user's question | Backed by |
 |---|---|---|
 | **Market Brain** | What kind of market am I trading today? | §4 |
-| **APEX Scanner** | What is setting up right now? | §2, FINAL_V4 |
+| **Scanner** | What is setting up right now? | §2, FINAL_V4 |
 | **Live Intelligence** | What just happened and what does it affect? | §7 |
 | **Danger Zones** | When is market risk about to change? | §5 |
 | **Catalyst Playbooks** | How has the market historically behaved around this event? | §9 |
-| **APEX Copilot** | Why is this signal being surfaced? | §2 factor values |
-| **APEX Poly Intelligence** | Where is there a modelled edge in prediction markets? | §21 |
+| **Copilot** | Why is this signal being surfaced? | §2 factor values |
+| **Poly Intelligence** | Where is there a modelled edge in prediction markets? | §21 |
 
 ---
 
@@ -366,10 +366,10 @@ artificial feature gating.
 
 | Plan | Monthly | Annual | Position |
 |---|---:|---:|---|
-| **Free** | $0 | — | Discover APEX |
-| **APEX Core** | $39 | $390 | Technical intelligence |
-| **APEX Pro** | $89 | $890 | Full catalyst + market intelligence |
-| **APEX Black** | $199 | $1,990 | Advanced analytics + AI |
+| **Free** | $0 | — | Discover Squeeze Scanner |
+| **Core** | $39 | $390 | Technical intelligence |
+| **Pro** | $89 | $890 | Full catalyst + market intelligence |
+| **Black** | $199 | $1,990 | Advanced analytics + AI |
 
 **Annual is priced at two months free (~17% off).** That convention is near-universal in
 subscription software, so it needs no explanation at the point of sale, and it lands on
@@ -385,11 +385,11 @@ Annual prices are defined in `entitlements.json` and are **inert** while
 | | Free | Core | Pro | Black |
 |---|---|---|---|---|
 | Market Brain | lite | full | full | personalized |
-| APEX Scanner | limited | full | full | full |
+| Scanner | limited | full | full | full |
 | Live Intelligence | — | — | full | full |
 | Danger Zones | summary | full | full | full |
 | Catalyst Playbooks | — | — | full | advanced |
-| APEX Copilot | — | — | basic | full |
+| Copilot | — | — | basic | full |
 | Safe / Pro modes | — | ✓ | ✓ | ✓ |
 | Macro calendar | ✓ | ✓ | ✓ | ✓ |
 | Technical / catalyst alignment | — | — | ✓ | ✓ |
@@ -471,20 +471,20 @@ headlines are shown verbatim.
 
 Uses Stripe's actual mechanisms and names. No invented product terms.
 
-**Account.** APEX requires its **own Stripe account**, separate from any other business.
+**Account.** SCORE requires its **own Stripe account**, separate from any other business.
 Do not build the catalog into an account that already carries an unrelated live product
 line — shared accounts mean shared Radar rules, shared payout schedules, shared dispute
 history, and a Customer Portal that lists products the customer never bought. Build and
 verify in that account's **sandbox** first; only then mirror to live.
 
 **Catalog.** One Product per tier, one recurring monthly Price and one annual Price each,
-addressed by `lookup_key` (`apex_core_monthly` / `apex_core_annual`, and the same pattern
+addressed by `lookup_key` (`wsh_core_monthly` / `wsh_core_annual`, and the same pattern
 for pro and black) so the application never hardcodes a price ID. Free has a Product for
 entitlement symmetry and no Price.
 
 **Entitlements.** Use Stripe's Entitlements: define a **Feature** per capability
 (`market_brain`, `live_intelligence`, `danger_zones`, `catalyst_playbooks`,
-`apex_copilot`, `custom_scanner_filters`, `api_access`, …), attach them to Products as
+`copilot`, `custom_scanner_filters`, `api_access`, …), attach them to Products as
 **Product Features**, and read a customer's **Active Entitlements** at session start.
 Feature IDs mirror the keys in `entitlements.json` exactly.
 
@@ -514,7 +514,7 @@ shown the buyer the thing they would be paying for.
 
 ### Switching billing on later
 
-1. Create a dedicated APEX Stripe account. Verify the catalog in its **sandbox**.
+1. Create a dedicated SCORE Stripe account. Verify the catalog in its **sandbox**.
 2. Create Products + monthly/annual Prices with the `lookup_key`s above.
 3. Create one Feature per capability, IDs mirroring `entitlements.json`; attach as Product
    Features.
@@ -539,7 +539,7 @@ Do not publish a ✔/✖ table. Score each capability on a scale that admits unc
 only assert what has been tested:
 
 ```
-                          APEX      Competitor A   Competitor B
+                          SCORE      Competitor A   Competitor B
 Technical scanning        Strong    Strong         Strong
 Real-time news            Strong    Varies         Strong
 Macro calendar            Strong    Available      Available
@@ -558,7 +558,7 @@ a sales deck.
 
 The defensible claim is the integration, not per-feature superiority:
 
-> APEX is not trying to beat every competitor at every individual feature. Its
+> SCORE is not trying to beat every competitor at every individual feature. Its
 > differentiation is combining technical scanning, catalyst intelligence, event timing and
 > risk interpretation into one decision workflow.
 
@@ -583,7 +583,7 @@ created value.
 
 ---
 
-## 21. APEX Poly Intelligence
+## 21. Poly Intelligence
 
 The prediction-market leg. Full detail in `docs/POLY_INTELLIGENCE.md`; the contracts and
 invariants are here.

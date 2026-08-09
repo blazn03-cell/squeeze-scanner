@@ -2,7 +2,7 @@
 # V4_CONFIDENCE.ts
 # ==========================================================================
 # PURPOSE      : Agreement between the six direction lenses. Not setup quality.
-# AGGREGATION  : Same as APEX — Daily default, 4h fast variant.
+# AGGREGATION  : Same as V4_SCORE — Daily default, 4h fast variant.
 # INSTALL      : MarketWatch > Quotes > Customize > Custom Quotes > new > paste.
 # OUTPUT       : 0-100. Conflicting signals collapse it; a neutral read is capped at 45.
 # COLORS       : red low · amber mid · teal high · green very high.

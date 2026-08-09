@@ -28,7 +28,7 @@ scroll to *Custom Quotes* → **+** → paste → name it → Apply)
 
 | Order | File | Column name to use |
 |---|---|---|
-| 1 | `WATCHLIST_COLUMNS/V4_APEX_SCORE.ts` | `V4_APEX` |
+| 1 | `WATCHLIST_COLUMNS/V4_SCORE.ts` | `V4_Score` |
 | 2 | `WATCHLIST_COLUMNS/V4_DIRECTION.ts` | `V4_DIR` |
 | 3 | `WATCHLIST_COLUMNS/V4_CONFIDENCE.ts` | `V4_CONF` |
 | 4 | `WATCHLIST_COLUMNS/V3_StableScore.ts` | `V3_StableScore` |
@@ -79,22 +79,22 @@ rather than blank, which is worse. See the header comment in the file.
 ## Reading a row
 
 ```
-SYMBOL  APEX  DIR  CONF  TIME  STABLE  EARLY  ATR%  RVOL  DARVAS  SQZ  FLOW  EXT   LIQ  SPREAD
+SYMBOL  SCORE  DIR  CONF  TIME  STABLE  EARLY  ATR%  RVOL  DARVAS  SQZ  FLOW  EXT   LIQ  SPREAD
 GMAB     82   +2    86    +1     74      71   2.55  2.4     +2     78   +64  0.84   93  0.08%
 ```
 
-- **APEX** — is it tradeable at all? Sort on this.
-- **DIR** — which side. `+2` long, `-2` short. A high APEX with `-2` is a high-quality
+- **SCORE** — is it tradeable at all? Sort on this.
+- **DIR** — which side. `+2` long, `-2` short. A high SCORE with `-2` is a high-quality
   **short**, not a buy. `0` means skip, whatever else the row says.
-- **CONF** — do the six lenses agree? Low CONF on a high APEX means the signals are
+- **CONF** — do the six lenses agree? Low CONF on a high SCORE means the signals are
   fighting each other.
-- **TIME** — is the move still available? `+2` prime, `-2` exhausted. **A high APEX with
+- **TIME** — is the move still available? `+2` prime, `-2` exhausted. **A high SCORE with
   `-1` or `-2` is a setup you have already missed.**
 - **STABLE** — setup quality on its own terms, direction-agnostic.
 - **EARLY** — is something *changing* right now? This scores transition, not strength, so
   a stock that has been strong for weeks correctly scores near zero.
-- **EXT** — ATR from equilibrium. Above 3.0 APEX is hard-blocked.
-- **LIQ** — tradeability 0-100. Below 35 APEX is hard-blocked. Not market depth.
+- **EXT** — ATR from equilibrium. Above 3.0 SCORE is hard-blocked.
+- **LIQ** — tradeability 0-100. Below 35 SCORE is hard-blocked. Not market depth.
 - **SPREAD** — under 0.25% or skip it.
 
 The full decision hierarchy and interpretation tables are in
@@ -112,7 +112,7 @@ specified in `docs/V5_PRODUCT_SPEC.md`.
 The one boundary case is `EarningsRisk.ts` / `V4_DaysToEarnings.ts`, which read
 ThinkorSwim's own event calendar. That is a scheduled corporate event, not news.
 
-No catalyst score ever modifies APEX, Direction, Confidence or StableScore. The
+No catalyst score ever modifies SCORE, Direction, Confidence or StableScore. The
 dimensions stay independent and are fused for display only — see
 `docs/CATALYST_ARCHITECTURE.md` for why subtraction destroys information.
 

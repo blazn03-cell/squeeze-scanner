@@ -17,7 +17,7 @@ whether price has already run; EarlyEntry asks whether conditions are *changing*
 can be cheap and going nowhere (Timing +2, Early 10) or moving hard and already gone
 (Timing −2, Early 70).
 
-`APEX` blends them into one sortable number, but all five stay visible because APEX alone
+`SCORE` blends them into one sortable number, but all five stay visible because SCORE alone
 cannot tell you an `82` is a **short**, or that you have already missed it.
 
 ---
@@ -114,7 +114,7 @@ Expect a ceiling of ~96 rather than 100 on daily columns for exactly this reason
 
 ---
 
-## APEX — and where it departs from the requested weights
+## SCORE — and where it departs from the requested weights
 
 The brief specified: stable 25%, trend 15%, rvol 15%, momentum 10%, darvas 10%, flow
 10%, squeeze 5%, ATR 5%, liquidity 5%.
@@ -123,35 +123,35 @@ The brief specified: stable 25%, trend 15%, rvol 15%, momentum 10%, darvas 10%, 
 already *inside* StableScore with correlation control applied. Adding them again on top
 of StableScore's 25% re-introduces exactly the overlap the buckets were built to
 prevent, and it does so **without** the caps — so a trending stock would collect its
-trend reward once inside StableScore (capped at 20) and again at the APEX level
+trend reward once inside StableScore (capped at 20) and again at the SCORE level
 (uncapped at 15%).
 
 What is implemented instead:
 
 ```
-apexRaw     = 0.55 × StableScore      ← all six buckets, correlation-controlled
+scoreRaw     = 0.55 × StableScore      ← all six buckets, correlation-controlled
             + 0.20 × |SmartFlow|      ← pressure magnitude, NOT in StableScore
             + 0.15 × Confidence       ← agreement, NOT in StableScore
             + 0.10 × SqueezeHit       ← compression state, NOT in StableScore
 
-apexGate    = count of: stable ≥ 55, confidence ≥ 55, |flow| ≥ 25,
+scoreGate    = count of: stable ≥ 55, confidence ≥ 55, |flow| ≥ 25,
                         |darvas| ≥ 1, liquidity ≥ 50, direction ≠ 0
-apexBlock   = direction == 0  OR  liquidity < 35  OR  extension > 3.0 ATR
-apexPenalty = (spike ? 0.85 : 1) × (failedBO ? 0.90 : 1)
+scoreBlock   = direction == 0  OR  liquidity < 35  OR  extension > 3.0 ATR
+scorePenalty = (spike ? 0.85 : 1) × (failedBO ? 0.90 : 1)
 
-APEX = (apexBlock  ? min(55, apexRaw)
-      : apexGate≥4 ? apexRaw
-      :              min(72, apexRaw)) × apexPenalty
+SCORE = (scoreBlock  ? min(55, scoreRaw)
+      : scoreGate≥4 ? scoreRaw
+      :              min(72, scoreRaw)) × scorePenalty
 ```
 
 A high raw blend is necessary but never sufficient. Elite status needs **four of six**
 independent gates, and three conditions block it outright regardless of how extreme the
 components are: no directional read, untradeable, or already a chase.
 
-`apexPenalty` and the gate structure both exist because of a leak found during testing,
+`scorePenalty` and the gate structure both exist because of a leak found during testing,
 not by design. A single huge-volume bar closing at its high maxes SmartFlow (+100) **and**
 Confidence (100) simultaneously — enough to clear the original three-of-four gate on its
-own. A spike that StableScore had correctly discounted to 47 was still producing APEX
+own. A spike that StableScore had correctly discounted to 47 was still producing SCORE
 **68**. Adding the spike penalty took it to **58**; adding the liquidity and direction
 gates plus the extension hard-block took it to **47**, in line with its StableScore. All
 three numbers are measured, not estimated; see the stress table.
@@ -177,14 +177,14 @@ information per point. Liquidity's nominal 8.25% understates it — it is also a
 in every scan and a ×0.55 penalty in StableScore.
 
 **Known residual double-count:** CMF contributes up to 4 of the 20 participation points
-inside StableScore *and* drives SmartFlow. Effective overlap is ~2.2% of APEX. Left in
+inside StableScore *and* drives SmartFlow. Effective overlap is ~2.2% of SCORE. Left in
 place because removing it would cost participation its only non-volume-magnitude input.
 
 ---
 
 ## Explainability — reading real values
 
-| APEX | DIR | CONF | STABLE | EARLY | Reading |
+| SCORE | DIR | CONF | STABLE | EARLY | Reading |
 |---|---|---|---|---|---|
 | 82 | +2 | 86 | 74 | 71 | Textbook long. Every lens agrees, still early. Full size. |
 | 82 | −2 | 86 | 74 | 71 | Textbook **short**. Identical quality, opposite side. |
@@ -193,7 +193,7 @@ place because removing it would cost participation its only non-volume-magnitude
 | 65 | +1 | 72 | 52 | 81 | Early-entry candidate. Weak now by design — that is what early looks like. |
 | 44 | +1 | 60 | 41 | 30 | Nothing. Do not go looking for a reason. |
 
-**High APEX + negative TIMING is the single most useful divergence in the system.** It is
+**High SCORE + negative TIMING is the single most useful divergence in the system.** It is
 the scanner-lag problem made visible: the setup is real, and it is not yours any more. The
 dashboard marks this case with a `⚠LATE` chip, and `★PRIME` when Timing is +2.
 
@@ -203,7 +203,7 @@ Every term compares **now against 3-6 bars ago**: RelVol *rising*, ADX *improvin
 stack *flipping*, VWAP *reclaimed*, compression *releasing*, momentum slope *accelerating*,
 approaching the Darvas high. Extension is subtracted.
 
-This matters because the obvious approach — "APEX with lower thresholds" — does not solve
+This matters because the obvious approach — "the master scan with lower thresholds" — does not solve
 scanner lag at all. It finds the same names, later, with worse quality. Detecting the
 transition is a genuinely different measurement.
 
@@ -225,12 +225,12 @@ worked through the formulas by hand and have not been executed.
 
 | Adversarial case | Naive result | This model | Mechanism |
 |---|---|---|---|
-| **measured** — illiquid microcap, $0.12M ADV | "acceptable" | **STABLE 14, APEX 21** | ×0.55 illiquidity, liquidity bucket 0, liquidity score 15 hard-blocks APEX, confidence collapses to 33 |
-| **measured** — thin name, one 400× volume bar +35% | "elite, RVOL 28" | **STABLE 47, APEX 47** | spike penalty in StableScore *and* APEX, then hard-blocked at 4.88 ATR extension. Was 68 before the APEX gates existed. |
+| **measured** — illiquid microcap, $0.12M ADV | "acceptable" | **STABLE 14, SCORE 21** | ×0.55 illiquidity, liquidity bucket 0, liquidity score 15 hard-blocks SCORE, confidence collapses to 33 |
+| **measured** — thin name, one 400× volume bar +35% | "elite, RVOL 28" | **STABLE 47, SCORE 47** | spike penalty in StableScore *and* SCORE, then hard-blocked at 4.88 ATR extension. Was 68 before the score gates existed. |
 | **measured** — high-vol biotech, ATR% 4.9 | "extreme vol = opportunity" | **STABLE 61** | ATR% band scores *tradeable* range, not maximum range |
 | **measured** — low-vol utility, ATR% 0.08 | "safe, stable" | **STABLE 66, EARLY 35** | quality is real, but nothing to trade — read EARLY and ATR% together |
 | **measured** — parabolic, compounding 1.2%/bar | "very strong" | **EARLY 8** | extension penalty; EARLY is the tell, not STABLE |
-| *traced* — broke out yesterday, closed back inside | "breakout" | DarvasScan 0, ×0.80 ×0.90 | `failedBO` in both StableScore and APEX |
+| *traced* — broke out yesterday, closed back inside | "breakout" | DarvasScan 0, ×0.80 ×0.90 | `failedBO` in both StableScore and SCORE |
 | *traced* — dead ADX 11, no squeeze, RelVol 0.4 | "acceptable" | ~24 | ×0.85 chop × ×0.80 low-rvol |
 | *traced* — every lens neutral (perfect chop) | direction 0 | confidence capped 45 | COIN FLIP rule |
 
@@ -243,15 +243,15 @@ worked through the formulas by hand and have not been executed.
    expect to filter by eye.
 2. The spike case above still lands at 47 — depressed, not eliminated. A genuinely
    explosive single bar and a print-driven fake bar look identical in OHLCV. If you want
-   them gone entirely rather than demoted, raise `minApex` on the scans to 70+, which all
-   the APEX scans already default to.
+   them gone entirely rather than demoted, raise `minScore` on the scans to 70+, which all
+   the ranked scans already default to.
 
 ### One more defect found by testing: the extension reference
 
 The first implementation measured extension from **session VWAP** when available. On any
 normal intraday trend day, price drifts several ATR from the session open while sitting
 right on its trend mean — so healthy trends read as "chase risk" and were hard-blocked
-out of APEX entirely. Extension now takes the distance from the **nearer** of the 21 EMA
+out of SCORE entirely. Extension now takes the distance from the **nearer** of the 21 EMA
 and VWAP: you are not chasing if price is near either equilibrium. On Daily, where VWAP
 is unavailable, this collapses cleanly to the EMA distance and the same thresholds
 apply.

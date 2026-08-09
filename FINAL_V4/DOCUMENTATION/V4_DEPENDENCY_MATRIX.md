@@ -24,7 +24,7 @@ the same inputs and you treat them as independent confirmation, you are double-c
 | `V4_EarlyEntry` | X | X | X | X | X | | | X | X |
 | `V4_REGIME` | X | | X | X | X | X | | | X |
 | `V4_Confirmed` | X | X | X | X | X | X | X | X | X |
-| `V4_APEX_SCORE` | X | X | X | X | X | X | X | X | X |
+| `V4_SCORE` | X | X | X | X | X | X | X | X | X |
 | `EarningsRisk` | | | | | | | | | |
 | `V4_DaysToEarnings` | | | | | | | | | |
 | `BidAskSpread` | | | | | | | | | |
@@ -41,19 +41,19 @@ why they are useful as tiebreakers — nothing else in the matrix knows what the
 | RSI + squeeze momentum + efficiency ratio | all measure "is it moving cleanly" | pooled, **capped at 15** |
 | RelVol + volume trend + CMF magnitude | all measure participation | pooled, **capped at 20** |
 | ATR% band + ATR stability | both volatility | pooled, **capped at 15** |
-| StableScore inside APEX | would re-add all six buckets | APEX takes StableScore **once** at 0.55 and adds only what StableScore does not contain |
+| StableScore inside SCORE | would re-add all six buckets | SCORE takes StableScore **once** at 0.55 and adds only what StableScore does not contain |
 | `V4_EXTENSION` inside Timing and EarlyEntry | same input, two consumers | intentional and different: Timing uses **bands**, EarlyEntry uses it as a **penalty** |
 | `V4_LIQUIDITY_SCORE` and the `minDollarVol` floor | both liquidity | the floor is a hard gate, the score is a ranking — the floor runs first |
 
 ## Known residual overlaps, accepted
 
 **1. CMF appears twice.** It contributes up to 4 of the 20 participation points inside
-StableScore, and it drives SmartFlow. Since APEX takes 0.55 × StableScore plus
-0.20 × |SmartFlow|, effective overlap is ≈ 2.2% of APEX. Kept because removing it would
+StableScore, and it drives SmartFlow. Since SCORE takes 0.55 × StableScore plus
+0.20 × |SmartFlow|, effective overlap is ≈ 2.2% of SCORE. Kept because removing it would
 leave the participation bucket with nothing but volume magnitude.
 
 **2. Dollar volume appears twice.** It is the liquidity bucket in StableScore (15 pts)
-and the largest term in `V4_LIQUIDITY_SCORE` (45 pts), and both feed APEX. This is
+and the largest term in `V4_LIQUIDITY_SCORE` (45 pts), and both feed SCORE. This is
 deliberate — liquidity is the one factor allowed to be over-weighted, because an
 illiquid setup is not a setup regardless of how good it looks.
 
@@ -78,7 +78,7 @@ inflates:
 | Squeeze | squeeze state | shares momentum with the Momentum category — **partial overlap** |
 
 Three of seven categories carry partial overlap, so a count of 7/7 is worth roughly 5-6
-truly independent confirmations. The thresholds account for this: level 4 (APEX) needs
+truly independent confirmations. The thresholds account for this: level 4 (ELITE) needs
 6 of 7 **and** StableScore ≥ 75 **and** Confidence ≥ 70, so the count alone can never
 produce the top level.
 

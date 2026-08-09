@@ -5,19 +5,19 @@
 Left to right, so the decision resolves as your eye moves:
 
 ```
-Symbol │ Last │ V4_APEX │ V4_DIR │ V4_CONF │ V4_TIMING │ V3_StableScore │ V4_Early
+Symbol │ Last │ V4_Score │ V4_DIR │ V4_CONF │ V4_TIMING │ V3_StableScore │ V4_Early
        │ V4_Confirmed │ V3_ModelATRpct │ RelVol30 │ RelVol30Intraday │ DarvasScan
        │ DarvasBias │ SqueezeHit% │ SqueezeState │ SmartFlow │ V4_EXTENSION
        │ V4_LIQUIDITY_SCORE │ BidAskSpread │ Earnings │ V4_DaysToEarnings │ V4_Regime
 ```
 
-Sort on **V4_APEX** descending. Everything else is context for the top rows.
+Sort on **V4_Score** descending. Everything else is context for the top rows.
 
 ## Decision hierarchy
 
 Work down this list. Stop as soon as a row fails one — do not talk yourself past it.
 
-1. **APEX** — is it worth looking at?
+1. **SCORE** — is it worth looking at?
 2. **DIR** — which side? `0` means skip, whatever else the row says.
 3. **CONF** — do the lenses agree?
 4. **TIMING** — is the move still available?
@@ -31,7 +31,7 @@ Work down this list. Stop as soon as a row fails one — do not talk yourself pa
 
 ## Interpretation tables
 
-### V4_APEX — 0-100
+### V4_Score — 0-100
 | Value | Meaning |
 |---|---|
 | 85-100 | Elite. Rare. |
@@ -45,7 +45,7 @@ Capped at 72 unless 4 of 6 gates pass, and hard-blocked at 55 when direction is 
 
 ### V4_DIR — −2 … +2
 `+2` strong bull · `+1` bull · `0` neutral · `−1` bear · `−2` strong bear.
-`±2` requires a net of 4 of 6 lenses. **A high APEX with `−2` is a high-quality short.**
+`±2` requires a net of 4 of 6 lenses. **A high SCORE with `−2` is a high-quality short.**
 
 ### V4_CONF — 0-100
 | Value | Meaning |
@@ -64,11 +64,11 @@ Capped at 45 whenever DIR is 0 — the COIN FLIP rule. On daily aggregation the 
 
 ### V4_Confirmed — 0-4
 `0` no setup (or liquidity floor failed) · `1` watch · `2` developing · `3` confirmed ·
-`4` apex. Counts *breadth* of confirmation, not magnitude.
+`4` elite. Counts *breadth* of confirmation, not magnitude.
 
 ### V4_TIMING — −2 … +2
 `+2` prime · `+1` early · `0` neutral · `−1` extended · `−2` exhausted.
-This is the "is it still catchable" column. **A high APEX with −1 or −2 is a setup you
+This is the "is it still catchable" column. **A high SCORE with −1 or −2 is a setup you
 have already missed.**
 
 ### V4_Early — 0-100
@@ -80,10 +80,10 @@ Early asks "is something starting?", Timing asks "is it still available?"
 ### V4_EXTENSION — ATR units
 `<0.50` normal · `0.50-1.00` active · `1.00-1.50` extended · `1.50-2.00` highly extended ·
 `>2.00` chase risk. Measured from the nearer of the 21 EMA and session VWAP. Above
-**3.00** APEX is hard-blocked.
+**3.00** SCORE is hard-blocked.
 
 ### V4_LIQUIDITY_SCORE — 0-100
-`80+` excellent · `65-79` good · `50-64` acceptable · `35-49` marginal · `<35` blocks APEX.
+`80+` excellent · `65-79` good · `50-64` acceptable · `35-49` marginal · `<35` blocks SCORE.
 Dollar volume, price level, participation and turnover. **Not market depth.**
 
 ### V4_DaysToEarnings — trading days
@@ -136,8 +136,8 @@ The tradeable combination is **State 1 with Hit ≥ 65**.
 | Scan | Run it when |
 |---|---|
 | `V4_MASTER_SCAN` | You have five minutes. Union of every path. |
-| `V4_APEX_LONG_SCAN` | Looking for longs, want confirmation over earliness. |
-| `V4_APEX_SHORT_SCAN` | Same, short side. |
+| `V4_LONG_SCAN` | Looking for longs, want confirmation over earliness. |
+| `V4_SHORT_SCAN` | Same, short side. |
 | `V4_EARLY_ENTRY_SCAN` | Scanner lag is your problem. Accepts lower quality, rejects extension. |
 | `V4_BREAKOUT_SCAN` | Working Darvas levels specifically. |
 | `V4_SQUEEZE_FIRE_SCAN` | Trading compression releases. |
@@ -152,7 +152,7 @@ Daily is the default and the ceiling; the target holding period is 1-3 days, str
 to a couple of weeks on the cleanest trends. Use 4h when you want the same system to move
 faster, and accept that it gets jumpier.
 
-1. Pre-market: `V4_MASTER_SCAN` on **Daily**. Note the top 10 by APEX.
+1. Pre-market: `V4_MASTER_SCAN` on **Daily**. Note the top 10 by SCORE.
 2. 09:30-10:00: no entries (the existing playbook rule).
 3. `V4_EARLY_ENTRY_SCAN` on Daily for names not yet extended — or 4h for the faster read.
    Drop to 15m only to time an entry on a name you already chose, never to scan.

@@ -6,7 +6,7 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate"/>
   <meta http-equiv="Pragma" content="no-cache"/>
   <meta http-equiv="Expires" content="0"/>
-  <title>⚡ Squeeze & Flush Scanner</title>
+  <title>WallstreetHustler · Squeeze Scanner</title>
   <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
   <!-- Pinned. Unpinned, this URL follows @babel/standalone's latest tag and can
@@ -50,7 +50,7 @@
   <script type="text/babel">
 const { useState, useEffect, useRef, useCallback } = React;
 
-// ── SIGNAL TYPES ──────────────────────────────────────────────────────────────
+// ── SIGNAL TYPES ─────────────────────────────────────────────────────────────
 const SQ = {
   staircase:     { label:"STAIRCASE",    color:"#00ddff", icon:"📊", tier:1, cat:"squeeze" },
   short_squeeze: { label:"SHORT SQ",     color:"#00ff88", icon:"🚀", tier:1, cat:"squeeze" },
@@ -74,7 +74,7 @@ const MC = {
 };
 const ALL = { ...SQ, ...FL, ...MC };
 
-// ── SETUP PROFILES ────────────────────────────────────────────────────────────
+// ── SETUP PROFILES ───────────────────────────────────────────────────────────
 const PROF = {
   staircase:     { dte:"14–21", hold:"5–14 days", holdDays:14 },
   short_squeeze: { dte:"7–21",  hold:"3–10 days", holdDays:10 },
@@ -93,7 +93,7 @@ const PROF = {
   macro_bear:    { dte:"7–14",  hold:"1–5 days",  holdDays:5  },
 };
 
-// ── STRATEGIES ────────────────────────────────────────────────────────────────
+// ── STRATEGIES ───────────────────────────────────────────────────────────────
 const STRATS = {
   naked_call:  { name:"Naked Call (OTM)",   emoji:"🎯", color:"#00ff88", risk:"HIGH",    ivNeed:"low",  best:["short_squeeze","delta_squeeze","staircase"],        how:"Buy 1 OTM call 1–2 strikes above price. DTE = profile. Max 2% account.",          exit:"Sell 50–100% gain or when sweeps stop. Never past max hold day.", stop:"Down 50% OR put sweeps appear on same ticker.", pros:"Unlimited upside. Simple.", cons:"Full premium at risk. IV crush on high-IV tickers." },
   call_spread: { name:"Call Debit Spread",  emoji:"📐", color:"#ffe033", risk:"DEFINED", ivNeed:"high", best:["short_squeeze","gamma_squeeze","cap_flush","staircase"], how:"Buy ATM call + sell OTM call same expiry. Cuts cost and IV risk ~50%.",              exit:"Close at 50–75% max profit.",              stop:"Down 50% on spread.",          pros:"Defined risk. Cheaper. IV crush halved.", cons:"Caps upside at short strike." },
@@ -116,7 +116,7 @@ function getBestStrats(sqType, ivHigh) {
   return m.slice(0,2);
 }
 
-// ── WIN PROBABILITY ───────────────────────────────────────────────────────────
+// ── WIN PROBABILITY ──────────────────────────────────────────────────────────
 function calcWinProb(p) {
   if (p.cat === "macro") return null;
   let pts = 0;
@@ -207,7 +207,7 @@ function getGuidance(p) {
   return lines;
 }
 
-// ── TECHNICAL READ + VERDICT ENGINE ───────────────────────────────────────────
+// ── TECHNICAL READ + VERDICT ENGINE ──────────────────────────────────────────
 // Tech bias comes from ICHIMOKU on 5m bars — not from the signal category.
 // Macro bias comes from UW market tide (macro_bull / macro_bear signals in feed).
 // Framework rule:
@@ -291,7 +291,7 @@ function getTechnicalRead(p, macroBias) {
   };
 }
 
-// ── SYSTEM PROMPT BUILDER ─────────────────────────────────────────────────────
+// ── SYSTEM PROMPT BUILDER ────────────────────────────────────────────────────
 const buildSystem = (uwKey) => `You connect to Unusual Whales MCP (paid). Return ONE raw JSON array ONLY. First char MUST be [. Last char MUST be ]. No text before or after.
 
 UW Bearer token: ${uwKey}
@@ -318,7 +318,7 @@ SCHEMA (one object per signal):
 
 Use null for unavailable fields. Return [] if all fetches fail. Aim for full ticker coverage on earnings/congress/insider/news — these should rarely be null on large-cap US tickers. predict will often be null (most tickers don't have a prediction market) — that is expected.`;
 
-// ── DIRECT MODE — bypass MCP, fetch UW REST in browser, classify with Claude ──
+// ── DIRECT MODE — bypass MCP, fetch UW REST in browser, classify with Claude ─
 // MCP server has been hanging at peak hours. UW REST responds in ~100ms.
 const buildSystemDirect = () => `You will receive pre-fetched UW data. Classify into the trader's signal schema. Return ONE raw JSON array ONLY. First char [, last char ]. No prose.
 
@@ -342,7 +342,7 @@ Set enrichment fields (short, options_vol, earnings, iv, levels, congress, insid
 
 const MACRO_TICKERS = new Set(["SPY","QQQ","IWM","DIA","TLT","GLD","XLF","XLE","SQQQ","TQQQ","UVXY","VIX"]);
 
-// ── ICHIMOKU CLOUD — client-side math on 5m OHLC bars ─────────────────────────
+// ── ICHIMOKU CLOUD — client-side math on 5m OHLC bars ────────────────────────
 // Computes Tenkan (9), Kijun (26), Senkou Span A/B (52 for B), Chikou (26-back),
 // cloud state vs price, TK cross, and derives a BULLISH/BEARISH/NEUTRAL read.
 function computeIchimoku(barsRaw) {
@@ -432,7 +432,7 @@ function computeIchimoku(barsRaw) {
   };
 }
 
-// ── V4 QUANT ENGINE ───────────────────────────────────────────────────────────
+// ── V4 QUANT ENGINE ──────────────────────────────────────────────────────────
 // Straight JS port of FINAL_V4/WATCHLIST_COLUMNS/*.ts — same buckets, same caps,
 // same penalties, same thresholds. Kept in lockstep on purpose: if the dashboard
 // and ThinkorSwim disagree on a ticker, one of them is wrong, and you need to be
@@ -632,7 +632,7 @@ function computeV4(barsRaw) {
   // Distance from the NEARER of two equilibria: trend mean (EMA21) and session
   // mean (VWAP). VWAP alone was wrong — on a normal intraday trend day price
   // drifts several ATR from the session open while sitting on its trend mean,
-  // which read as "chase risk" and hard-blocked APEX. You are not chasing if
+  // which read as "chase risk" and hard-blocked SCORE. You are not chasing if
   // price is near EITHER equilibrium. On Daily this collapses to the EMA term.
   const extEma  = atrOK ? Math.abs(C[i] - emaM[i]) / atr : NaN;
   const extVwap = (atrOK && vwapOK) ? Math.abs(C[i] - vw) / atr : NaN;
@@ -735,19 +735,19 @@ function computeV4(barsRaw) {
   const confidence = Math.round(v4Clamp(
     direction === 0 ? Math.min(45, agreement) : agreement * (0.75 + 0.25 * Math.min(1, activeSig / 6)), 0, 100));
 
-  // ── APEX ───────────────────────────────────────────────────────────────────
-  const apexRaw = 0.55 * stableScore + 0.20 * Math.abs(smartFlow) + 0.15 * confidence + 0.10 * sqzHit;
+  // ── SCORE ───────────────────────────────────────────────────────────────────
+  const scoreRaw = 0.55 * stableScore + 0.20 * Math.abs(smartFlow) + 0.15 * confidence + 0.10 * sqzHit;
   // QUALITY GATES. A high raw blend is necessary but never sufficient: elite
-  // APEX needs four of six gates, and three conditions block it outright.
-  const apexGate = (stableScore >= 55 ? 1 : 0) + (confidence >= 55 ? 1 : 0)
+  // SCORE needs four of six gates, and three conditions block it outright.
+  const scoreGate = (stableScore >= 55 ? 1 : 0) + (confidence >= 55 ? 1 : 0)
                  + (Math.abs(smartFlow) >= 25 ? 1 : 0) + (Math.abs(darvasScan) >= 1 ? 1 : 0)
                  + (liquidityScore >= 50 ? 1 : 0) + (direction !== 0 ? 1 : 0);
-  const apexBlock = direction === 0 || liquidityScore < 35 || extSafe > 3.0;
+  const scoreBlock = direction === 0 || liquidityScore < 35 || extSafe > 3.0;
   // A one-bar spike maxes SmartFlow and Confidence at once, which clears
-  // several gates on its own. StableScore already discounts it; APEX must too.
-  const apexPenalty = (spike ? 0.85 : 1) * (failedBO ? 0.90 : 1);
-  const apexScore = Math.round(v4Clamp(
-    (apexBlock ? Math.min(55, apexRaw) : apexGate >= 4 ? apexRaw : Math.min(72, apexRaw)) * apexPenalty, 0, 100));
+  // several gates on its own. StableScore already discounts it; SCORE must too.
+  const scorePenalty = (spike ? 0.85 : 1) * (failedBO ? 0.90 : 1);
+  const v4Score = Math.round(v4Clamp(
+    (scoreBlock ? Math.min(55, scoreRaw) : scoreGate >= 4 ? scoreRaw : Math.min(72, scoreRaw)) * scorePenalty, 0, 100));
 
   // ── timing: is the move still available? ──────────────────────────────────
   const volAccel  = i >= 3 && rvolSafe > ((v4Sma(V,30,i-3) > 0) ? V[i-3] / v4Sma(V,30,i-3) : 0) && rvolSafe >= 1.1;
@@ -771,7 +771,7 @@ function computeV4(barsRaw) {
   // ── early entry ────────────────────────────────────────────────────────────
   // TRANSITION engine: every term compares now against a few bars ago, so a
   // name that has been strong for weeks scores near zero and a name crossing
-  // into strength scores high. Not "APEX with lower thresholds".
+  // into strength scores high. Not "the master scan with lower thresholds".
   const rvolAt = x => { const a = v4Sma(V, 30, x); return (!isFinite(a) || a <= 0) ? 0 : V[x] / a; };
   const volTrendAt = x => { const sl = v4Sma(V, 50, x); return (!isFinite(sl) || sl <= 0) ? 1 : v4Sma(V, 5, x) / sl; };
   const rvolRising    = i >= 3 && rvolSafe > rvolAt(i - 3) && rvolSafe >= 1.1;
@@ -802,7 +802,7 @@ function computeV4(barsRaw) {
     : confCount >= 2 ? 1 : 0;
 
   return {
-    last: +C[i].toFixed(2), apex: apexScore, direction, confidence, stable: stableScore,
+    last: +C[i].toFixed(2), score: v4Score, direction, confidence, stable: stableScore,
     early: earlyScore, confirmed: v4Confirmed, atrPct: isFinite(atrPct) ? +atrPct.toFixed(2) : null,
     rvol: isFinite(rvol) ? +rvol.toFixed(2) : null, darvas: darvasScan, darvasBias,
     sqzHit, sqzState, smartFlow, regime, regimeName,
@@ -823,10 +823,10 @@ const v4DirLabel = d => d === 2 ? "+2" : d === 1 ? "+1" : d === -1 ? "−1" : d 
 const v4DirColor = d => d > 0 ? (d === 2 ? "#00ff88" : "#44cc88") : d < 0 ? (d === -2 ? "#ff3355" : "#cc5566") : "#7591a8";
 const V4_REGIME_COLOR = { CHOP:"#7591a8", TREND:"#00ff88", BREAKOUT:"#00ddff", SQUEEZE:"#cc88ff", REVERSAL:"#ff9955", "HIGH VOL":"#ff3355", "LOW VOL":"#556677" };
 
-// ── APEX CATALYST & NEWS INTELLIGENCE ENGINE ─────────────────────────────────
+// ── CATALYST & NEWS INTELLIGENCE ENGINE ──────────────────────────────────────
 // Separate architecture from the technical scanner, on purpose. ThinkorSwim /
 // FINAL_V4 is the technical signal engine; this is the intelligence engine.
-// Nothing in here ever mutates APEX, Direction, Confidence or StableScore —
+// Nothing in here ever mutates SCORE, Direction, Confidence or StableScore —
 // news is carried as its own dimensions and FUSED at display time, never
 // subtracted. `fuseState()` takes the technical read as a read-only input.
 //
@@ -1200,8 +1200,8 @@ const FUSION_STATES = {
 
 function fuseState({ technical, news, eventProximityMin }) {
   const tDir = technical?.direction ?? 0;
-  const tApex = technical?.apex ?? 0;
-  const hasTech = tApex >= 55 && tDir !== 0;
+  const tScore = technical?.score ?? 0;
+  const hasTech = tScore >= 55 && tDir !== 0;
   const ni = news?.impactNow ?? 0;
   const nd = news?.direction ?? 0;
   const nc = news?.confidence ?? 0;
@@ -1221,7 +1221,7 @@ function fuseState({ technical, news, eventProximityMin }) {
     if (agree)  return { state: tDir > 0 ? "ALIGNED_BULLISH" : "ALIGNED_BEARISH",
                          note:"Price structure and the catalyst point the same way." };
     if (oppose) return { state:"CONFLICT",
-                         note:`Technical direction ${tDir > 0 ? "+" : ""}${tDir} against news direction ${nd > 0 ? "+" : ""}${nd}. Do not read the APEX score as normal conditions.` };
+                         note:`Technical direction ${tDir > 0 ? "+" : ""}${tDir} against news direction ${nd > 0 ? "+" : ""}${nd}. Do not read the V4 score as normal conditions.` };
   }
   if (hasNews && news.ageMin <= 120 && !hasTech)
     return { state:"POST_EVENT_CONFIRMATION", note:"Catalyst has landed. Watch how price actually responds." };
@@ -1318,7 +1318,7 @@ function macroRisk(events, nowMs) {
 // ── EVENT DATABASE + MARKET REACTION (localStorage) ──────────────────────────
 // Persists what THIS BROWSER observed. Stats are computed from real samples and
 // always report n. Nothing is hard-coded, and no folklore is presented as data.
-const INTEL_KEY = "apex_intel_events_v1";
+const INTEL_KEY = "wsh_intel_events_v1";
 const INTEL_MAX = 600;
 
 function loadIntel() {
@@ -1490,13 +1490,13 @@ function marketBrain({ feed, events, calendar, zones, nowMs }) {
   else if (volatility === "COMPRESSED")         { marketState = "LOW VOLATILITY / COMPRESSED";  stateColor = "#88aacc"; }
   else                                          { marketState = "NORMAL CONDITIONS";            stateColor = "#00ff88"; }
 
-  // APEX mode
-  let apexMode;
-  if (nextMins != null && nextMins <= 60 && (next.importance === "CRITICAL" || next.importance === "HIGH")) apexMode = "EVENT PREPARATION";
-  else if (zone.severity === 3) apexMode = "STAND ASIDE";
-  else if (topBreaking.length) apexMode = "POST-EVENT PRICE DISCOVERY";
-  else if (mRisk >= 60) apexMode = "REDUCED SIZE";
-  else apexMode = "NORMAL OPERATION";
+  // SCORE mode
+  let scannerMode;
+  if (nextMins != null && nextMins <= 60 && (next.importance === "CRITICAL" || next.importance === "HIGH")) scannerMode = "EVENT PREPARATION";
+  else if (zone.severity === 3) scannerMode = "STAND ASIDE";
+  else if (topBreaking.length) scannerMode = "POST-EVENT PRICE DISCOVERY";
+  else if (mRisk >= 60) scannerMode = "REDUCED SIZE";
+  else scannerMode = "NORMAL OPERATION";
 
   // Conflicts — technical vs catalyst, computed per ticker
   const conflicts = [];
@@ -1509,8 +1509,8 @@ function marketBrain({ feed, events, calendar, zones, nowMs }) {
     }
   }
 
-  const best = v4s.filter(v => v.apex >= 55 && v.direction !== 0)
-                  .sort((a, b) => b.apex - a.apex).slice(0, 5);
+  const best = v4s.filter(v => v.score >= 55 && v.direction !== 0)
+                  .sort((a, b) => b.score - a.score).slice(0, 5);
 
   // Plain-language message, assembled from what is actually true right now.
   const bits = [];
@@ -1523,7 +1523,7 @@ function marketBrain({ feed, events, calendar, zones, nowMs }) {
   if (liquidity === "POOR") bits.push("liquidity is poor across the board");
 
   return {
-    marketState, stateColor, apexMode,
+    marketState, stateColor, scannerMode,
     spy: biasOf("SPY"), qqq: biasOf("QQQ"), iwm: biasOf("IWM"),
     confidence, volatility, atrMed, liquidity, liqMed, newsPressure, macroRisk: mRisk,
     nextCatalyst: next, nextMins, zone, zones, topBreaking, conflicts, best,
@@ -1538,13 +1538,13 @@ function marketBrain({ feed, events, calendar, zones, nowMs }) {
 const MODE_GATES = {
   safe: {
     label:"SAFE", color:"#00ff88",
-    minApex:80, minConfidence:75, minLiquidity:70, maxExtension:1.25, minRvol:1.2,
+    minScore:80, minConfidence:75, minLiquidity:70, maxExtension:1.25, minRvol:1.2,
     requireDirection:true, minTiming:0, blockEventWithinMin:60, blockUnverifiedHighImpact:true,
     note:"Higher bar on every axis, and it stands down near critical events or unverified high-impact headlines.",
   },
   pro: {
     label:"PRO", color:"#ffe033",
-    minApex:55, minConfidence:0, minLiquidity:35, maxExtension:99, minRvol:0,
+    minScore:55, minConfidence:0, minLiquidity:35, maxExtension:99, minRvol:0,
     requireDirection:false, minTiming:-2, blockEventWithinMin:0, blockUnverifiedHighImpact:false,
     note:"Everything the engine sees, including developing setups, conflicts and event trades. Raw factors exposed.",
   },
@@ -1559,7 +1559,7 @@ function applyMode(rows, mode, ctx = {}) {
   for (const r of rows) {
     const v = r.v4 || r;
     const fails = [];
-    if ((v.apex ?? 0) < g.minApex) fails.push(`APEX ${v.apex} < ${g.minApex}`);
+    if ((v.score ?? 0) < g.minScore) fails.push(`SCORE ${v.score} < ${g.minScore}`);
     if ((v.confidence ?? 0) < g.minConfidence) fails.push(`CONF ${v.confidence} < ${g.minConfidence}`);
     if ((v.liquidityScore ?? 0) < g.minLiquidity) fails.push(`LIQ ${v.liquidityScore} < ${g.minLiquidity}`);
     if (Number.isFinite(v.extension) && v.extension > g.maxExtension) fails.push(`EXT ${v.extension} > ${g.maxExtension}`);
@@ -1573,7 +1573,7 @@ function applyMode(rows, mode, ctx = {}) {
   return { passed: out, rejected, gates: g, eventBlocked };
 }
 
-// ── APEX POLY INTELLIGENCE ───────────────────────────────────────────────────
+// ── POLY INTELLIGENCE ────────────────────────────────────────────────────────
 // Prediction-market intelligence: research, analytics and paper strategy.
 //
 // HARD ARCHITECTURAL BOUNDARY — V1 IS READ-ONLY.
@@ -2061,12 +2061,12 @@ async function fetchUWDirect(uwKey, signal) {
   };
 }
 
-// ── HELPERS ───────────────────────────────────────────────────────────────────
+// ── HELPERS ──────────────────────────────────────────────────────────────────
 const fmt  = n => !n ? "—" : +n >= 1e6 ? `$${(+n/1e6).toFixed(2)}M` : +n >= 1e3 ? `$${(+n/1e3).toFixed(0)}K` : `$${(+n).toFixed(2)}`;
 const fmtP = n => !n ? "—" : parseFloat(n).toFixed(1) + "%";
 const beep = () => { try { const ac = new(window.AudioContext||window.webkitAudioContext)(); const o=ac.createOscillator(),g=ac.createGain(); o.connect(g); g.connect(ac.destination); o.frequency.value=900; g.gain.setValueAtTime(0.18,ac.currentTime); g.gain.exponentialRampToValueAtTime(0.001,ac.currentTime+0.5); o.start(); o.stop(ac.currentTime+0.5); } catch(_){} };
 
-// ── DAILY TRADING PLAYBOOK (time-aware) ───────────────────────────────────────
+// ── DAILY TRADING PLAYBOOK (time-aware) ──────────────────────────────────────
 // Each step: t = minutes since midnight ET. Schedule is fixed in Eastern Time.
 const PLAYBOOK = [
   { t: 8*60+30,  time: "8:30 AM",  title: "Scanner Fires",                 phase: "Pre-Market",  color: "#5b9bd5", body: "Replit runs the first scheduled scan. You don't need to do anything. Stay calm — the system works without you." },
@@ -2094,7 +2094,7 @@ function nowETMin() {
   } catch { const d = new Date(); return d.getHours()*60 + d.getMinutes(); }
 }
 
-// ── 30-DAY HISTORY (localStorage) ─────────────────────────────────────────────
+// ── 30-DAY HISTORY (localStorage) ────────────────────────────────────────────
 const HIST_KEY = "sfs_history_v1";
 const DAY_MS   = 86400000;
 const today    = () => new Date().toISOString().slice(0,10);
@@ -2159,11 +2159,11 @@ function recordHist(prints, prev) {
   return pruneHist(h);
 }
 
-// ── WIN-PROB GATE ─────────────────────────────────────────────────────────────
+// ── WIN-PROB GATE ────────────────────────────────────────────────────────────
 // Hard rule: setup must clear 70% win probability before it counts as actionable.
 const WIN_GATE = 70;
 
-// ── POSITION SIZE HINT (discipline layer) ─────────────────────────────────────
+// ── POSITION SIZE HINT (discipline layer) ────────────────────────────────────
 // Maps days-building + win-prob to recommended account % per profile rules:
 // <70% win prob = WAIT (gate). < 3d = wait, 3-4d = 1%, 5-6d = 2%, 7+d = 3% cap.
 function sizingHint(days, winProb) {
@@ -2189,7 +2189,7 @@ function topBuilds(h, cat, sortMode, n, gateOn) {
     .slice(0, n||10);
 }
 
-// ── UI PRIMITIVES ─────────────────────────────────────────────────────────────
+// ── UI PRIMITIVES ────────────────────────────────────────────────────────────
 const Sec = ({ label }) => (
   <div style={{ display:"flex", alignItems:"center", gap:8, margin:"16px 0 8px" }}>
     <div style={{ fontSize:9, color:"#6e88a0", letterSpacing:"0.2em", fontWeight:700, whiteSpace:"nowrap" }}>{label}</div>
@@ -2339,7 +2339,7 @@ function TopList({ entries, sortMode, emptyLabel }) {
   );
 }
 
-// ── CARD ──────────────────────────────────────────────────────────────────────
+// ── CARD ─────────────────────────────────────────────────────────────────────
 function Card({ p, open, onToggle, pos, onSave, isNew, macroBias }) {
   const sigDef  = ALL[p.sig] || ALL[p.sqType] || { label:"SIGNAL", color:"#555", icon:"·", cat:p.cat };
   const sqT     = SQ[p.sqType] || FL[p.sqType];
@@ -2385,10 +2385,10 @@ function Card({ p, open, onToggle, pos, onSave, isNew, macroBias }) {
               {tech.verdict}{tech.verdict==="PENDING"?"":` · ${tech.verdictConf}%`}
             </span>
             {v4 && (
-              <span title={`V4 · APEX ${v4.apex} · DIR ${v4DirLabel(v4.direction)} · CONF ${v4.confidence} · TIMING ${v4DirLabel(v4.timing)} · STABLE ${v4.stable} · EARLY ${v4.early} · EXT ${v4.extension ?? "—"} ATR · LIQ ${v4.liquidityScore} · ${v4.regimeName}${v4.timing <= -1 && v4.apex >= 65 ? " — strong but EXTENDED, the move already happened" : ""}`}
-                style={{ fontSize:11, padding:"3px 9px", background:"#08131d", border:`1px solid ${v4Color(v4.apex, V4_SCORE_BAND)}66`, color:v4Color(v4.apex, V4_SCORE_BAND), fontWeight:700, letterSpacing:"0.06em", borderRadius:3, fontFamily:"'JetBrains Mono','SF Mono',Menlo,Consolas,monospace" }}>
-                APEX {v4.apex} · <span style={{ color:v4DirColor(v4.direction) }}>{v4DirLabel(v4.direction)}</span>
-                {v4.timing <= -1 && v4.apex >= 65 && <span style={{ color:"#ff9955" }}> ⚠LATE</span>}
+              <span title={`V4 · SCORE ${v4.score} · DIR ${v4DirLabel(v4.direction)} · CONF ${v4.confidence} · TIMING ${v4DirLabel(v4.timing)} · STABLE ${v4.stable} · EARLY ${v4.early} · EXT ${v4.extension ?? "—"} ATR · LIQ ${v4.liquidityScore} · ${v4.regimeName}${v4.timing <= -1 && v4.score >= 65 ? " — strong but EXTENDED, the move already happened" : ""}`}
+                style={{ fontSize:11, padding:"3px 9px", background:"#08131d", border:`1px solid ${v4Color(v4.score, V4_SCORE_BAND)}66`, color:v4Color(v4.score, V4_SCORE_BAND), fontWeight:700, letterSpacing:"0.06em", borderRadius:3, fontFamily:"'JetBrains Mono','SF Mono',Menlo,Consolas,monospace" }}>
+                SCORE {v4.score} · <span style={{ color:v4DirColor(v4.direction) }}>{v4DirLabel(v4.direction)}</span>
+                {v4.timing <= -1 && v4.score >= 65 && <span style={{ color:"#ff9955" }}> ⚠LATE</span>}
                 {v4.timing === 2 && <span style={{ color:"#00ff88" }}> ★PRIME</span>}
               </span>
             )}
@@ -2695,7 +2695,7 @@ function Card({ p, open, onToggle, pos, onSave, isNew, macroBias }) {
   );
 }
 
-// ── COLUMN ────────────────────────────────────────────────────────────────────
+// ── COLUMN ───────────────────────────────────────────────────────────────────
 function Column({ title, color, items, openId, onToggle, positions, onSave, newIds, viewMode, topEntries, sortMode, macroBias }) {
   const enter = items.filter(p=>(p.trade_day||1)<=1&&(p.winProb||0)>=50).length;
   const hold  = items.filter(p=>(p.trade_day||1)>1&&(p.trade_day||1)<=7).length;
@@ -2738,7 +2738,7 @@ function Column({ title, color, items, openId, onToggle, positions, onSave, newI
   );
 }
 
-// ── SETUP SCREEN ──────────────────────────────────────────────────────────────
+// ── SETUP SCREEN ─────────────────────────────────────────────────────────────
 function Setup({ onConnect }) {
   const [ak, setAk] = useState("");
   const [uk, setUk] = useState("");
@@ -2747,7 +2747,7 @@ function Setup({ onConnect }) {
     <div style={{ display:"flex", alignItems:"center", justifyContent:"center", flex:1, background:"#060b10" }}>
       <div style={{ width:520, border:"1px solid #0f1a24", background:"#080c12", padding:40 }}>
         <div style={{ fontSize:11, color:"#7591a8", letterSpacing:"0.22em", marginBottom:6, fontWeight:500 }}>UNUSUAL WHALES · PAID SUBSCRIPTION</div>
-        <div style={{ fontSize:22, fontWeight:700, color:"#eaf2ff", marginBottom:10, letterSpacing:"-0.01em" }}>⚡ Squeeze &amp; Flush Scanner</div>
+        <div style={{ fontSize:22, fontWeight:700, color:"#eaf2ff", marginBottom:10, letterSpacing:"-0.01em" }}>⚡ WallstreetHustler · Squeeze Scanner</div>
         <div style={{ fontSize:13, color:"#9bb3c6", lineHeight:1.7, marginBottom:30 }}>
           14 signal types · Staircase detection · Win probability engine · IV-aware strategies · Position tracker with P&amp;L
         </div>
@@ -2774,11 +2774,11 @@ function Setup({ onConnect }) {
   );
 }
 
-// ── APP ───────────────────────────────────────────────────────────────────────
+// ── APP ──────────────────────────────────────────────────────────────────────
 
-// ── V4 QUANT GRID ─────────────────────────────────────────────────────────────
+// ── V4 QUANT GRID ────────────────────────────────────────────────────────────
 // The FINAL_V4 watchlist, rendered from the same numbers ThinkorSwim would show.
-// One row per ticker (deduped), sorted by APEX. Read left to right: is it
+// One row per ticker (deduped), sorted by SCORE. Read left to right: is it
 // tradeable → which side → do the signals agree → how strong → early or late.
 function V4Grid({ feed, onClose, modeResult, mode }) {
   const seenT = new Set();
@@ -2788,7 +2788,7 @@ function V4Grid({ feed, onClose, modeResult, mode }) {
     seenT.add(p.ticker);
     all.push({ ticker: p.ticker, cat: p.cat, ...p.v4 });
   });
-  all.sort((a, b) => b.apex - a.apex);
+  all.sort((a, b) => b.score - a.score);
   // Safe Mode does not merely hide columns — it changes which rows are surfaced.
   const passSet = modeResult ? new Set(modeResult.passed.map(r => r.ticker)) : null;
   const rows = passSet ? all.filter(r => passSet.has(r.ticker)) : all;
@@ -2803,7 +2803,7 @@ function V4Grid({ feed, onClose, modeResult, mode }) {
     <div style={{ background:"#04080c", borderBottom:"1px solid #0e1a24", maxHeight:"46vh", overflow:"auto", flexShrink:0 }}>
       <div style={{ display:"flex", alignItems:"center", gap:12, padding:"9px 20px", borderBottom:"1px solid #0e1a24", position:"sticky", top:0, background:"#04080c", zIndex:2 }}>
         <span style={{ fontSize:12, fontWeight:700, letterSpacing:"0.16em", color:"#66ffcc" }}>🧮 V4 QUANT GRID</span>
-        <span style={{ fontSize:11, color:"#7591a8" }}>{rows.length} ticker{rows.length===1?"":"s"} · same math as FINAL_V4 ThinkScript · sorted by APEX</span>
+        <span style={{ fontSize:11, color:"#7591a8" }}>{rows.length} ticker{rows.length===1?"":"s"} · same math as FINAL_V4 ThinkScript · sorted by SCORE</span>
         {mode && <span style={{ fontSize:10, padding:"2px 8px", borderRadius:2, fontWeight:700, letterSpacing:"0.08em",
                                 background:(MODE_GATES[mode]?.color||"#7591a8")+"1f", border:`1px solid ${(MODE_GATES[mode]?.color||"#7591a8")}66`,
                                 color:MODE_GATES[mode]?.color||"#7591a8" }}>{MODE_GATES[mode]?.label} MODE</span>}
@@ -2821,7 +2821,7 @@ function V4Grid({ feed, onClose, modeResult, mode }) {
             <tr>
               <th style={{ ...th, textAlign:"left" }}>SYMBOL</th>
               <th style={th}>LAST</th>
-              <th style={th} title="Master 0-100 opportunity score">APEX</th>
+              <th style={th} title="Master 0-100 opportunity score">SCORE</th>
               <th style={th} title="Direction: -2 strong bear … +2 strong bull">DIR</th>
               <th style={th} title="Agreement between the six direction lenses">CONF</th>
               <th style={th} title="Entry maturity: +2 prime, -2 exhausted. Is the move still available?">TIME</th>
@@ -2834,7 +2834,7 @@ function V4Grid({ feed, onClose, modeResult, mode }) {
               <th style={th} title="Buying/selling pressure proxy — NOT order flow">FLOW</th>
               <th style={th} title="Confirmation breadth 0-4">CONF✓</th>
               <th style={th} title="Distance from equilibrium in ATR units. >2.0 = chase risk">EXT</th>
-              <th style={th} title="Tradeability 0-100. NOT market depth. <35 blocks APEX">LIQ</th>
+              <th style={th} title="Tradeability 0-100. NOT market depth. <35 blocks SCORE">LIQ</th>
               <th style={{ ...th, textAlign:"left" }}>REGIME</th>
             </tr>
           </thead>
@@ -2843,7 +2843,7 @@ function V4Grid({ feed, onClose, modeResult, mode }) {
               <tr key={r.ticker} style={{ borderBottom:"1px solid #0b141c" }}>
                 <td style={{ ...td, textAlign:"left", color:"#eaf2ff", fontSize:14, fontWeight:700 }}>{r.ticker}</td>
                 <td style={{ ...td, color:"#b8c9dc" }}>{r.last?.toFixed(2) ?? "—"}</td>
-                <td style={bar(r.apex, v4Color(r.apex, V4_SCORE_BAND))}>{r.apex}</td>
+                <td style={bar(r.score, v4Color(r.score, V4_SCORE_BAND))}>{r.score}</td>
                 <td style={{ ...td, color:v4DirColor(r.direction), fontWeight:800 }}>{v4DirLabel(r.direction)}</td>
                 <td style={bar(r.confidence, v4Color(r.confidence, V4_SCORE_BAND))}>{r.confidence}</td>
                 <td style={{ ...td, color:v4DirColor(r.timing), fontWeight:800 }}
@@ -2897,7 +2897,7 @@ function V4Grid({ feed, onClose, modeResult, mode }) {
   );
 }
 
-// ── INCOME ETF LAB ────────────────────────────────────────────────────────────
+// ── INCOME ETF LAB ───────────────────────────────────────────────────────────
 // A separate discipline from the scanner. The scanner hunts 1-3 day moves; this
 // tab is about owning option-income ETFs and getting paid monthly.
 //
@@ -3286,7 +3286,7 @@ function IncomeTab({ onClose }) {
 }
 
 
-// ── APEX LIVE INTELLIGENCE — UI ──────────────────────────────────────────────
+// ── LIVE INTELLIGENCE — UI ───────────────────────────────────────────────────
 const STATUS_STYLE = {
   CONFIRMED:  { color:"#00ff88", bg:"#00ff8818" },
   REPORTED:   { color:"#00ddff", bg:"#00ddff18" },
@@ -3373,7 +3373,7 @@ function EventCard({ ev, technical, watchlist, now }) {
               <div className="sec-label" style={{ marginBottom:8 }}>TECHNICAL ALIGNMENT</div>
               {technical ? (
                 <>
-                  <DimBar label="TECHNICAL APEX" value={technical.apex} color="#00ddff"/>
+                  <DimBar label="TECHNICAL SCORE" value={technical.score} color="#00ddff"/>
                   <DimBar label="TECHNICAL DIRECTION" value={technical.direction} min={-2} max={2} color={technical.direction > 0 ? "#00ff88" : technical.direction < 0 ? "#ff3355" : "#7591a8"}/>
                   <DimBar label="TECHNICAL CONFIDENCE" value={technical.confidence} color="#66ccff"/>
                 </>
@@ -3447,7 +3447,7 @@ function IntelTab({ onClose, events, feed, calendar, macroRiskScore, stats, now,
   return (
     <div style={{ background:"#04080c", borderBottom:"1px solid #0e1a24", maxHeight:"76vh", overflow:"auto", flexShrink:0 }}>
       <div style={{ display:"flex", alignItems:"center", gap:12, padding:"10px 20px", borderBottom:"1px solid #0e1a24", position:"sticky", top:0, background:"#04080c", zIndex:3, flexWrap:"wrap" }}>
-        <span style={{ fontSize:12, fontWeight:700, letterSpacing:"0.16em", color:"#66ccff" }}>📡 APEX LIVE INTELLIGENCE</span>
+        <span style={{ fontSize:12, fontWeight:700, letterSpacing:"0.16em", color:"#66ccff" }}>📡 LIVE INTELLIGENCE</span>
         <button style={tabBtn("live")}   onClick={()=>setTab("live")}>LIVE FEED</button>
         <button style={tabBtn("cal")}    onClick={()=>setTab("cal")}>CALENDAR</button>
         <button style={tabBtn("stats")}  onClick={()=>setTab("stats")}>REACTION STATS</button>
@@ -3584,7 +3584,7 @@ function IntelTab({ onClose, events, feed, calendar, macroRiskScore, stats, now,
 
       <div style={{ padding:"12px 20px", borderTop:"1px solid #0e1a24", fontSize:11, color:"#7591a8", lineHeight:1.8 }}>
         <b style={{ color:"#8aabc2" }}>Architecture.</b> ThinkorSwim / FINAL_V4 is the technical signal engine; this is the
-        intelligence engine. They are kept separate on purpose and no news score ever touches APEX, Direction, Confidence
+        intelligence engine. They are kept separate on purpose and no news score ever touches SCORE, Direction, Confidence
         or StableScore — the dimensions stay independent and are fused for display only.
         <b style={{ color:"#8aabc2" }}> Limits.</b> This is a static page: it cannot ingest while closed, cannot share a
         database across devices, cannot poll dozens of wires, and cannot push notifications. Those need a backend.
@@ -3645,7 +3645,7 @@ function MarketBrain({ brain, mode, onMode, modeResult, onClose, now }) {
   return (
     <div style={{ background:"#04080c", borderBottom:"1px solid #0e1a24", flexShrink:0, maxHeight:"62vh", overflow:"auto" }}>
       <div style={{ display:"flex", alignItems:"center", gap:12, padding:"10px 20px", borderBottom:"1px solid #0e1a24", flexWrap:"wrap" }}>
-        <span style={{ fontSize:12, fontWeight:700, letterSpacing:"0.16em", color:"#c9a5ff" }}>🧠 APEX MARKET BRAIN</span>
+        <span style={{ fontSize:12, fontWeight:700, letterSpacing:"0.16em", color:"#c9a5ff" }}>🧠 MARKET BRAIN</span>
         <span style={{ fontSize:11, color:"#7591a8" }}>{etClock(now)} ET</span>
         <span style={{ padding:"4px 12px", background:brain.stateColor + "1f", border:`1px solid ${brain.stateColor}66`,
                        color:brain.stateColor, fontSize:12, fontWeight:700, borderRadius:3, letterSpacing:"0.06em" }}>
@@ -3698,9 +3698,9 @@ function MarketBrain({ brain, mode, onMode, modeResult, onClose, now }) {
             </>
           ) : <div style={{ fontSize:12, color:"#5a7a92", fontStyle:"italic" }}>Nothing scheduled. Published dates (CPI, FOMC…) require MACRO_SEED — see the Calendar tab.</div>}
 
-          <div className="sec-label" style={{ margin:"14px 0 7px" }}>APEX MODE</div>
-          <div style={{ fontSize:14, fontWeight:700, color: brain.apexMode==="NORMAL OPERATION" ? "#00ff88" : brain.apexMode==="STAND ASIDE" ? "#ff3355" : "#ffaa44" }}>
-            {brain.apexMode}
+          <div className="sec-label" style={{ margin:"14px 0 7px" }}>SCANNER MODE</div>
+          <div style={{ fontSize:14, fontWeight:700, color: brain.scannerMode==="NORMAL OPERATION" ? "#00ff88" : brain.scannerMode==="STAND ASIDE" ? "#ff3355" : "#ffaa44" }}>
+            {brain.scannerMode}
           </div>
         </div>
 
@@ -3724,7 +3724,7 @@ function MarketBrain({ brain, mode, onMode, modeResult, onClose, now }) {
               <div key={r.ticker} style={{ display:"flex", gap:9, alignItems:"center", marginBottom:6, fontSize:12, fontFamily:"'JetBrains Mono',monospace" }}>
                 <span style={{ color:"#5a7a92", minWidth:14 }}>{i+1}.</span>
                 <span style={{ color:"#eaf2ff", fontWeight:700, minWidth:52 }}>{r.ticker}</span>
-                <span style={{ color:v4Color(v.apex, V4_SCORE_BAND), fontWeight:700 }}>{v.apex}</span>
+                <span style={{ color:v4Color(v.score, V4_SCORE_BAND), fontWeight:700 }}>{v.score}</span>
                 <span style={{ color:v4DirColor(v.direction), fontWeight:700 }}>{v4DirLabel(v.direction)}</span>
                 <span style={{ color:"#7591a8" }}>CONF {v.confidence}</span>
                 <span style={{ color:v4DirColor(v.timing) }}>{v.timing>=2?"PRIME":v.timing===1?"EARLY":v.timing===0?"NEUTRAL":v.timing===-1?"EXT":"LATE"}</span>
@@ -3753,7 +3753,7 @@ function MarketBrain({ brain, mode, onMode, modeResult, onClose, now }) {
               </div>
             ))}
             <div style={{ fontSize:11, color:"#ffcc88", marginTop:4 }}>
-              Do not read these APEX scores as normal conditions.
+              Do not read these V4 scores as normal conditions.
             </div>
           </div>
         )}
@@ -3789,7 +3789,7 @@ function MarketBrain({ brain, mode, onMode, modeResult, onClose, now }) {
 }
 
 
-// ── APEX POLY INTELLIGENCE — UI ──────────────────────────────────────────────
+// ── POLY INTELLIGENCE — UI ───────────────────────────────────────────────────
 const polyCents = v => (v == null || !Number.isFinite(v)) ? "—" : `${v > 0 ? "" : ""}${v.toFixed(2)}¢`;
 const polyDollars = v => (v == null || !Number.isFinite(v)) ? "—" : `${v < 0 ? "-" : ""}$${Math.abs(v).toLocaleString(undefined,{maximumFractionDigits:2})}`;
 const polyDimColor = (v, invert) => {
@@ -3946,7 +3946,7 @@ function PolyTab({ onClose, markets, catalystEvents, now }) {
     <div style={{ background:"#04080c", borderBottom:"1px solid #0e1a24", maxHeight:"76vh", overflow:"auto", flexShrink:0 }}>
       <div style={{ display:"flex", alignItems:"center", gap:10, padding:"10px 20px", borderBottom:"1px solid #0e1a24",
                     position:"sticky", top:0, background:"#04080c", zIndex:3, flexWrap:"wrap" }}>
-        <span style={{ fontSize:12, fontWeight:700, letterSpacing:"0.16em", color:"#44ffdd" }}>◈ APEX POLY INTELLIGENCE</span>
+        <span style={{ fontSize:12, fontWeight:700, letterSpacing:"0.16em", color:"#44ffdd" }}>◈ POLY INTELLIGENCE</span>
         {[["pair","PAIR SCANNER"],["temporal","TEMPORAL PAIRING"],["wallet","WALLET INTEL"],["lab","PAPER LAB"],["research","RESEARCH"]]
           .map(([k,l]) => <button key={k} style={tabBtn(k)} onClick={()=>setTab(k)}>{l}</button>)}
         <span style={{ fontSize:10, padding:"3px 9px", background:"#00ff8818", border:"1px solid #00ff8855",
@@ -4225,7 +4225,7 @@ function App() {
   const [newsRaw,   setNewsRaw]   = useState([]);                        // normalised inputs to the catalyst engine
   const [intelRows, setIntelRows] = useState(() => loadIntel());         // observed event database (localStorage)
   const [nowMs,     setNowMs]     = useState(() => Date.now());
-  const [showPoly,  setShowPoly]  = useState(false);                     // APEX Poly Intelligence
+  const [showPoly,  setShowPoly]  = useState(false);                     // Poly Intelligence
   const [polyMarkets,setPolyMarkets] = useState([]);                     // read-only; no execution path exists
 
   const seen       = useRef(new Set());
@@ -4464,7 +4464,7 @@ function App() {
   const v4Rows = (() => {
     const seenT = new Set(), rows = [];
     feed.forEach(p => { if (p.v4 && !seenT.has(p.ticker)) { seenT.add(p.ticker); rows.push({ ticker:p.ticker, v4:p.v4 }); } });
-    return rows.sort((a,b) => b.v4.apex - a.v4.apex);
+    return rows.sort((a,b) => b.v4.score - a.v4.score);
   })();
   const modeResult = applyMode(v4Rows, tradeMode, {
     nextCriticalMins: nextCritical ? (nextCritical.ts - nowMs) / 60000 : null,
@@ -4564,7 +4564,7 @@ function App() {
         <div style={{ display:"flex", alignItems:"center", gap:0, padding:"0 20px", height:50 }}>
           <div style={{ marginRight:20 }}>
             <div style={{ fontSize:10, color:"#7591a8", letterSpacing:"0.2em", fontWeight:500 }}>UNUSUAL WHALES · PAID</div>
-            <div style={{ fontSize:16, fontWeight:700, color:"#eaf2ff", letterSpacing:"-0.005em" }}>⚡ Squeeze &amp; Flush Scanner</div>
+            <div style={{ fontSize:16, fontWeight:700, color:"#eaf2ff", letterSpacing:"-0.005em" }}>⚡ WallstreetHustler · Squeeze Scanner</div>
           </div>
           <div style={{ width:1, height:30, background:"#1a2a3a", marginRight:20 }}/>
           <div style={{ display:"flex", alignItems:"center", gap:8, marginRight:20 }}>
@@ -4614,11 +4614,11 @@ function App() {
               { icon:soundOn?"🔔":"🔕", label:"", active:soundOn, onClick:()=>setSoundOn(p=>!p), ac:"#00ff88", tip:"Sound alerts" },
               { icon:"⟳", label:"", active:false, onClick:manualFetch, disabled:loading, tip:"Manual refresh" },
               { icon:paused?"▶":"⏸", label:"", active:paused, onClick:()=>setPaused(p=>!p), ac:"#6080a0", tip:paused?"Resume":"Pause" },
-              { icon:"🧮", label:"V4", active:showV4, onClick:()=>setShowV4(p=>!p), ac:"#66ffcc", tip:"V4 quant grid — APEX / DIR / CONF / STABLE / EARLY, same math as FINAL_V4 ThinkScript" },
+              { icon:"🧮", label:"V4", active:showV4, onClick:()=>setShowV4(p=>!p), ac:"#66ffcc", tip:"V4 quant grid — SCORE / DIR / CONF / STABLE / EARLY, same math as FINAL_V4 ThinkScript" },
               { icon:"🧠", label:"BRAIN", active:showBrain, onClick:()=>setShowBrain(p=>!p), ac:"#c9a5ff", tip:"Market Brain — regime, catalysts, danger zones, best setups" },
               { icon:"📡", label:"INTEL", active:showIntel, onClick:()=>setShowIntel(p=>!p), ac:"#66ccff", tip:"Live catalyst intelligence — news impact / direction / confidence, calendar, reaction stats" },
               { icon: tradeMode==="safe"?"🛡":"⚙", label: tradeMode==="safe"?"SAFE":"PRO", active:true, onClick:()=>setTradeMode(m=>m==="safe"?"pro":"safe"), ac: tradeMode==="safe"?"#00ff88":"#ffe033", tip:"Safe Mode raises every gate and stands down near critical events. Pro Mode shows everything." },
-              { icon:"◈", label:"POLY", active:showPoly, onClick:()=>setShowPoly(p=>!p), ac:"#44ffdd", tip:"APEX Poly Intelligence — pair edge after costs, temporal pairing, wallet provenance, paper lab. Read-only, no execution." },
+              { icon:"◈", label:"POLY", active:showPoly, onClick:()=>setShowPoly(p=>!p), ac:"#44ffdd", tip:"Poly Intelligence — pair edge after costs, temporal pairing, wallet provenance, paper lab. Read-only, no execution." },
               { icon:"💰", label:"INCOME", active:showIncome, onClick:()=>setShowIncome(p=>!p), ac:"#ffcc66", tip:"Income ETF Lab — option-income funds, monthly cash, compounding model" },
               { icon:"≡", label:"LOG", active:showLog, onClick:()=>setShowLog(p=>!p), ac:"#7aaed0", tip:"Activity log" },
             ].map(({icon,label,active,onClick,disabled,ac="#ffe033",tip})=>(

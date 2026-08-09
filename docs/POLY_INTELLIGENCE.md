@@ -1,12 +1,12 @@
-# APEX Poly Intelligence
+# Poly Intelligence
 
-The prediction-market leg of APEX. Research, analytics and paper strategy — **not** a
+The prediction-market leg of Squeeze Scanner. Research, analytics and paper strategy — **not** a
 trading client.
 
 ## The boundary, first
 
 **V1 is read-only.** No private keys, no wallet signing, no order submission, no custody.
-There is no execution path in `apex_poly.js` and none may be added to it. A test asserts
+There is no execution path in the Poly engine and none may be added to it. A test asserts
 the absence of that surface — it greps the module for private-key, signing and
 order-submission patterns and fails the build if any appear.
 
