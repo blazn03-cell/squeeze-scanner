@@ -4279,25 +4279,31 @@ function Step({ n, title, children }) {
 }
 
 // Turns the Market Brain's machine words into one sentence and a traffic light.
-function plainMarketRead(brain, zone, liveMode) {
+function plainMarketRead(brain, zone, dataStatus) {
   if (!brain) return { light:"grey", headline:"Still loading.", what:"Give it a second." };
   // activeZone() returns { severity: 0..3, labels: [] } — 3 is the worst.
   const sev = zone?.severity || 0;
   const n = (brain.best || []).length;
+  const st = dataStatus?.state;
   if (sev >= 2) return {
     light:"red",
     headline:"Right now is a bad time to start a new trade.",
     what:`A ${sev >= 3 ? "very risky" : "risky"} window is open: ${(zone.labels || []).join(", ")}. Prices can move for reasons that have nothing to do with your setup. Wait for it to pass.`,
   };
-  if (!liveMode) return {
+  if (st === "loading" || st === "idle") return {
+    light:"grey",
+    headline:"Getting today's prices…",
+    what:"This takes a few seconds. The danger windows below are already correct — they come from the clock, not from a price feed.",
+  };
+  if (st !== "ok") return {
     light:"blue",
-    headline:"No price data is connected, so there is no list of setups today.",
-    what:"The danger windows below are still real — they come from the clock and the calendar, not from a data feed. Step 3 explains what the score is measuring once data is flowing.",
+    headline:"Price data is not connected, so there is no list of setups today.",
+    what:"The danger windows below are still real — they come from the clock and the calendar, not from a data feed. Step 3 explains what the score measures once data is flowing.",
   };
   if (n === 0) return {
     light:"amber",
     headline:"Nothing is good enough to trade right now.",
-    what:"The scanner looked and found no setup that clears the quality bar. Doing nothing is a position. Check back later.",
+    what:`Checked ${brain.sampleSize} stock${brain.sampleSize === 1 ? "" : "s"} and none clears the quality bar. Doing nothing is a position. Check back later.`,
   };
   return {
     light:"green",
@@ -4309,8 +4315,8 @@ function plainMarketRead(brain, zone, liveMode) {
 const LIGHTS = { green:{ e:"🟢", c:"#00ff88" }, amber:{ e:"🟡", c:"#ffaa44" }, red:{ e:"🔴", c:"#ff3355" },
                  blue:{ e:"🔵", c:"#66ccff" }, grey:{ e:"⚪", c:"#7591a8" } };
 
-function SimpleHome({ brain, zones, zone, calendar, liveMode, nowMs, feed, onExpert, onOpen, mode, onMode }) {
-  const read = plainMarketRead(brain, zone, liveMode);
+function SimpleHome({ brain, zones, zone, calendar, liveMode, dataStatus, nowMs, feed, onExpert, onOpen, mode, onMode }) {
+  const read = plainMarketRead(brain, zone, dataStatus);
   const L = LIGHTS[read.light];
   const best = (brain?.best || []).slice(0, 5);
   const upcoming = (zones || []).filter(z => z.end > nowMs && z.severity >= 2).slice(0, 6);
@@ -4400,21 +4406,31 @@ function SimpleHome({ brain, zones, zone, calendar, liveMode, nowMs, feed, onExp
 
         {/* STEP 2 */}
         <BigCard tone={best.length ? "good" : "calm"} title="Step 2 — Look at what is setting up">
-          {!liveMode ? (
+          {dataStatus?.state === "loading" || dataStatus?.state === "idle" ? (
+            <div>Getting today's prices…</div>
+          ) : dataStatus?.state !== "ok" ? (
             <div>
               <div style={{ marginBottom:12 }}>
-                The scoring engine is running, but it has no price data to score. Right now the only
-                way in is the paid options-flow connection, and it is switched off.
+                The scoring engine is running, but it has no prices to score.
+                {dataStatus?.reason === "NO_PROVIDER_CONFIGURED"
+                  ? " The server has no market-data key set yet, so there is nothing to read."
+                  : " Today's price download did not come back."}
               </div>
               <div style={{ fontSize:13, color:"#7591a8" }}>
                 So this list is empty rather than filled with made-up rows. Step 1 above is real and
-                does not need any data connection.
+                needs no data connection at all.
               </div>
+              {dataStatus?.accepts?.length > 0 && (
+                <div style={{ fontSize:12.5, color:"#5f7c93", marginTop:12, fontFamily:"'JetBrains Mono',monospace" }}>
+                  Owner: set one of {dataStatus.accepts.join(" · ")} in the Vercel project and redeploy.
+                </div>
+              )}
             </div>
           ) : best.length === 0 ? (
             <div>
-              Nothing clears the bar right now. An empty list is a real answer, not a broken screen —
-              on most days the honest answer is "nothing worth your money today".
+              Checked {brain?.sampleSize || 0} stocks and none clears the bar right now. An empty list
+              is a real answer, not a broken screen — on most days the honest answer is "nothing worth
+              your money today".
             </div>
           ) : (
             <>
@@ -4561,6 +4577,10 @@ function App() {
   });
   // True only when both paid keys were supplied. Everything else runs without them.
   const [liveMode,  setLiveMode]  = useState(false);
+  // Daily bars from /api/bars — the keyless data path. Scores computed client-side
+  // by the same computeV4 the options-flow path uses, so there is one engine.
+  const [barRows,   setBarRows]   = useState([]);
+  const [barStatus, setBarStatus] = useState({ state:"idle" });
 
   const seen       = useRef(new Set());
   const intv       = useRef(null);
@@ -4739,6 +4759,49 @@ function App() {
     return ()=>{ clearTimeout(t); clearInterval(intv.current); };
   }, [ready, liveMode, pollSec]);
 
+  // ── Keyless data path ──────────────────────────────────────────────────────
+  // Pulls daily bars from our own endpoint and scores them locally. This is what
+  // makes the scanner work for a visitor with no API key of any kind. It runs
+  // regardless of liveMode; the options-flow feed is additive, not a prerequisite.
+  const loadBars = useCallback(async () => {
+    setBarStatus({ state:"loading" });
+    try {
+      const r = await fetch("/api/bars");
+      const j = await r.json();
+      if (!j.ok) {
+        setBarRows([]);
+        setBarStatus({ state:"unavailable", reason:j.reason, message:j.message, accepts:j.accepts });
+        addLog(`Bars unavailable: ${j.reason}`);
+        return;
+      }
+      const rows = [];
+      for (const [ticker, bars] of Object.entries(j.bars || {})) {
+        try {
+          const v4 = computeV4(bars);
+          if (v4) rows.push({ ticker, v4 });
+        } catch (_) { /* one bad symbol must never break the whole scan */ }
+      }
+      rows.sort((a, b) => b.v4.score - a.v4.score);
+      setBarRows(rows);
+      setBarStatus({ state:"ok", provider:j.provider, asOf:j.asOf, scored:rows.length,
+                     requested:j.requested, failed:(j.failed || []).length });
+      addLog(`Scored ${rows.length}/${j.requested} symbols from ${j.provider}`);
+    } catch (e) {
+      setBarRows([]);
+      setBarStatus({ state:"error", message:String(e.message || e) });
+      addLog(`Bars fetch failed: ${e.message || e}`);
+    }
+  }, [addLog]);
+
+  // Daily bars change once a day. Load on entry, refresh every 15 minutes so a
+  // tab left open through the close picks up the new bar without hammering.
+  useEffect(() => {
+    if (!ready) return;
+    loadBars();
+    const id = setInterval(loadBars, 15 * 60 * 1000);
+    return () => clearInterval(id);
+  }, [ready, loadBars]);
+
   useEffect(()=>{ if(paused) clearInterval(intv.current); }, [paused]);
   useEffect(() => { const id = setInterval(() => setNowMin(nowETMin()), 30000); return () => clearInterval(id); }, []);
   useEffect(() => { const id = setInterval(() => setNowMs(Date.now()), 15000); return () => clearInterval(id); }, []);
@@ -4797,7 +4860,14 @@ function App() {
   });
   const scheduled = deriveScheduledEvents(nowMs);
   const zones = dangerZones(scheduled, catalystEvents, nowMs);
-  const brain = marketBrain({ feed, events: catalystEvents, calendar: scheduled, zones, nowMs });
+
+  // One scoring surface from two data paths. Options-flow rows win on a tie because
+  // they carry the extra signal context (sweeps, dark pool, GEX) that bar rows lack.
+  const scanFeed = (() => {
+    const seenT = new Set(feed.filter(p => p.v4).map(p => p.ticker));
+    return feed.concat(barRows.filter(r => !seenT.has(r.ticker)));
+  })();
+  const brain = marketBrain({ feed: scanFeed, events: catalystEvents, calendar: scheduled, zones, nowMs });
 
   // Safe Mode stands down near a critical event and on unverified high-impact news.
   const nextCritical = scheduled.find(e => e.importance === "CRITICAL");
@@ -4806,7 +4876,7 @@ function App() {
     .flatMap(e => e.tickers));
   const v4Rows = (() => {
     const seenT = new Set(), rows = [];
-    feed.forEach(p => { if (p.v4 && !seenT.has(p.ticker)) { seenT.add(p.ticker); rows.push({ ticker:p.ticker, v4:p.v4 }); } });
+    scanFeed.forEach(p => { if (p.v4 && !seenT.has(p.ticker)) { seenT.add(p.ticker); rows.push({ ticker:p.ticker, v4:p.v4 }); } });
     return rows.sort((a,b) => b.v4.score - a.v4.score);
   })();
   const modeResult = applyMode(v4Rows, tradeMode, {
@@ -4817,7 +4887,7 @@ function App() {
   // Persist observed events + measure how the tape actually reacted.
   const refPrices = (() => {
     const r = {};
-    for (const sym of ["SPY","QQQ","IWM"]) { const v = feed.find(p => p.ticker === sym)?.v4?.last; if (Number.isFinite(v)) r[sym] = v; }
+    for (const sym of ["SPY","QQQ","IWM"]) { const v = scanFeed.find(p => p.ticker === sym)?.v4?.last; if (Number.isFinite(v)) r[sym] = v; }
     return Object.keys(r).length ? r : null;
   })();
   useEffect(() => {
@@ -4850,11 +4920,11 @@ function App() {
       {showIntel && <IntelTab onClose={()=>setShowIntel(false)} events={catalystEvents} feed={feed}
                               calendar={scheduled} macroRiskScore={brain.macroRisk} stats={intelStats}
                               now={nowMs} ingestStatus={ingestStatus}/>}
-      {showV4 && <V4Grid feed={feed} onClose={()=>setShowV4(false)} modeResult={modeResult} mode={tradeMode}/>}
+      {showV4 && <V4Grid feed={scanFeed} onClose={()=>setShowV4(false)} modeResult={modeResult} mode={tradeMode}/>}
       {showIncome && <IncomeTab onClose={()=>setShowIncome(false)}/>}
       <SimpleHome
         brain={brain} zones={zones} zone={activeZone(zones, nowMs)} calendar={scheduled}
-        liveMode={liveMode} nowMs={nowMs} feed={feed}
+        liveMode={liveMode} dataStatus={barStatus} nowMs={nowMs} feed={scanFeed}
         mode={tradeMode} onMode={setTradeMode}
         onExpert={()=>setUi("expert")}
         onOpen={k => { if (k==="v4") setShowV4(true); else if (k==="income") setShowIncome(true);
@@ -4935,6 +5005,15 @@ function App() {
             <div className={loading?"":(liveMode?"live":"")} style={{ width:8, height:8, borderRadius:"50%", background:!liveMode?"#5a7a92":error?"#ff3355":loading?"#ffe033":paused?"#6e88a0":"#00ff88", boxShadow:`0 0 8px ${!liveMode?"#5a7a9266":error?"#ff3355":loading?"#ffe033":paused?"#6e88a0":"#00ff88"}66` }}/>
             <span title={liveMode?undefined:"The paid options-flow feed is not connected. Every other panel still works."}
                   style={{ fontSize:11, fontWeight:600, color:!liveMode?"#7591a8":error?"#ff3355":loading?"#ffe033":paused?"#8aa3b8":"#00ff88", letterSpacing:"0.1em" }}>{!liveMode?"FLOW OFF":error?"ERROR":loading?"SCANNING…":paused?"PAUSED":"LIVE"}</span>
+            <span title={barStatus.state==="ok"
+                    ? `Daily bars via ${barStatus.provider} · ${barStatus.scored}/${barStatus.requested} scored${barStatus.failed?` · ${barStatus.failed} unavailable`:""}`
+                    : barStatus.message || "No market-data provider configured on the server."}
+                  style={{ fontSize:10, fontWeight:600, letterSpacing:"0.08em", padding:"3px 8px", borderRadius:3,
+                           color: barStatus.state==="ok" ? "#66ffcc" : barStatus.state==="loading" ? "#ffe033" : "#7591a8",
+                           background: barStatus.state==="ok" ? "#66ffcc12" : "#7591a812",
+                           border:`1px solid ${barStatus.state==="ok" ? "#66ffcc44" : "#7591a833"}` }}>
+              {barStatus.state==="ok" ? `📈 ${barStatus.scored} SCORED` : barStatus.state==="loading" ? "📈 LOADING…" : "📈 NO DATA"}
+            </span>
           </div>
           <div style={{ width:1, height:30, background:"#1a2a3a", marginRight:20 }}/>
           <div style={{ marginRight:20 }}>
@@ -5070,7 +5149,7 @@ function App() {
       {showIntel && <IntelTab onClose={()=>setShowIntel(false)} events={catalystEvents} feed={feed}
                               calendar={scheduled} macroRiskScore={brain.macroRisk} stats={intelStats}
                               now={nowMs} ingestStatus={ingestStatus}/>}
-      {showV4 && <V4Grid feed={feed} onClose={()=>setShowV4(false)} modeResult={modeResult} mode={tradeMode}/>}
+      {showV4 && <V4Grid feed={scanFeed} onClose={()=>setShowV4(false)} modeResult={modeResult} mode={tradeMode}/>}
       {showIncome && <IncomeTab onClose={()=>setShowIncome(false)}/>}
 
       <div style={{ display:"grid", gridTemplateColumns:showLog?"1fr 1fr 0.7fr 200px":"1fr 1fr 0.7fr", flex:1, overflow:"hidden", background:"#05090e" }}>
