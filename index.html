@@ -2538,13 +2538,13 @@ function Card({ p, open, onToggle, pos, onSave, isNew, macroBias }) {
             <div className="sec-label" style={{ marginBottom:10 }}>WHY THIS SETUP</div>
             <div className="body-text-lg" style={{ marginBottom:12 }}>
               {p.sqType==="staircase"     && `Institutions quietly buying ${p.ticker} through dark pools for ${sc} consecutive days at ${p.staircase_zone||"the same zone"}. Classic pre-squeeze. When call sweeps appear on top, the squeeze fires.`}
-              {p.sqType==="short_squeeze" && `Shorts are trapped. High SI + institutional accumulation = explosive forced covering. ${sc>=3?`Staircase visible (${sc}d) adds fuel.`:"Watch for staircase confirmation."}`}
+              {p.sqType==="short_squeeze" && `Shorts are trapped. Short-interest and reported-flow conditions align with a possible squeeze setup; direction is not assured. ${sc>=3?`Staircase visible (${sc}d) adds fuel.`:"Watch for staircase confirmation."}`}
               {p.sqType==="gamma_squeeze" && "Dealers SHORT gamma. As price rises they must buy stock to hedge — accelerates the move. Violent and fast, days not weeks."}
               {p.sqType==="delta_squeeze" && "Massive call buying forcing dealers to buy stock for delta hedge. Sustained heavy call volume mechanically drives price up."}
               {p.sqType==="liquidity_sq"  && "Tiny float = very few shares available. Small buying creates massive moves. Staircase on low float = extremely powerful."}
               {p.sqType==="ftd_squeeze"   && "FTDs elevated — shorts sold shares they never borrowed. T+35 rule forces mandatory buy-ins. Rips with no warning."}
               {p.sqType==="vol_squeeze"   && "IV compressed and about to snap. When vol explodes back, premium and underlying move violently. UVXY/VIX sweeps lead."}
-              {p.sqType==="cap_flush"     && "Institutions exiting aggressively. Put sweeps + DP sells = smart money getting out fast. Sharp sustained drop incoming."}
+              {p.sqType==="cap_flush"     && "Reported put-flow and dark-pool selling conditions align with a possible bearish setup. This does not identify the trader or predict a sustained decline."}
               {p.sqType==="gamma_flush"   && "Dealers LONG gamma — they sell into every bounce, amplifying drops. Mirror of gamma squeeze. Bearish and mechanical."}
               {p.sqType==="stop_hunt"     && "Price pushed below support to trigger stops. After stops clear, the real move. Day trade only — resolves intraday."}
               {p.sqType==="margin_flush"  && "Leveraged longs getting margin called. Forced selling at any price. Large DP sell + no news = classic margin flush."}
@@ -5049,7 +5049,7 @@ function App() {
               {[0,50000,100000,250000,500000].map(v=><option key={v} value={v}>{v===0?"Any $":v>=1e6?`$${v/1e6}M+`:`$${v/1e3}K+`}</option>)}
             </select>
             <select value={minProb} onChange={e=>setMinProb(+e.target.value)} title="Minimum win probability" style={{ background:"#080e16", border:"1px solid #15212e", color:"#9fb5c8", padding:"7px 8px", fontSize:12, outline:"none", cursor:"pointer", borderRadius:3 }}>
-              {[70,60,50,40,30,0].map(v=><option key={v} value={v}>{v===0?"Any win%":`Win ${v}%+`}</option>)}
+              {[70,60,50,40,30,0].map(v=><option key={v} value={v}>{v===0?"Any score":`Score ${v}+`}</option>)}
             </select>
             <select value={pollSec} onChange={e=>setPollSec(+e.target.value)} title="Poll interval" style={{ background:"#080e16", border:"1px solid #15212e", color:"#9fb5c8", padding:"7px 8px", fontSize:12, outline:"none", cursor:"pointer", borderRadius:3 }}>
               {[60,90,120,180].map(v=><option key={v} value={v}>{v}s poll</option>)}
@@ -5169,7 +5169,7 @@ function App() {
 
       <div style={{ padding:"6px 20px", background:"#04080c", borderTop:"1px solid #0e1a24", fontSize:10, color:"#7591a8", display:"flex", justifyContent:"space-between", flexShrink:0, gap:12 }}>
         <span>flow-alerts · darkpool · market-tide · earnings · congress · insider · news · fda · shorts · gex · vol · price-levels · 30d backup</span>
-        <span style={{whiteSpace:"nowrap", color:"#8aa3b8"}}>⚠ Education only · Not financial advice</span>
+        <span style={{whiteSpace:"nowrap", color:"#8aa3b8"}}>BETA / PAPER ONLY / ⚠ Education only · Not financial advice</span>
       </div>
     </div>
   );

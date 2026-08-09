@@ -2,12 +2,22 @@
   "version": 2,
   "builds": [
     { "src": "index.html", "use": "@vercel/static" },
+    { "src": "evidence/thinkorswim/*.zip", "use": "@vercel/static" },
+    { "src": "evidence/thinkorswim/*.txt", "use": "@vercel/static" },
     { "src": "api/*.js", "use": "@vercel/node" }
   ],
   "routes": [
     {
       "src": "/api/(.*)",
-      "dest": "/api/$1"
+      "dest": "/api/$1.js"
+    },
+    {
+      "src": "/downloads/(.*)",
+      "dest": "/evidence/thinkorswim/$1",
+      "headers": {
+        "X-Content-Type-Options": "nosniff",
+        "Content-Disposition": "attachment"
+      }
     },
     {
       "src": "/(.*)",

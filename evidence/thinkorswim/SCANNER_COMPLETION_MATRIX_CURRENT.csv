@@ -1,0 +1,35 @@
+requirement,status,authoritative_evidence,remaining_proof
+Active scanner formulas inventoried,verified,LIVE_AUDIT_2026-08-06.md; V4_SCRIPT_STATIC_AUDIT_2026-08-06.csv,Tomorrow restart check
+Combined whole-universe timeout identified,verified,tos_v4_combined_timeout_2026-08-06.png,Do not use combined query
+Supported split-stage workflow,verified,V4_SPLIT_STAGE_EXACT_PARITY_REPORT_2026-08-06.md,Fresh rerun tomorrow
+Fresh-scan semantics documented,verified,LIVE_AUDIT_2026-08-06.md,Record every rerun timestamp
+Daily Score canonical formula,verified,QUOTE_CORRECTION_STATE_2026-08-06.csv,Restart persistence
+Daily Score DAY operation,active_session_verified,V4_SCORE_AGGREGATION_IMPACT_REPORT_2026-08-06.md; all 34 cells loaded,Reopen after restart
+Daily Score extended-hours off proof,incomplete,QUOTE_CORRECTION_STATE_2026-08-06.csv,Verify after restart
+Aggregation defect impact quantified,verified,V4_SCORE_AGGREGATION_IMPACT_REPORT_2026-08-06.md,None
+V4.1 intraday compile/render,verified,LIVE_CHART_VERIFICATION_2026-08-06.csv,None
+V4.2 fallback compile/render,verified,V4_2_LIVE_COMPILE_VERIFICATION_2026-08-06.csv,V4.2.2 candidate remains uncompiled
+Intraday chart extended-hours off proof,incomplete,V4_INTRADAY_EXTENDED_HOURS_CONFIGURATION_RISK.md,
+Duplicate alert studies removed,verified,V4_2_LIVE_ALERT_OPERATING_NOTE.md,Recheck after restart
+Genuine in-window Ring observed,incomplete,v4_2_intraday_alert_log.csv,Observe tomorrow
+Ring log validator parity,verified,validate_v4_2_intraday_alert_log.py; 32/32 tests,Validate every row
+Small-account sizing render,invalidated_recompile_pending,V4_1_ManualEntryRiskShares_ChartStudy.ts; test_v4_1_manual_sizing.py,Live compile; zero-entry/zero-spread fail-closed proof; 5m/15m/DAY parity
+Canonical 0.50% risk / 20% cap sizing defaults,static_verified_live_recompile_pending,V4_1_ManualEntryRiskShares_ChartStudy.ts; 102/102 static audit; 6/6 sizing cases,Fresh live compile/render
+Live bid/ask spread quote parity,static_verified_live_compile_pending,V4_LiveSpreadPct_CustomQuote_EXPERIMENTAL.ts; V4_SPREAD_QUOTE_OFFICIAL_DOC_AUDIT.md; 102/102 scoped static audit,Regular-hours compile and five-symbol displayed bid/ask parity
+Zero-share hard gate,verified,V4_SCRIPT_STATIC_AUDIT_2026-08-06.csv; Ring validator,Prospective adherence
+Instrument-type contamination identified,verified,V4_INSTRUMENT_TYPE_AUDIT_2026-08-06.md,Use daily identity gate
+All nine V4 candidates identity eligible,verified,V4_PROSPECTIVE_IDENTITY_PARITY_2026-08-06.csv,Repeat for new candidates
+Historical daily parity backtest,verified,v4_oos_parity_audit_2026-08-06/,Bias remains
+Cost/concentration/parameter sensitivity,verified,v4_oos_parity_audit_2026-08-06/,Prospective confirmation
+Historical instrument-type sensitivity,verified,V4_INSTRUMENT_TYPE_SENSITIVITY_2026-08-06.csv,CIs still include zero
+Intraday alert mechanics replay,verified,V4_INTRADAY_60D_ALERT_REPLAY_REPORT.md,Selection bias remains
+Official prospective universe archive started,verified,prospective_universe_snapshots/2026-08-06/,Archive daily
+Point-in-time historical universe OOS,incomplete,POINT_IN_TIME_DATA_SOURCE_DECISION.md,Obtain CRSP-equivalent data
+Prospective paper sample,incomplete,v4_forward_paper_log.csv; v4_2_intraday_alert_log.csv,Collect observations
+Evidence package integrity,verified,verify_thinkorswim_scanner_evidence.py; manifest; ZIP CRC; outer SHA256,Re-run after every rebuild
+Profitable edge demonstrated,not_demonstrated,All reported confidence intervals include zero,Promotion gates unmet
+V4.2.2 no-flow MFI candidate compile/render,incomplete,V4_2_2_IntradayConfirm_ChartStudy_EXPERIMENTAL.ts; V4_MFI_NO_FLOW_RELIABILITY_AUDIT_2026-08-06.md,Compile/apply one study; regular-hours-only chart; dashboard and alert proof
+V4.7 daily scan/quote compile and parity,static_verified_live_compile_pending,verify_v4_7_daily_parity.py; 2/2 parity checks,Separate-name DAY/extended-off live compile and same-symbol values
+Account affordability scan/quote compile and parity,static_verified_live_compile_pending,test_v4_small_account_affordability.py; 5/5 arithmetic/parity cases,DAY/extended-off live compile; zero-result acceptance; matching quote
+Latest live UI access,incomplete,LIVE_UI_ACCESS_ATTEMPT_2026-08-06.csv,Restore/unminimize Watchlist and capture readable state
+
