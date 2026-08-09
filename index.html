@@ -1573,6 +1573,427 @@ function applyMode(rows, mode, ctx = {}) {
   return { passed: out, rejected, gates: g, eventBlocked };
 }
 
+// ── APEX POLY INTELLIGENCE ───────────────────────────────────────────────────
+// Prediction-market intelligence: research, analytics and paper strategy.
+//
+// HARD ARCHITECTURAL BOUNDARY — V1 IS READ-ONLY.
+// There is no private-key handling, no wallet signing, no order submission and
+// no execution path anywhere in this module, and none may be added here. If
+// execution is ever built it belongs in a separate, independently audited
+// subsystem. A test asserts this file contains no such surface.
+//
+// Every cost input is an ASSUMPTION you can edit, not a quoted fee schedule.
+// Fee terms change and vary by market; this module ships with them at zero and
+// makes you choose a scenario, because a pair that looks profitable before
+// costs is frequently marginal or negative after them.
+
+const POLY_NO_EXECUTION = Object.freeze({
+  privateKeys: false, signing: false, orderSubmission: false, custody: false,
+  note: "Research and paper analysis only. No execution surface exists in this build.",
+});
+
+// ── COST SCENARIOS ───────────────────────────────────────────────────────────
+// entryBps  : charged on notional at entry (per side)
+// exitBps   : charged on the $1.00 payout at settlement
+// safetyCents: explicit margin subtracted so a "barely positive" edge does not qualify
+const COST_SCENARIOS = {
+  zero:         { label:"Zero fees (VERIFY)", entryBps:0,   exitBps:0,   safetyCents:0.25,
+                  note:"Assumes no trading fee. Verify against current market terms before trusting any edge computed this way." },
+  conservative: { label:"Conservative",       entryBps:50,  exitBps:50,  safetyCents:0.50,
+                  note:"0.50% on entry notional per side plus 0.50% on settlement. A defensible planning default." },
+  stress:       { label:"Stress",             entryBps:100, exitBps:100, safetyCents:0.75,
+                  note:"Double the conservative case. Run this before sizing anything." },
+};
+
+const POLY_DEFAULTS = Object.freeze({
+  scenario: "conservative",
+  targetSizeShares: 500,
+  minNetEdgeCents: 0.5,
+  minLiquidity: 45,
+  maxSettlementRisk: 70,
+});
+
+// ── SLIPPAGE ─────────────────────────────────────────────────────────────────
+// Walks the book when depth is supplied. Falls back to a spread-based estimate
+// and labels itself so the UI can say which it used.
+function walkBook(levels, shares) {
+  if (!Array.isArray(levels) || !levels.length || !(shares > 0)) return null;
+  let remaining = shares, cost = 0, filled = 0;
+  for (const lv of levels) {
+    const px = +lv.price, sz = +lv.size;
+    if (!(px > 0) || !(sz > 0)) continue;
+    const take = Math.min(remaining, sz);
+    cost += take * px; filled += take; remaining -= take;
+    if (remaining <= 0) break;
+  }
+  if (filled <= 0) return null;
+  return { avgPrice: cost / filled, filled, shortfall: Math.max(0, shares - filled), complete: remaining <= 0 };
+}
+
+function estimateSide(side, shares) {
+  const best = +side?.ask;
+  const book = walkBook(side?.asks, shares);
+  if (book) {
+    return { price: book.avgPrice, best, slippage: Math.max(0, book.avgPrice - best),
+             fillable: book.complete, shortfall: book.shortfall, method: "BOOK" };
+  }
+  if (!(best > 0)) return null;
+  // No depth: assume half the quoted spread is paid on top, scaled by size.
+  const spread = Number.isFinite(+side?.bid) && +side.bid > 0 ? Math.max(0, best - +side.bid) : 0.01;
+  const est = spread * 0.5 * Math.min(2, 0.5 + shares / 1000);
+  return { price: best + est, best, slippage: est, fillable: null, shortfall: 0, method: "ESTIMATED" };
+}
+
+// ── PAIR EDGE ────────────────────────────────────────────────────────────────
+// NET EDGE = $1.00 − YES cost − NO cost − entry fees − settlement fees
+//                  − slippage − safety margin
+function pairEdge(market, opts = {}) {
+  const o = { ...POLY_DEFAULTS, ...opts };
+  const sc = COST_SCENARIOS[o.scenario] || COST_SCENARIOS.conservative;
+  const shares = Math.max(1, o.targetSizeShares);
+
+  const yes = estimateSide(market.yes, shares);
+  const no  = estimateSide(market.no,  shares);
+  if (!yes || !no) return null;
+
+  const rawCost  = yes.best + no.best;               // quoted, before anything
+  const rawEdge  = 1 - rawCost;
+  const slippage = yes.slippage + no.slippage;
+  const fillCost = yes.price + no.price;             // after slippage
+  const entryFee = (yes.price + no.price) * (sc.entryBps / 10000);
+  const exitFee  = 1.00 * (sc.exitBps / 10000);
+  const safety   = sc.safetyCents / 100;
+  const netEdge  = 1 - fillCost - entryFee - exitFee - safety;
+
+  const c = x => +(x * 100).toFixed(2);              // dollars → cents
+  return {
+    shares, scenario: o.scenario, scenarioLabel: sc.label,
+    yesBest: yes.best, noBest: no.best, yesFill: yes.price, noFill: no.price,
+    rawCostC: c(rawCost), rawEdgeC: c(rawEdge),
+    feesC: c(entryFee + exitFee), entryFeeC: c(entryFee), exitFeeC: c(exitFee),
+    slippageC: c(slippage), safetyC: c(safety), netEdgeC: c(netEdge),
+    fillMethod: yes.method === "BOOK" && no.method === "BOOK" ? "BOOK" : "ESTIMATED",
+    fillable: yes.fillable === false || no.fillable === false ? false
+            : yes.fillable === null || no.fillable === null ? null : true,
+    shortfall: (yes.shortfall || 0) + (no.shortfall || 0),
+    // How much of the raw edge survives costs — the number that actually matters
+    survivalPct: rawEdge > 0 ? Math.max(0, Math.min(100, Math.round((netEdge / rawEdge) * 100))) : 0,
+  };
+}
+
+// ── DIMENSIONS (each 0-100, kept separate on purpose) ────────────────────────
+const polyClamp = (x, lo = 0, hi = 100) => Math.max(lo, Math.min(hi, Math.round(x)));
+
+function polyDimensions(market, edge, ctx = {}) {
+  const { catalystEvents = [], now = Date.now() } = ctx;
+
+  // EDGE — 0 at break-even, 100 at 3c net
+  const polyEdge = edge ? polyClamp((edge.netEdgeC / 3) * 100) : 0;
+
+  // LIQUIDITY — depth at target size, then 24h volume as a fallback signal
+  const depth = (market.yes?.depthShares ?? null);
+  const depthN = (market.no?.depthShares ?? null);
+  const vol = +market.volume24h || 0;
+  const depthScore = (depth != null && depthN != null && edge)
+    ? polyClamp((Math.min(depth, depthN) / Math.max(1, edge.shares)) * 50)
+    : null;
+  const volScore = polyClamp(Math.log10(Math.max(1, vol)) * 20);
+  const liquidity = depthScore != null ? polyClamp(depthScore * 0.65 + volScore * 0.35) : volScore;
+
+  // EXECUTION QUALITY — tight two-sided quotes are what make passive fills viable
+  const spreadY = (Number.isFinite(+market.yes?.bid) && Number.isFinite(+market.yes?.ask))
+    ? +market.yes.ask - +market.yes.bid : null;
+  const spreadN = (Number.isFinite(+market.no?.bid) && Number.isFinite(+market.no?.ask))
+    ? +market.no.ask - +market.no.bid : null;
+  const avgSpreadC = (spreadY != null && spreadN != null) ? ((spreadY + spreadN) / 2) * 100 : null;
+  const execution = avgSpreadC == null ? 50
+    : polyClamp(100 - (avgSpreadC / 3) * 100);      // 0c spread → 100, 3c → 0
+
+  // PAIR CONFIDENCE — can both legs actually be completed at size?
+  let pairConf = 50;
+  if (edge) {
+    pairConf = edge.fillable === true ? 85 : edge.fillable === false ? 20 : 55;
+    if (edge.fillMethod === "ESTIMATED") pairConf -= 15;   // we did not see the book
+    if (edge.shortfall > 0) pairConf -= 20;
+    pairConf += Math.min(15, edge.survivalPct / 8);
+  }
+  pairConf = polyClamp(pairConf);
+
+  // INVENTORY RISK — higher is worse. One-sided fills held into resolution.
+  const held = ctx.inventory || null;
+  const imbalance = held && (held.yes + held.no) > 0
+    ? Math.abs(held.yes - held.no) / (held.yes + held.no) : 0;
+  const minsToRes = market.resolvesAt ? (market.resolvesAt - now) / 60000 : null;
+  const inventoryRisk = polyClamp(
+    imbalance * 70 + (minsToRes == null ? 20 : minsToRes < 15 ? 30 : minsToRes < 60 ? 20 : 10));
+
+  // SETTLEMENT RISK — higher is worse. Unknown resolution terms are NOT scored low.
+  const settlementRisk = market.resolutionClarity === "CLEAR" ? polyClamp(minsToRes != null && minsToRes < 60 ? 12 : 20)
+    : market.resolutionClarity === "AMBIGUOUS" ? 80
+    : 55;   // unknown — deliberately mid, never optimistic
+
+  // CATALYST RISK — from the news engine. A live catalyst on this topic means
+  // the quoted probabilities are about to move under you.
+  const linked = linkCatalysts(market, catalystEvents);
+  const catalystRisk = polyClamp(linked.reduce((a, e) => Math.max(a, e.impactNow), 0));
+
+  return { polyEdge, liquidity, execution, pairConf, inventoryRisk, settlementRisk,
+           catalystRisk, linked, avgSpreadC, minsToRes };
+}
+
+// ── STATE ────────────────────────────────────────────────────────────────────
+const POLY_STATES = {
+  STRONG_PAIR:       { label:"STRONG PAIR OPPORTUNITY", color:"#00ff88" },
+  QUALIFIED:         { label:"QUALIFIED",               color:"#00ddff" },
+  MARGINAL:          { label:"MARGINAL AFTER COSTS",    color:"#ffe033" },
+  NEGATIVE:          { label:"NEGATIVE AFTER COSTS",    color:"#ff5577" },
+  THIN:              { label:"INSUFFICIENT LIQUIDITY",  color:"#ff9955" },
+  CATALYST_BLOCKED:  { label:"LIVE CATALYST ON THIS MARKET", color:"#ff3355" },
+  SETTLEMENT_UNCLEAR:{ label:"RESOLUTION TERMS UNCLEAR",color:"#cc88ff" },
+};
+
+function polyState(edge, dims, opts = {}) {
+  const o = { ...POLY_DEFAULTS, ...opts };
+  if (!edge) return { state:"THIN", note:"No two-sided quote available." };
+  if (dims.catalystRisk >= 70)
+    return { state:"CATALYST_BLOCKED", note:"A high-impact catalyst is live on this topic — quoted probabilities are moving." };
+  if (dims.settlementRisk >= 75)
+    return { state:"SETTLEMENT_UNCLEAR", note:"Resolution terms look ambiguous. Edge is meaningless if settlement is disputed." };
+  if (edge.netEdgeC <= 0)
+    return { state:"NEGATIVE", note:`Raw edge ${edge.rawEdgeC}c does not survive ${edge.feesC}c fees + ${edge.slippageC}c slippage + ${edge.safetyC}c safety.` };
+  if (dims.liquidity < o.minLiquidity)
+    return { state:"THIN", note:"Edge exists but the book cannot support the target size." };
+  if (edge.netEdgeC < o.minNetEdgeCents)
+    return { state:"MARGINAL", note:`Net ${edge.netEdgeC}c is below the ${o.minNetEdgeCents}c floor.` };
+  if (edge.netEdgeC >= 1.5 && dims.pairConf >= 70 && dims.liquidity >= 65)
+    return { state:"STRONG_PAIR", note: dims.execution >= 70 ? "Maker execution preferred." : "Edge is real but spreads argue for patience." };
+  return { state:"QUALIFIED", note:"Positive after modelled costs." };
+}
+
+// ── TEMPORAL PAIRING ─────────────────────────────────────────────────────────
+// The observed strategy class accumulates each side at different moments and
+// only completes the pair when combined economics work. This reconstructs that
+// from a fill list; it does not assume simultaneous entry.
+function reconstructPair(fills, opts = {}) {
+  const o = { ...POLY_DEFAULTS, ...opts };
+  const sc = COST_SCENARIOS[o.scenario] || COST_SCENARIOS.conservative;
+  const rows = [...(fills || [])].sort((a, b) => a.ts - b.ts);
+  const acc = { YES:{ qty:0, cost:0 }, NO:{ qty:0, cost:0 } };
+  for (const f of rows) {
+    const side = String(f.side || "").toUpperCase() === "NO" ? "NO" : "YES";
+    const qty = +f.size || 0, px = +f.price || 0;
+    if (qty <= 0 || px <= 0) continue;
+    acc[side].qty += qty; acc[side].cost += qty * px;
+  }
+  const wYes = acc.YES.qty > 0 ? acc.YES.cost / acc.YES.qty : null;
+  const wNo  = acc.NO.qty  > 0 ? acc.NO.cost  / acc.NO.qty  : null;
+  const matched = Math.min(acc.YES.qty, acc.NO.qty);
+  const combined = (wYes != null && wNo != null) ? wYes + wNo : null;
+
+  const entryFee = combined != null ? combined * (sc.entryBps / 10000) : 0;
+  const exitFee  = 1.00 * (sc.exitBps / 10000);
+  const netPerPair = combined != null ? 1 - combined - entryFee - exitFee : null;
+
+  const firstTs = rows[0]?.ts ?? null;
+  const completeTs = (() => {
+    if (matched <= 0) return null;
+    let y = 0, n = 0;
+    for (const f of rows) {
+      const side = String(f.side || "").toUpperCase() === "NO" ? "NO" : "YES";
+      if (side === "YES") y += +f.size || 0; else n += +f.size || 0;
+      if (Math.min(y, n) >= matched) return f.ts;
+    }
+    return null;
+  })();
+
+  return {
+    fills: rows, weightedYes: wYes, weightedNo: wNo, combined,
+    yesQty: acc.YES.qty, noQty: acc.NO.qty, matchedQty: matched,
+    unmatchedSide: acc.YES.qty > acc.NO.qty ? "YES" : acc.NO.qty > acc.YES.qty ? "NO" : null,
+    unmatchedQty: Math.abs(acc.YES.qty - acc.NO.qty),
+    complete: matched > 0 && acc.YES.qty === acc.NO.qty,
+    netPerPairC: netPerPair != null ? +(netPerPair * 100).toFixed(2) : null,
+    completionMs: (firstTs != null && completeTs != null) ? completeTs - firstTs : null,
+  };
+}
+
+// ── PAPER LAB ────────────────────────────────────────────────────────────────
+// THE accounting rule: realized P&L comes ONLY from pairs that are both matched
+// AND resolved. Open inventory is unrealized exposure and is reported
+// separately. Counting incomplete pairs as realized profit is the single
+// fastest way to produce a backtest that cannot be reproduced live.
+function paperLab(pairs, opts = {}) {
+  const o = { startingCapital: 10000, ...POLY_DEFAULTS, ...opts };
+  const sc = COST_SCENARIOS[o.scenario] || COST_SCENARIOS.conservative;
+
+  let realized = 0, fees = 0, slippage = 0, completedPairs = 0, trades = 0;
+  let openCost = 0, openShares = 0, openLegs = 0;
+  const equityCurve = [];
+  let equity = o.startingCapital, peak = equity, maxDD = 0;
+
+  for (const p of pairs || []) {
+    trades += (p.fills?.length || 0);
+    const r = p.recon || reconstructPair(p.fills, o);
+
+    // realized: matched AND resolved only
+    if (r.matchedQty > 0 && p.resolved === true) {
+      const cost = (r.weightedYes + r.weightedNo) * r.matchedQty;
+      const entryFee = cost * (sc.entryBps / 10000);
+      const exitFee = 1.00 * r.matchedQty * (sc.exitBps / 10000);
+      const slip = (+p.slippagePerShare || 0) * r.matchedQty * 2;
+      const pnl = (1.00 * r.matchedQty) - cost - entryFee - exitFee - slip;
+      realized += pnl; fees += entryFee + exitFee; slippage += slip;
+      completedPairs += 1;
+      equity += pnl;
+      peak = Math.max(peak, equity);
+      maxDD = Math.max(maxDD, peak - equity);
+      equityCurve.push({ ts: p.resolvedAt ?? null, equity: +equity.toFixed(2) });
+    }
+
+    // unrealized: everything not both matched and resolved
+    if (r.matchedQty > 0 && p.resolved !== true) {
+      openCost += (r.weightedYes + r.weightedNo) * r.matchedQty;
+      openShares += r.matchedQty; openLegs += 2;
+    }
+    if (r.unmatchedQty > 0) {
+      const px = r.unmatchedSide === "YES" ? r.weightedYes : r.weightedNo;
+      if (Number.isFinite(px)) { openCost += px * r.unmatchedQty; openShares += r.unmatchedQty; openLegs += 1; }
+    }
+  }
+
+  return {
+    startingCapital: o.startingCapital,
+    scenario: o.scenario, scenarioLabel: sc.label,
+    trades, completedPairs,
+    realizedPnL: +realized.toFixed(2),
+    fees: +fees.toFixed(2),
+    slippage: +slippage.toFixed(2),
+    // Explicitly NOT added to realized. This is exposure, not profit.
+    openInventory: { legs: openLegs, shares: +openShares.toFixed(2), costBasis: +openCost.toFixed(2) },
+    unrealizedNote: "Open inventory is exposure at cost, not profit. It is excluded from realized P&L by design.",
+    endingCapital: +equity.toFixed(2),
+    maxDrawdown: +maxDD.toFixed(2),
+    returnPct: o.startingCapital > 0 ? +((realized / o.startingCapital) * 100).toFixed(2) : 0,
+    equityCurve,
+  };
+}
+
+// ── WALLET INTELLIGENCE ──────────────────────────────────────────────────────
+// Every metric carries provenance. Third-party claims are never promoted to
+// facts, and are shown as UNVERIFIED with their source named.
+const PROVENANCE = {
+  OBSERVED:   { label:"OBSERVED",   color:"#00ff88", note:"Read directly from public market/chain data." },
+  CALCULATED: { label:"CALCULATED", color:"#00ddff", note:"Arithmetic on observed data. Reproducible." },
+  INFERRED:   { label:"INFERRED",   color:"#ffe033", note:"Pattern-detected. Model-dependent — a different model may disagree." },
+  UNVERIFIED: { label:"UNVERIFIED", color:"#ff5577", note:"Third-party claim that could not be independently reproduced. Not evidence." },
+};
+
+function walletProfile(raw) {
+  const m = [];
+  const add = (key, label, value, prov, note) => m.push({ key, label, value, prov, note });
+
+  add("pnl",        "Observed P&L",              raw?.pnl ?? null,             raw?.pnl != null ? "OBSERVED" : "UNVERIFIED");
+  add("trades",     "Trade count",               raw?.tradeCount ?? null,      "OBSERVED");
+  add("markets",    "Markets traded",            raw?.marketCount ?? null,     "OBSERVED");
+  add("avgSize",    "Average position size",     raw?.avgPositionSize ?? null, "CALCULATED");
+  add("makerRatio", "Maker / taker estimate",    raw?.makerRatio ?? null,      "INFERRED",
+      "Maker/taker is not always explicit in public data; this is inferred from fill placement relative to the quote.");
+  add("pairFreq",   "Two-sided pair frequency",  raw?.pairFrequency ?? null,   "INFERRED");
+  add("pairTime",   "Avg pair completion time",  raw?.avgPairCompletionMs ?? null, "CALCULATED");
+  add("dirExp",     "Directional exposure",      raw?.directionalExposure ?? null, "CALCULATED");
+  add("rotation",   "Inventory rotation",        raw?.inventoryRotation ?? null,   "INFERRED");
+  add("drawdown",   "Drawdown estimate",         raw?.drawdownEstimate ?? null,    "INFERRED",
+      "Reconstructed from observable fills; true drawdown depends on positions this data cannot see.");
+
+  // Claims that circulate publicly. Shown, labelled, never promoted.
+  for (const [key, label, val, src] of [
+    ["winRate", "Win rate", raw?.claimedWinRate ?? null, raw?.claimSource || "third-party claim"],
+    ["rr",      "Risk / reward", raw?.claimedRR ?? null, raw?.claimSource || "third-party claim"],
+    ["sharpe",  "Sharpe", raw?.claimedSharpe ?? null, raw?.claimSource || "third-party claim"],
+  ]) {
+    if (val != null) add(key, label, val, "UNVERIFIED", `Source: ${src}. Could not be independently reproduced from public data.`);
+  }
+
+  const observedCount = m.filter(x => x.value != null && (x.prov === "OBSERVED" || x.prov === "CALCULATED")).length;
+  const unverifiedShown = m.filter(x => x.value != null && x.prov === "UNVERIFIED").length;
+  const quality = polyClamp(observedCount * 11 - unverifiedShown * 5);
+
+  return { address: raw?.address ?? null, strategy: raw?.strategy ?? null, metrics: m,
+           walletQuality: quality, observedCount, unverifiedShown };
+}
+
+// ── CATALYST FUSION ──────────────────────────────────────────────────────────
+// Links a prediction market to live catalyst events so the two intelligence
+// legs can confirm or contradict each other.
+const POLY_TOPICS = [
+  { key:"fed",     re:/\bfed\b|fomc|rate cut|rate hike|powell|interest rate/i, cats:["FED_POLICY","MACRO_RELEASE","RATES"] },
+  { key:"inflation", re:/\bcpi\b|inflation|\bppi\b|\bpce\b/i,                 cats:["MACRO_RELEASE"] },
+  { key:"crypto",  re:/\bbtc\b|bitcoin|\beth\b|ethereum|crypto|solana/i,      cats:["COMMODITY","REGULATORY","GOV_POLICY","FED_POLICY"] },
+  { key:"election",re:/election|president|senate|congress|vote|poll/i,        cats:["GOV_POLICY","GEOPOLITICS"] },
+  { key:"geo",     re:/\bwar\b|ceasefire|missile|invasion|sanction|tariff/i,  cats:["GEOPOLITICS","TARIFF_TRADE"] },
+  { key:"equity",  re:/\bspx\b|\bs&p\b|nasdaq|stock market|recession/i,       cats:["MACRO_RELEASE","FED_POLICY"] },
+];
+
+function marketTopics(market) {
+  const q = String(market?.question || market?.title || "");
+  return POLY_TOPICS.filter(t => t.re.test(q)).map(t => t.key);
+}
+
+function linkCatalysts(market, events) {
+  const topics = marketTopics(market);
+  if (!topics.length) return [];
+  const cats = new Set(POLY_TOPICS.filter(t => topics.includes(t.key)).flatMap(t => t.cats));
+  return (events || [])
+    .filter(e => cats.has(e.category) && e.impactNow >= 40)
+    .sort((a, b) => b.impactNow - a.impactNow)
+    .slice(0, 5);
+}
+
+// Compares a probability move against the catalyst's own direction read.
+// AGREE / DISAGREE / NEUTRAL — never a claim about which one is right.
+function probabilityConfirmation(market, event, priorProb) {
+  const now = +market?.yesProb;
+  if (!Number.isFinite(now) || !Number.isFinite(+priorProb)) return null;
+  const deltaPts = Math.round((now - priorProb) * 100);
+  if (!event || Math.abs(deltaPts) < 2) return { deltaPts, verdict:"NEUTRAL", note:"No material probability move." };
+  const agree = (event.direction > 20 && deltaPts > 0) || (event.direction < -20 && deltaPts < 0);
+  const oppose = (event.direction > 20 && deltaPts < 0) || (event.direction < -20 && deltaPts > 0);
+  return {
+    deltaPts, from: Math.round(priorProb * 100), to: Math.round(now * 100),
+    verdict: agree ? "CONFIRMS" : oppose ? "CONTRADICTS" : "NEUTRAL",
+    note: agree ? "Prediction market moved the same way as the catalyst read."
+        : oppose ? "Prediction market moved against the catalyst read — one of them is wrong, and this does not say which."
+        : "Move is not clearly aligned either way.",
+  };
+}
+
+// ── POLY MARKET BRAIN ────────────────────────────────────────────────────────
+function polyBrain(scored) {
+  const rows = (scored || []).filter(Boolean);
+  if (!rows.length) return { active:false, count:0 };
+  const med = a => { if (!a.length) return null; const s=[...a].sort((x,y)=>x-y); return s[Math.floor(s.length/2)]; };
+  const liq = med(rows.map(r => r.dims.liquidity));
+  const spread = med(rows.map(r => r.dims.avgSpreadC).filter(Number.isFinite));
+  const qualified = rows.filter(r => ["STRONG_PAIR","QUALIFIED"].includes(r.state.state)).length;
+  return {
+    active: true, count: rows.length, qualified,
+    liquidity: liq == null ? "NO READ" : liq >= 70 ? "HIGH" : liq >= 45 ? "MODERATE" : "LOW",
+    spreadEnv: spread == null ? "NO READ" : spread <= 1 ? "TIGHT" : spread <= 2 ? "GOOD" : "WIDE",
+    catalystPressure: Math.max(0, ...rows.map(r => r.dims.catalystRisk)),
+    bestEdgeC: Math.max(...rows.map(r => r.edge?.netEdgeC ?? -99)),
+  };
+}
+
+// ── SCORE A MARKET LIST ──────────────────────────────────────────────────────
+function scorePolyMarkets(markets, opts = {}) {
+  return (markets || []).map(m => {
+    const edge = pairEdge(m, opts);
+    const dims = polyDimensions(m, edge, opts);
+    const state = polyState(edge, dims, opts);
+    return { market: m, edge, dims, state };
+  }).sort((a, b) => (b.edge?.netEdgeC ?? -99) - (a.edge?.netEdgeC ?? -99));
+}
+
 async function fetchUWDirect(uwKey, signal) {
   const H = { Authorization: `Bearer ${uwKey}` };
   const get = (path) => fetch(`https://api.unusualwhales.com/api${path}`, { headers: H, signal })
@@ -3367,6 +3788,409 @@ function MarketBrain({ brain, mode, onMode, modeResult, onClose, now }) {
   );
 }
 
+
+// ── APEX POLY INTELLIGENCE — UI ──────────────────────────────────────────────
+const polyCents = v => (v == null || !Number.isFinite(v)) ? "—" : `${v > 0 ? "" : ""}${v.toFixed(2)}¢`;
+const polyDollars = v => (v == null || !Number.isFinite(v)) ? "—" : `${v < 0 ? "-" : ""}$${Math.abs(v).toLocaleString(undefined,{maximumFractionDigits:2})}`;
+const polyDimColor = (v, invert) => {
+  const x = invert ? 100 - v : v;
+  return x >= 75 ? "#00ff88" : x >= 55 ? "#00ddff" : x >= 40 ? "#ffe033" : x >= 25 ? "#ff9955" : "#ff5577";
+};
+
+function PolyDim({ label, value, invert, hint }) {
+  const c = polyDimColor(value, invert);
+  return (
+    <div title={hint} style={{ marginBottom:6 }}>
+      <div style={{ display:"flex", justifyContent:"space-between", fontSize:10, letterSpacing:"0.09em", color:"#7591a8", marginBottom:3 }}>
+        <span>{label}{invert && <span style={{ color:"#5a7a92" }}> (lower is better)</span>}</span>
+        <span style={{ color:c, fontWeight:700, fontFamily:"'JetBrains Mono',monospace" }}>{value}</span>
+      </div>
+      <div style={{ height:4, background:"#0d1620", borderRadius:2, overflow:"hidden" }}>
+        <div style={{ width:`${Math.max(0,Math.min(100,value))}%`, height:"100%", background:c }}/>
+      </div>
+    </div>
+  );
+}
+
+function PairCard({ row, scenario }) {
+  const [open, setOpen] = useState(false);
+  const { market, edge, dims, state } = row;
+  const st = POLY_STATES[state.state];
+  const q = market.question || market.title || "(untitled market)";
+  return (
+    <div style={{ border:`1px solid ${st.color}44`, borderLeft:`3px solid ${st.color}`, background:"#070d15",
+                  borderRadius:4, marginBottom:8, overflow:"hidden" }}>
+      <div onClick={()=>setOpen(o=>!o)} style={{ padding:"11px 14px", cursor:"pointer" }}>
+        <div style={{ display:"flex", gap:10, alignItems:"center", flexWrap:"wrap", marginBottom:7 }}>
+          <span style={{ fontSize:14, color:"#eaf2ff", fontWeight:700 }}>{q}</span>
+          <span style={{ fontSize:10, padding:"2px 8px", background:st.color+"1f", border:`1px solid ${st.color}66`,
+                         color:st.color, fontWeight:700, borderRadius:2 }}>{st.label}</span>
+          <span style={{ marginLeft:"auto", fontSize:12, color:"#7591a8" }}>{open?"▲":"▼"}</span>
+        </div>
+        <div style={{ display:"flex", gap:18, flexWrap:"wrap", fontSize:12, fontFamily:"'JetBrains Mono',monospace" }}>
+          <span style={{ color:"#7591a8" }}>RAW <b style={{color:"#9fb5c8"}}>{polyCents(edge?.rawEdgeC)}</b></span>
+          <span style={{ color:"#7591a8" }}>NET <b style={{ color: (edge?.netEdgeC ?? -1) > 0 ? "#00ff88" : "#ff5577" }}>{polyCents(edge?.netEdgeC)}</b></span>
+          <span style={{ color:"#7591a8" }}>SURVIVES <b style={{color:"#9fb5c8"}}>{edge?.survivalPct ?? 0}%</b></span>
+          <span style={{ color:"#7591a8" }}>LIQ <b style={{color:polyDimColor(dims.liquidity)}}>{dims.liquidity}</b></span>
+          <span style={{ color:"#7591a8" }}>PAIR CONF <b style={{color:polyDimColor(dims.pairConf)}}>{dims.pairConf}</b></span>
+          {dims.catalystRisk >= 40 && <span style={{ color:"#ff9955", fontWeight:700 }}>⚠ CATALYST {dims.catalystRisk}</span>}
+        </div>
+      </div>
+      {open && (
+        <div style={{ borderTop:"1px solid #0e1a24", padding:"12px 14px", background:"#050a10",
+                      display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(210px,1fr))", gap:16 }}>
+          <div>
+            <div className="sec-label" style={{ marginBottom:8 }}>COST WATERFALL</div>
+            {edge ? (
+              <div style={{ fontSize:12, fontFamily:"'JetBrains Mono',monospace", lineHeight:2 }}>
+                {[["YES ask", `$${edge.yesBest.toFixed(3)}`, "#9fb5c8"],
+                  ["NO ask",  `$${edge.noBest.toFixed(3)}`,  "#9fb5c8"],
+                  ["RAW PAIR COST", `$${(edge.rawCostC/100).toFixed(3)}`, "#b8c9dc"],
+                  ["RAW EDGE", polyCents(edge.rawEdgeC), "#00ddff"],
+                  ["− est. fees", polyCents(edge.feesC), "#ff9955"],
+                  ["− est. slippage", polyCents(edge.slippageC), "#ff9955"],
+                  ["− safety buffer", polyCents(edge.safetyC), "#ff9955"],
+                ].map(([k,v,c]) => (
+                  <div key={k} style={{ display:"flex", justifyContent:"space-between" }}>
+                    <span style={{ color:"#7591a8" }}>{k}</span><span style={{ color:c }}>{v}</span>
+                  </div>
+                ))}
+                <div style={{ display:"flex", justifyContent:"space-between", borderTop:"1px solid #1a2a3a", marginTop:5, paddingTop:5 }}>
+                  <span style={{ color:"#eaf2ff", fontWeight:700 }}>NET EDGE</span>
+                  <span style={{ color: edge.netEdgeC > 0 ? "#00ff88" : "#ff5577", fontWeight:700 }}>{polyCents(edge.netEdgeC)}</span>
+                </div>
+                <div style={{ fontSize:10, color:"#5a7a92", marginTop:6, lineHeight:1.6, fontFamily:"'Inter',sans-serif" }}>
+                  Sized at {edge.shares} shares/side · fills {edge.fillMethod === "BOOK" ? "walked through the order book" : "estimated from the spread (no depth data)"} · cost scenario {edge.scenarioLabel}.
+                  {edge.shortfall > 0 && <b style={{color:"#ff9955"}}> Book short by {Math.round(edge.shortfall)} shares.</b>}
+                </div>
+              </div>
+            ) : <div style={{ fontSize:12, color:"#5a7a92", fontStyle:"italic" }}>No two-sided quote.</div>}
+          </div>
+
+          <div>
+            <div className="sec-label" style={{ marginBottom:8 }}>DIMENSIONS</div>
+            <PolyDim label="POLY EDGE" value={dims.polyEdge} hint="Net edge after all modelled costs, scaled 0-3¢."/>
+            <PolyDim label="LIQUIDITY" value={dims.liquidity} hint="Book depth at target size, plus 24h volume."/>
+            <PolyDim label="EXECUTION QUALITY" value={dims.execution} hint="Spread tightness — how viable passive fills are."/>
+            <PolyDim label="PAIR CONFIDENCE" value={dims.pairConf} hint="Can both legs actually be completed at size?"/>
+            <PolyDim label="INVENTORY RISK" value={dims.inventoryRisk} invert hint="One-sided exposure held toward resolution."/>
+            <PolyDim label="SETTLEMENT RISK" value={dims.settlementRisk} invert hint="Resolution clarity. Unknown terms score mid, never optimistic."/>
+            <PolyDim label="CATALYST RISK" value={dims.catalystRisk} invert hint="Live catalyst on this topic from the news engine."/>
+          </div>
+
+          <div>
+            <div className="sec-label" style={{ marginBottom:8 }}>STATE</div>
+            <div style={{ padding:"9px 11px", background:st.color+"12", border:`1px solid ${st.color}44`, borderRadius:3, marginBottom:10 }}>
+              <div style={{ fontSize:12, color:st.color, fontWeight:700, marginBottom:4 }}>{st.label}</div>
+              <div style={{ fontSize:12, color:"#b5c8dc", lineHeight:1.6 }}>{state.note}</div>
+            </div>
+            {dims.minsToRes != null && (
+              <div style={{ fontSize:12, color:"#9fb5c8", marginBottom:8 }}>
+                Resolves in {dims.minsToRes < 60 ? `${Math.round(dims.minsToRes)}m` : `${Math.round(dims.minsToRes/60)}h`}
+              </div>
+            )}
+            {dims.linked.length > 0 && (
+              <>
+                <div className="sec-label" style={{ marginBottom:6 }}>LINKED CATALYSTS</div>
+                {dims.linked.map(e => (
+                  <div key={e.key} style={{ fontSize:11, color:"#9fb5c8", marginBottom:5, lineHeight:1.5 }}>
+                    <span style={{ color:"#ff9955", fontWeight:700 }}>{e.impactNow}</span> · {e.headline.slice(0,72)}
+                  </div>
+                ))}
+              </>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PolyTab({ onClose, markets, catalystEvents, now }) {
+  const [tab, setTab] = useState("pair");
+  const [scenario, setScenario] = useState(POLY_DEFAULTS.scenario);
+  const [size, setSize] = useState(POLY_DEFAULTS.targetSizeShares);
+  const [minEdge, setMinEdge] = useState(POLY_DEFAULTS.minNetEdgeCents);
+
+  const opts = { scenario, targetSizeShares: size, minNetEdgeCents: minEdge, catalystEvents, now };
+  const scored = scorePolyMarkets(markets, opts);
+  const brain = polyBrain(scored);
+  const sc = COST_SCENARIOS[scenario];
+
+  // Demonstration inputs for the two views that consume a fill history. These
+  // are clearly labelled sample data — they are not observed trades.
+  const demoFills = [
+    { ts: now - 14*60000, side:"YES", price:0.44, size:200 },
+    { ts: now - 9*60000,  side:"YES", price:0.43, size:300 },
+    { ts: now - 3*60000,  side:"NO",  price:0.52, size:250 },
+    { ts: now - 1*60000,  side:"NO",  price:0.51, size:250 },
+  ];
+  const recon = reconstructPair(demoFills, opts);
+  const lab = paperLab([
+    { fills: demoFills, recon, resolved: true,  resolvedAt: now, slippagePerShare: 0.001 },
+    { fills: demoFills.slice(0,2), resolved: false },
+  ], { ...opts, startingCapital: 10000 });
+  const wallet = walletProfile({
+    address: null, strategy: "Two-sided accumulation (sample shape — no wallet loaded)",
+    pnl: null, tradeCount: null, marketCount: null,
+  });
+
+  const card = { background:"#070d15", border:"1px solid #13202e", borderRadius:5, padding:14 };
+  const tabBtn = k => ({ padding:"6px 13px", background: tab===k?"#0d1a26":"transparent",
+    border:`1px solid ${tab===k?"#44ffdd":"#15212e"}`, color: tab===k?"#44ffdd":"#7591a8",
+    fontSize:12, fontWeight:600, cursor:"pointer", borderRadius:3, letterSpacing:"0.04em" });
+  const inp = { background:"#080e16", border:"1px solid #15212e", color:"#d0deec", padding:"6px 9px",
+    fontSize:12, outline:"none", borderRadius:3, fontFamily:"'JetBrains Mono',monospace" };
+
+  return (
+    <div style={{ background:"#04080c", borderBottom:"1px solid #0e1a24", maxHeight:"76vh", overflow:"auto", flexShrink:0 }}>
+      <div style={{ display:"flex", alignItems:"center", gap:10, padding:"10px 20px", borderBottom:"1px solid #0e1a24",
+                    position:"sticky", top:0, background:"#04080c", zIndex:3, flexWrap:"wrap" }}>
+        <span style={{ fontSize:12, fontWeight:700, letterSpacing:"0.16em", color:"#44ffdd" }}>◈ APEX POLY INTELLIGENCE</span>
+        {[["pair","PAIR SCANNER"],["temporal","TEMPORAL PAIRING"],["wallet","WALLET INTEL"],["lab","PAPER LAB"],["research","RESEARCH"]]
+          .map(([k,l]) => <button key={k} style={tabBtn(k)} onClick={()=>setTab(k)}>{l}</button>)}
+        <span style={{ fontSize:10, padding:"3px 9px", background:"#00ff8818", border:"1px solid #00ff8855",
+                       color:"#00ff88", fontWeight:700, borderRadius:2, letterSpacing:"0.06em" }}>READ-ONLY · NO EXECUTION</span>
+        <button onClick={onClose} style={{ marginLeft:"auto", background:"transparent", border:"1px solid #15212e",
+                 color:"#7591a8", fontSize:12, padding:"4px 10px", cursor:"pointer", borderRadius:3 }}>✕ close</button>
+      </div>
+
+      {/* cost model — always visible, because every number below depends on it */}
+      <div style={{ padding:"12px 20px", borderBottom:"1px solid #0e1a24", display:"flex", gap:14, alignItems:"center", flexWrap:"wrap" }}>
+        <span style={{ fontSize:11, color:"#7591a8", letterSpacing:"0.1em" }}>COST SCENARIO</span>
+        {Object.entries(COST_SCENARIOS).map(([k,v]) => (
+          <button key={k} onClick={()=>setScenario(k)} title={v.note}
+            style={{ padding:"5px 11px", background: scenario===k?"#0d1a26":"transparent",
+              border:`1px solid ${scenario===k?"#ffcc66":"#15212e"}`, color: scenario===k?"#ffcc66":"#7591a8",
+              fontSize:11, fontWeight:600, cursor:"pointer", borderRadius:3 }}>{v.label}</button>
+        ))}
+        <label style={{ fontSize:11, color:"#7591a8", display:"flex", gap:6, alignItems:"center" }}>
+          size <input style={{...inp, width:80}} type="number" min="1" step="50" value={size} onChange={e=>setSize(Math.max(1,+e.target.value||1))}/> shares/side
+        </label>
+        <label style={{ fontSize:11, color:"#7591a8", display:"flex", gap:6, alignItems:"center" }}>
+          min net <input style={{...inp, width:64}} type="number" min="0" step="0.25" value={minEdge} onChange={e=>setMinEdge(Math.max(0,+e.target.value||0))}/> ¢
+        </label>
+        <span style={{ fontSize:11, color:"#ffcc66", fontStyle:"italic" }}>{sc.note}</span>
+      </div>
+
+      {/* poly market brain */}
+      <div style={{ padding:"12px 20px", borderBottom:"1px solid #0e1a24", display:"flex", gap:22, flexWrap:"wrap", alignItems:"center" }}>
+        <span className="sec-label">POLY MARKET BRAIN</span>
+        {brain.active ? (
+          <>
+            <span style={{ fontSize:12, color:"#9fb5c8" }}>Markets scored <b style={{color:"#eaf2ff"}}>{brain.count}</b></span>
+            <span style={{ fontSize:12, color:"#9fb5c8" }}>Qualified <b style={{color: brain.qualified?"#00ff88":"#7591a8"}}>{brain.qualified}</b></span>
+            <span style={{ fontSize:12, color:"#9fb5c8" }}>Liquidity <b style={{color:"#eaf2ff"}}>{brain.liquidity}</b></span>
+            <span style={{ fontSize:12, color:"#9fb5c8" }}>Spreads <b style={{color:"#eaf2ff"}}>{brain.spreadEnv}</b></span>
+            <span style={{ fontSize:12, color:"#9fb5c8" }}>Best net <b style={{color: brain.bestEdgeC>0?"#00ff88":"#ff5577"}}>{polyCents(brain.bestEdgeC)}</b></span>
+            {brain.catalystPressure >= 40 && <span style={{ fontSize:12, color:"#ff9955", fontWeight:700 }}>⚠ catalyst pressure {brain.catalystPressure}</span>}
+          </>
+        ) : <span style={{ fontSize:12, color:"#7591a8" }}>No market data loaded. The Polymarket feed is not connected in this build — see Research.</span>}
+      </div>
+
+      {tab === "pair" && (
+        <div style={{ padding:"14px 20px" }}>
+          {scored.length === 0 ? (
+            <div style={{ ...card, fontSize:13, color:"#7591a8", lineHeight:1.8 }}>
+              <b style={{color:"#eaf2ff"}}>No markets loaded.</b> The pair scanner is fully implemented and unit-tested, but this
+              build ships without a live Polymarket connection — a static page has no server to poll public market data on a
+              schedule, and the ingest contract is documented in <code style={{color:"#9fb5c8"}}>docs/POLY_INTELLIGENCE.md</code> so
+              the existing Python package (wallet_analyzer / temporal_pairing / backtester) can feed it directly.
+              <br/><br/>
+              Everything below the fold — cost waterfall, eight dimensions, temporal pairing, paper-lab accounting — runs the
+              moment markets are supplied.
+            </div>
+          ) : scored.map((r,i) => <PairCard key={i} row={r} scenario={scenario}/>)}
+        </div>
+      )}
+
+      {tab === "temporal" && (
+        <div style={{ padding:"14px 20px" }}>
+          <div style={{ ...card, marginBottom:12, borderLeft:"3px solid #ffaa44" }}>
+            <div className="body-text" style={{ fontSize:13 }}>
+              <b style={{color:"#ffcc66"}}>Sample fills, not observed trades.</b> This view demonstrates the reconstruction the
+              engine performs. The strategy class it models does <b style={{color:"#eaf2ff"}}>not</b> buy both sides at the same
+              instant — it accumulates each leg at different moments and only completes the pair when combined economics work.
+            </div>
+          </div>
+          <div style={{ ...card, marginBottom:12 }}>
+            <div className="sec-label" style={{ marginBottom:9 }}>PAIR TIMELINE</div>
+            <div style={{ fontSize:13, fontFamily:"'JetBrains Mono',monospace", lineHeight:2 }}>
+              {recon.fills.map((f,i) => (
+                <div key={i} style={{ display:"flex", gap:16 }}>
+                  <span style={{ color:"#7591a8" }}>{new Date(f.ts).toLocaleTimeString("en-US",{hour12:false})}</span>
+                  <span style={{ color: f.side==="YES"?"#00ff88":"#ff5577", fontWeight:700, minWidth:60 }}>BUY {f.side}</span>
+                  <span style={{ color:"#eaf2ff" }}>{f.price.toFixed(3)}</span>
+                  <span style={{ color:"#7591a8" }}>× {f.size}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(200px,1fr))", gap:12 }}>
+            <div style={card}>
+              <div className="sec-label" style={{ marginBottom:9 }}>RECONSTRUCTION</div>
+              {[["Weighted YES", recon.weightedYes?.toFixed(3)],
+                ["Weighted NO",  recon.weightedNo?.toFixed(3)],
+                ["Combined",     recon.combined?.toFixed(3)],
+                ["Matched qty",  recon.matchedQty],
+                ["Unmatched",    recon.unmatchedQty ? `${recon.unmatchedQty} ${recon.unmatchedSide}` : "none"],
+                ["Completion",   recon.completionMs != null ? `${Math.round(recon.completionMs/60000)}m` : "—"],
+              ].map(([k,v]) => (
+                <div key={k} style={{ display:"flex", justifyContent:"space-between", fontSize:12, marginBottom:6 }}>
+                  <span style={{ color:"#7591a8" }}>{k}</span>
+                  <span style={{ color:"#e4edf7", fontWeight:700, fontFamily:"'JetBrains Mono',monospace" }}>{v ?? "—"}</span>
+                </div>
+              ))}
+            </div>
+            <div style={card}>
+              <div className="sec-label" style={{ marginBottom:9 }}>MODELLED ECONOMICS</div>
+              <div style={{ fontSize:26, fontWeight:700, color: (recon.netPerPairC ?? -1) > 0 ? "#00ff88" : "#ff5577",
+                            fontFamily:"'JetBrains Mono',monospace", marginBottom:6 }}>
+                {recon.netPerPairC != null ? `${recon.netPerPairC > 0 ? "+" : ""}${recon.netPerPairC}¢` : "—"}
+              </div>
+              <div style={{ fontSize:12, color:"#9fb5c8" }}>net per completed pair, {sc.label} costs</div>
+              <div style={{ marginTop:10, fontSize:12, color: recon.complete ? "#00ff88" : "#ffaa44", fontWeight:700 }}>
+                PAIR {recon.complete ? "COMPLETE" : "INCOMPLETE"}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {tab === "wallet" && (
+        <div style={{ padding:"14px 20px" }}>
+          <div style={{ ...card, marginBottom:12, borderLeft:"3px solid #ff5577" }}>
+            <div style={{ fontSize:12, fontWeight:700, color:"#ff8899", marginBottom:6 }}>Provenance is the point of this view</div>
+            <div className="body-text" style={{ fontSize:13 }}>
+              Circulating figures for well-known wallets — win rate, risk/reward, Sharpe — frequently cannot be reproduced from
+              public data. Any such figure is shown as <b style={{color:"#ff5577"}}>UNVERIFIED</b> with its source named, and is
+              never promoted to a fact or used in any score. Load a wallet and the observed and calculated rows fill in; the
+              unverified rows stay unverified.
+            </div>
+          </div>
+          <div style={{ display:"flex", gap:10, flexWrap:"wrap", marginBottom:12 }}>
+            {Object.entries(PROVENANCE).map(([k,v]) => (
+              <span key={k} title={v.note} style={{ fontSize:10, padding:"3px 9px", background:v.color+"18",
+                border:`1px solid ${v.color}55`, color:v.color, fontWeight:700, borderRadius:2 }}>{v.label}</span>
+            ))}
+          </div>
+          <table style={{ borderCollapse:"collapse", width:"100%" }}>
+            <thead><tr>{["METRIC","VALUE","PROVENANCE","NOTE"].map(h=>(
+              <th key={h} style={{ padding:"7px 10px", textAlign:"left", fontSize:10, letterSpacing:"0.12em",
+                   color:"#7591a8", fontWeight:700, borderBottom:"1px solid #1a2a3a" }}>{h}</th>))}</tr></thead>
+            <tbody>
+              {wallet.metrics.map(m => {
+                const p = PROVENANCE[m.prov];
+                return (
+                  <tr key={m.key} style={{ borderBottom:"1px solid #0b141c" }}>
+                    <td style={{ padding:"7px 10px", fontSize:12, color:"#9fb5c8" }}>{m.label}</td>
+                    <td style={{ padding:"7px 10px", fontSize:12, color: m.value==null?"#3e5268":"#eaf2ff",
+                                 fontWeight:700, fontFamily:"'JetBrains Mono',monospace" }}>
+                      {m.value ?? "not loaded"}
+                    </td>
+                    <td style={{ padding:"7px 10px" }}>
+                      <span title={p.note} style={{ fontSize:10, padding:"2px 7px", background:p.color+"18",
+                        border:`1px solid ${p.color}55`, color:p.color, fontWeight:700, borderRadius:2 }}>{p.label}</span>
+                    </td>
+                    <td style={{ padding:"7px 10px", fontSize:11, color:"#5a7a92", maxWidth:340 }}>{m.note || ""}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {tab === "lab" && (
+        <div style={{ padding:"14px 20px" }}>
+          <div style={{ ...card, marginBottom:12, borderLeft:"3px solid #00ff88" }}>
+            <div style={{ fontSize:12, fontWeight:700, color:"#00ff88", marginBottom:6 }}>The accounting rule</div>
+            <div className="body-text" style={{ fontSize:13 }}>
+              Realized P&amp;L comes <b style={{color:"#eaf2ff"}}>only</b> from pairs that are both matched and resolved. Open
+              inventory is reported separately as exposure at cost and is <b style={{color:"#eaf2ff"}}>never</b> added to profit.
+              Counting incomplete pairs as realized is the fastest way to produce a backtest that cannot be reproduced live.
+            </div>
+          </div>
+          <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))", gap:10, marginBottom:12 }}>
+            {[["Starting capital", polyDollars(lab.startingCapital), "#9fb5c8"],
+              ["Trades", lab.trades, "#9fb5c8"],
+              ["Completed pairs", lab.completedPairs, "#00ddff"],
+              ["Realized P&L", polyDollars(lab.realizedPnL), lab.realizedPnL>=0?"#00ff88":"#ff5577"],
+              ["Fees", polyDollars(-lab.fees), "#ff9955"],
+              ["Slippage", polyDollars(-lab.slippage), "#ff9955"],
+              ["Max drawdown", polyDollars(-lab.maxDrawdown), "#ff5577"],
+              ["Return", `${lab.returnPct}%`, lab.returnPct>=0?"#00ff88":"#ff5577"],
+            ].map(([k,v,c]) => (
+              <div key={k} style={card}>
+                <div style={{ fontSize:10, color:"#7591a8", letterSpacing:"0.1em", marginBottom:5 }}>{String(k).toUpperCase()}</div>
+                <div style={{ fontSize:18, fontWeight:700, color:c, fontFamily:"'JetBrains Mono',monospace" }}>{v}</div>
+              </div>
+            ))}
+          </div>
+          <div style={{ ...card, borderLeft:"3px solid #ffaa44" }}>
+            <div className="sec-label" style={{ marginBottom:9, color:"#ffcc66" }}>OPEN INVENTORY — UNREALIZED EXPOSURE</div>
+            <div style={{ display:"flex", gap:26, flexWrap:"wrap", fontSize:13, fontFamily:"'JetBrains Mono',monospace" }}>
+              <span style={{ color:"#7591a8" }}>legs <b style={{color:"#eaf2ff"}}>{lab.openInventory.legs}</b></span>
+              <span style={{ color:"#7591a8" }}>shares <b style={{color:"#eaf2ff"}}>{lab.openInventory.shares}</b></span>
+              <span style={{ color:"#7591a8" }}>cost basis <b style={{color:"#ffcc66"}}>{polyDollars(lab.openInventory.costBasis)}</b></span>
+            </div>
+            <div style={{ fontSize:12, color:"#9fb5c8", marginTop:8, fontStyle:"italic" }}>{lab.unrealizedNote}</div>
+          </div>
+          <div style={{ fontSize:11, color:"#5a7a92", marginTop:12, fontStyle:"italic" }}>
+            Figures above run on sample fills to demonstrate the accounting. Supply real fill history and the same functions
+            produce the real numbers. Cost scenario: {sc.label}.
+          </div>
+        </div>
+      )}
+
+      {tab === "research" && (
+        <div style={{ padding:"14px 20px", display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(300px,1fr))", gap:12 }}>
+          <div style={{ ...card, borderLeft:"3px solid #00ff88" }}>
+            <div className="sec-label" style={{ marginBottom:8 }}>ARCHITECTURAL BOUNDARY</div>
+            <div className="body-text" style={{ fontSize:13 }}>
+              V1 is <b style={{color:"#eaf2ff"}}>read-only</b>: no private keys, no wallet signing, no order submission, no
+              custody. There is no execution path in this module and none may be added to it — a test asserts the absence of
+              that surface. If execution is ever built it belongs in a separate, independently audited subsystem.
+            </div>
+          </div>
+          <div style={{ ...card, borderLeft:"3px solid #ffcc66" }}>
+            <div className="sec-label" style={{ marginBottom:8 }}>WHY COSTS ARE A DIAL</div>
+            <div className="body-text" style={{ fontSize:13 }}>
+              Fee terms change and vary by market, so nothing here quotes a fee schedule as fact. The three scenarios ship with
+              costs you choose, and the default is <b style={{color:"#eaf2ff"}}>conservative</b>, not zero. A pair that looks
+              profitable on <code style={{color:"#9fb5c8"}}>YES + NO &lt; $1.00</code> is frequently marginal or negative once
+              entry fees, settlement fees, slippage and a safety margin are subtracted — which is exactly what the waterfall shows.
+            </div>
+          </div>
+          <div style={{ ...card, borderLeft:"3px solid #44ffdd" }}>
+            <div className="sec-label" style={{ marginBottom:8 }}>FUSION WITH THE CATALYST ENGINE</div>
+            <div className="body-text" style={{ fontSize:13 }}>
+              Markets are topic-matched to live catalysts, so a Fed headline raises <b style={{color:"#eaf2ff"}}>catalyst risk</b> on
+              rate markets and can block a pair outright. Probability moves are compared against the catalyst's own direction and
+              labelled CONFIRMS / CONTRADICTS / NEUTRAL — which never claims which one is right.
+            </div>
+          </div>
+          <div style={{ ...card }}>
+            <div className="sec-label" style={{ marginBottom:8 }}>NOT CONNECTED IN THIS BUILD</div>
+            <div className="body-text" style={{ fontSize:13 }}>
+              Live market data, order books, wallet history and resolution terms all need a server. The ingest contract is in
+              <code style={{color:"#9fb5c8"}}> docs/POLY_INTELLIGENCE.md</code>. Until then the scanner shows no markets rather
+              than placeholder odds.
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div style={{ padding:"12px 20px", borderTop:"1px solid #0e1a24", fontSize:11, color:"#7591a8", lineHeight:1.8 }}>
+        <b style={{ color:"#8aabc2" }}>Research, analytics and paper strategy only.</b> No execution, no keys, no custody.
+        All cost inputs are editable assumptions, not quoted fee schedules. Unverified third-party wallet figures are labelled
+        and excluded from every score. Prediction markets can resolve against you in full — a modelled edge is not a
+        guaranteed one. ⚠ Education only · Not financial advice.
+      </div>
+    </div>
+  );
+}
+
 function App() {
   const [ready,     setReady]     = useState(false);
   const [feed,      setFeed]      = useState([]);
@@ -3401,6 +4225,8 @@ function App() {
   const [newsRaw,   setNewsRaw]   = useState([]);                        // normalised inputs to the catalyst engine
   const [intelRows, setIntelRows] = useState(() => loadIntel());         // observed event database (localStorage)
   const [nowMs,     setNowMs]     = useState(() => Date.now());
+  const [showPoly,  setShowPoly]  = useState(false);                     // APEX Poly Intelligence
+  const [polyMarkets,setPolyMarkets] = useState([]);                     // read-only; no execution path exists
 
   const seen       = useRef(new Set());
   const intv       = useRef(null);
@@ -3792,6 +4618,7 @@ function App() {
               { icon:"🧠", label:"BRAIN", active:showBrain, onClick:()=>setShowBrain(p=>!p), ac:"#c9a5ff", tip:"Market Brain — regime, catalysts, danger zones, best setups" },
               { icon:"📡", label:"INTEL", active:showIntel, onClick:()=>setShowIntel(p=>!p), ac:"#66ccff", tip:"Live catalyst intelligence — news impact / direction / confidence, calendar, reaction stats" },
               { icon: tradeMode==="safe"?"🛡":"⚙", label: tradeMode==="safe"?"SAFE":"PRO", active:true, onClick:()=>setTradeMode(m=>m==="safe"?"pro":"safe"), ac: tradeMode==="safe"?"#00ff88":"#ffe033", tip:"Safe Mode raises every gate and stands down near critical events. Pro Mode shows everything." },
+              { icon:"◈", label:"POLY", active:showPoly, onClick:()=>setShowPoly(p=>!p), ac:"#44ffdd", tip:"APEX Poly Intelligence — pair edge after costs, temporal pairing, wallet provenance, paper lab. Read-only, no execution." },
               { icon:"💰", label:"INCOME", active:showIncome, onClick:()=>setShowIncome(p=>!p), ac:"#ffcc66", tip:"Income ETF Lab — option-income funds, monthly cash, compounding model" },
               { icon:"≡", label:"LOG", active:showLog, onClick:()=>setShowLog(p=>!p), ac:"#7aaed0", tip:"Activity log" },
             ].map(({icon,label,active,onClick,disabled,ac="#ffe033",tip})=>(
@@ -3869,6 +4696,7 @@ function App() {
       </div>
 
       {showBrain && <MarketBrain brain={brain} mode={tradeMode} onMode={setTradeMode} modeResult={modeResult} onClose={()=>setShowBrain(false)} now={nowMs}/>}
+      {showPoly && <PolyTab onClose={()=>setShowPoly(false)} markets={polyMarkets} catalystEvents={catalystEvents} now={nowMs}/>}
       {showIntel && <IntelTab onClose={()=>setShowIntel(false)} events={catalystEvents} feed={feed}
                               calendar={scheduled} macroRiskScore={brain.macroRisk} stats={intelStats}
                               now={nowMs} ingestStatus={ingestStatus}/>}

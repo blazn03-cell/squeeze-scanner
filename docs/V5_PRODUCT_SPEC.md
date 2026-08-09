@@ -62,9 +62,9 @@ input and emits a *state*. This is enforced by test (`test_intel.js`).
 | **4. Risk & Timing** | When does the risk profile change? | ✅ |
 | **5. Trader Experience** | Safe/Pro, alerts, playbooks, explanations | 🟡 |
 
-Surfaced to users as six products: **Market Brain · APEX Scanner · Live Intelligence ·
-Danger Zones · Catalyst Playbooks · APEX Copilot.** Internal modules sit underneath;
-users never see the module count.
+Surfaced to users as seven products: **Market Brain · APEX Scanner · Live Intelligence ·
+Danger Zones · Catalyst Playbooks · APEX Copilot · Poly Intelligence.** Internal modules
+sit underneath; users never see the module count.
 
 ---
 
@@ -340,6 +340,7 @@ exactly one of these.
 | **Danger Zones** | When is market risk about to change? | §5 |
 | **Catalyst Playbooks** | How has the market historically behaved around this event? | §9 |
 | **APEX Copilot** | Why is this signal being surfaced? | §2 factor values |
+| **APEX Poly Intelligence** | Where is there a modelled edge in prediction markets? | §21 |
 
 ---
 
@@ -371,6 +372,7 @@ artificial feature gating.
 | Technical / catalyst alignment | — | — | ✓ | ✓ |
 | Event-preparation alerts | — | — | ✓ | ✓ |
 | Custom scanner filters | — | — | ✓ | ✓ |
+| Poly Intelligence | — | — | full | advanced |
 | Portfolio exposure analysis | — | — | — | ✓ |
 | Advanced event studies | — | — | — | ✓ |
 | Scenario analysis | — | — | — | ✓ |
@@ -535,3 +537,64 @@ conversion, cancellation reasons, alert mute rate, false-positive complaints. Th
 
 Screenshots of good signals attract users. Retention is the only evidence that the product
 created value.
+
+---
+
+## 21. APEX Poly Intelligence
+
+The prediction-market leg. Full detail in `docs/POLY_INTELLIGENCE.md`; the contracts and
+invariants are here.
+
+### Hard boundary — V1 is read-only
+
+No private keys, no wallet signing, no order submission, no custody. There is no
+execution path in the module and none may be added to it; a test greps for that surface
+and fails the build if it appears. Execution, if ever built, is a separate independently
+audited subsystem. `entitlements.json` carries `poly_execution` with
+`enabled_anywhere: false` — this is architecture, not configuration.
+
+### Scoring contract — eight more independent dimensions
+
+| Dimension | Range | Better | Contract |
+|---|---|---|---|
+| `POLY_EDGE` | 0–100 | high | Net edge after **all** modelled costs, scaled 0–3¢ |
+| `POLY_LIQUIDITY` | 0–100 | high | Book depth at target size + 24h volume |
+| `EXECUTION_QUALITY` | 0–100 | high | Spread tightness; passive-fill viability |
+| `PAIR_CONFIDENCE` | 0–100 | high | Both legs completable at size; penalised when depth was estimated |
+| `INVENTORY_RISK` | 0–100 | **low** | One-sided exposure carried toward resolution |
+| `SETTLEMENT_RISK` | 0–100 | **low** | Resolution clarity. **Unknown scores 55, never low.** |
+| `CATALYST_RISK` | 0–100 | **low** | Live catalyst on this topic, from §7 |
+| `WALLET_QUALITY` | 0–100 | high | Provenance-weighted; unverified claims **reduce** it |
+
+Same rule as everywhere else: kept separate, never collapsed into one number.
+
+### Invariants (test-enforced)
+
+7. No execution, key-handling or signing surface exists in the module.
+8. Net edge is always strictly less than raw edge; a thin raw edge resolves NEGATIVE.
+9. Realized P&L comes only from pairs that are both **matched and resolved**. Open
+   inventory is exposure at cost and is never added to profit.
+10. Unverified third-party wallet claims are labelled, never promoted, and never enter a
+    score.
+11. Unknown resolution terms are never scored optimistically.
+12. Probability-vs-catalyst comparison reports CONFIRMS / CONTRADICTS / NEUTRAL and never
+    asserts which side is right.
+
+### Cost model
+
+Three scenarios (zero / **conservative, default** / stress), all editable, none quoting a
+fee schedule as fact. Every displayed edge names the scenario it used and reports
+`survivalPct` — the fraction of raw edge that survived costs.
+
+### Entitlements
+
+Free — none · Core — none · **Pro — full** (pair scanner, temporal pairing, wallet
+intelligence) · **Black — advanced** (Paper Lab on supplied fill history, cohort studies,
+export).
+
+### Backend requirements
+
+Live market and order-book polling, wallet history with caching, resolution terms, and
+historical fills. Until those exist the scanner shows **no markets** rather than
+placeholder odds — the engine is complete and unit-tested against injected data, and the
+ingest contract is published so an external analysis package can feed it.

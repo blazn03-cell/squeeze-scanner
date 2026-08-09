@@ -3,29 +3,62 @@
   "version": "5.0.0",
   "currency": "usd",
   "interval": "month",
-
   "capabilities": {
-    "market_brain":       { "label": "Market Brain",       "question": "What kind of market am I trading today?" },
-    "apex_scanner":       { "label": "APEX Scanner",       "question": "What is setting up right now?" },
-    "live_intelligence":  { "label": "Live Intelligence",  "question": "What just happened and what does it affect?" },
-    "danger_zones":       { "label": "Danger Zones",       "question": "When is market risk about to change?" },
-    "catalyst_playbooks": { "label": "Catalyst Playbooks", "question": "How has the market historically behaved around this event?" },
-    "apex_copilot":       { "label": "APEX Copilot",       "question": "Why is this signal being surfaced?" }
+    "market_brain": {
+      "label": "Market Brain",
+      "question": "What kind of market am I trading today?"
+    },
+    "apex_scanner": {
+      "label": "APEX Scanner",
+      "question": "What is setting up right now?"
+    },
+    "live_intelligence": {
+      "label": "Live Intelligence",
+      "question": "What just happened and what does it affect?"
+    },
+    "danger_zones": {
+      "label": "Danger Zones",
+      "question": "When is market risk about to change?"
+    },
+    "catalyst_playbooks": {
+      "label": "Catalyst Playbooks",
+      "question": "How has the market historically behaved around this event?"
+    },
+    "apex_copilot": {
+      "label": "APEX Copilot",
+      "question": "Why is this signal being surfaced?"
+    },
+    "poly_intelligence": {
+      "label": "APEX Poly Intelligence",
+      "question": "Where is there a modelled edge in prediction markets, and what is the catalyst risk on it?"
+    }
   },
-
   "license_gated": {
     "$comment": "Never enabled in any tier until the underlying data is licensed. Shipping these as entitlements before the licence exists would sell something that does not run.",
-    "options_gamma_context": { "requires": "licensed options/greeks feed", "enabled_anywhere": false },
-    "realtime_level2":       { "requires": "licensed depth feed",          "enabled_anywhere": false }
+    "options_gamma_context": {
+      "requires": "licensed options/greeks feed",
+      "enabled_anywhere": false
+    },
+    "realtime_level2": {
+      "requires": "licensed depth feed",
+      "enabled_anywhere": false
+    },
+    "poly_execution": {
+      "requires": "a separate, independently audited execution subsystem",
+      "enabled_anywhere": false,
+      "note": "No tier grants order submission, key handling or custody. V1 is read-only by architecture, not by configuration."
+    }
   },
-
   "tiers": [
     {
       "id": "free",
       "name": "Free",
       "price": 0,
       "position": "Discover APEX",
-      "stripe": { "product_lookup_key": "apex_free", "price_lookup_key": null },
+      "stripe": {
+        "product_lookup_key": "apex_free",
+        "price_lookup_key": null
+      },
       "principle": "Useful but limited — never intentionally stale. A free user must be able to experience why APEX is different, on live data.",
       "entitlements": {
         "market_brain": "lite",
@@ -40,14 +73,17 @@
         "event_preparation_alerts": false,
         "custom_scanner_filters": false,
         "api_access": false,
-        "export": false
+        "export": false,
+        "poly_intelligence": "none"
       },
       "limits": {
         "data_latency": "realtime",
         "watchlist_symbols": 5,
         "scanner_results_visible": 5,
         "alerts_per_day": 5,
-        "alert_channels": ["in_app"],
+        "alert_channels": [
+          "in_app"
+        ],
         "event_history_days": 7,
         "market_brain_refresh_sec": 300
       }
@@ -57,7 +93,10 @@
       "name": "APEX Core",
       "price": 39,
       "position": "Technical intelligence",
-      "stripe": { "product_lookup_key": "apex_core", "price_lookup_key": "apex_core_monthly" },
+      "stripe": {
+        "product_lookup_key": "apex_core",
+        "price_lookup_key": "apex_core_monthly"
+      },
       "principle": "The complete real-time technical engine, with the risk context that makes it usable.",
       "entitlements": {
         "market_brain": "full",
@@ -72,14 +111,18 @@
         "event_preparation_alerts": false,
         "custom_scanner_filters": false,
         "api_access": false,
-        "export": false
+        "export": false,
+        "poly_intelligence": "none"
       },
       "limits": {
         "data_latency": "realtime",
         "watchlist_symbols": 50,
         "scanner_results_visible": null,
         "alerts_per_day": 50,
-        "alert_channels": ["in_app", "email"],
+        "alert_channels": [
+          "in_app",
+          "email"
+        ],
         "event_history_days": 30,
         "market_brain_refresh_sec": 60
       }
@@ -89,7 +132,10 @@
       "name": "APEX Pro",
       "price": 89,
       "position": "Full catalyst + market intelligence",
-      "stripe": { "product_lookup_key": "apex_pro", "price_lookup_key": "apex_pro_monthly" },
+      "stripe": {
+        "product_lookup_key": "apex_pro",
+        "price_lookup_key": "apex_pro_monthly"
+      },
       "principle": "The differentiator tier. Everything in Core plus the catalyst layer — this is where technical-versus-catalyst fusion lives.",
       "entitlements": {
         "market_brain": "full",
@@ -104,14 +150,19 @@
         "event_preparation_alerts": true,
         "custom_scanner_filters": true,
         "api_access": false,
-        "export": "csv"
+        "export": "csv",
+        "poly_intelligence": "full"
       },
       "limits": {
         "data_latency": "realtime",
         "watchlist_symbols": null,
         "scanner_results_visible": null,
         "alerts_per_day": null,
-        "alert_channels": ["in_app", "email", "push"],
+        "alert_channels": [
+          "in_app",
+          "email",
+          "push"
+        ],
         "event_history_days": 365,
         "market_brain_refresh_sec": 30
       }
@@ -121,7 +172,10 @@
       "name": "APEX Black",
       "price": 199,
       "position": "Advanced analytics + AI",
-      "stripe": { "product_lookup_key": "apex_black", "price_lookup_key": "apex_black_monthly" },
+      "stripe": {
+        "product_lookup_key": "apex_black",
+        "price_lookup_key": "apex_black_monthly"
+      },
       "principle": "Genuinely different work, not simply more of the same. Portfolio-level exposure, event studies, scenario analysis and programmatic access.",
       "entitlements": {
         "market_brain": "personalized",
@@ -139,21 +193,26 @@
         "advanced_event_studies": true,
         "scenario_analysis": true,
         "api_access": true,
-        "export": "csv+api"
+        "export": "csv+api",
+        "poly_intelligence": "advanced"
       },
       "limits": {
         "data_latency": "realtime",
         "watchlist_symbols": null,
         "scanner_results_visible": null,
         "alerts_per_day": null,
-        "alert_channels": ["in_app", "email", "push", "webhook"],
+        "alert_channels": [
+          "in_app",
+          "email",
+          "push",
+          "webhook"
+        ],
         "event_history_days": null,
         "market_brain_refresh_sec": 15,
         "api_requests_per_day": 10000
       }
     }
   ],
-
   "capability_levels": {
     "market_brain": {
       "none": "not available",
@@ -183,6 +242,12 @@
       "none": "not available",
       "basic": "explains why a signal was surfaced, from the stored factor values.",
       "full": "basic, plus scenario walkthroughs and personalised briefs."
+    },
+    "poly_intelligence": {
+      "none": "not available",
+      "research": "markets, pair scanner with the full cost waterfall, temporal pairing, research notes.",
+      "full": "research, plus wallet intelligence with provenance labelling.",
+      "advanced": "full, plus Paper Lab on supplied fill history, cohort studies and export."
     }
   }
 }
