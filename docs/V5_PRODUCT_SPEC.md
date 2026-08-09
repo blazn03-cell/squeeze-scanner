@@ -4,12 +4,17 @@
 Everything downstream — UI, onboarding, docs, and eventually any commercial material —
 should be generated from this document rather than written independently.
 
-**Scope note.** This spec deliberately contains **no pricing, no competitor comparison,
-and no marketing claims.** Those need benchmarking before they can be written down, and
-writing them here would make an unvalidated claim look like a requirement. Statements
-like "first in the world", "top 0.1%", or a fixed "CPI reverses 70% of the time" are
-excluded on purpose. Where the product needs a statistic, it comes from the measured
-event database with its sample size attached, or it is not shown.
+**Scope note.** This spec contains the commercial structure — tiers, entitlements and
+the Stripe mapping — because the application cannot be built without knowing exactly what
+each tier unlocks. Prices here are a **launch decision, not a benchmarked claim**.
+
+It deliberately contains **no competitor comparison and no marketing copy.** Those need
+benchmarking before they can be written down, and putting them here would make an
+unvalidated claim look like a requirement. Statements like "first in the world",
+"top 0.1%", or a fixed "CPI reverses 70% of the time" are excluded on purpose. Where the
+product needs a statistic, it comes from the measured event database with its sample size
+attached, or it is not shown. §13 lists the terminology rules; §19 gives the method for
+building a credible competitive table without asserting anything untested.
 
 **Status legend:** ✅ built in this repo · 🟡 partial · ⬜ needs backend
 
@@ -294,3 +299,239 @@ The defensible statement is narrower and stronger:
 Steps 5 and 6 are **blocked on data volume**, not on engineering. Building playbooks
 before the database has samples would mean inventing the statistics, which is the one
 thing this architecture is designed to prevent.
+
+---
+
+## 13. Terminology rules
+
+Terms carry claims. These are binding on the UI, the docs and any future copy.
+
+| Do not say | Say instead | Why |
+|---|---|---|
+| "T-1 predictive alerts" | **event-preparation alerts** | Nothing predicts the release. The alert prepares you for a *scheduled* event. |
+| "dark pool proxy" | *(nothing)* — or name the actual inputs | The ThinkScript layer has no dark-pool data. `SmartFlow` is defined as close-location-value × volume, VWAP displacement and relative-volume confirmation, and is labelled a pressure proxy at every appearance. Where genuine dark-pool prints appear in this repo, they are licensed API data. |
+| "institutional gamma pressure" | **options / gamma context** — only with a licensed feed | See `license_gated` in `entitlements.json`: disabled in every tier until licensed. |
+| "Bloomberg-lite", "institutional intelligence" | describe the capability | Comparative claims need benchmarking. |
+| "AI risk overlay", "60 engines" | the six capability names | Users buy capabilities, not module counts. |
+| "24-hour delayed signals" (free tier) | **limited, real-time** | Deliberately stale data makes the free tier feel broken instead of promising. Free is capped on breadth (5 symbols, 5 results, 5 alerts), not on freshness. |
+| "downgrade protection" | **scheduled downgrade at period end** | That is what Stripe actually does. §18. |
+| "guarantees", "predicts the market" | *(nothing)* | §11. |
+
+**Positioning line** (working, still untested):
+
+> **Know the setup. Know the catalyst. Know when the risk changes.**
+>
+> Frontline APEX combines technical scanning, market-moving events, breaking catalysts,
+> volatility, liquidity and historical reaction data so you can understand *why* a setup
+> matters — not just that an indicator fired.
+
+---
+
+## 14. The six capabilities
+
+The only product taxonomy that appears in the interface. Every internal module maps into
+exactly one of these.
+
+| Capability | The user's question | Backed by |
+|---|---|---|
+| **Market Brain** | What kind of market am I trading today? | §4 |
+| **APEX Scanner** | What is setting up right now? | §2, FINAL_V4 |
+| **Live Intelligence** | What just happened and what does it affect? | §7 |
+| **Danger Zones** | When is market risk about to change? | §5 |
+| **Catalyst Playbooks** | How has the market historically behaved around this event? | §9 |
+| **APEX Copilot** | Why is this signal being surfaced? | §2 factor values |
+
+---
+
+## 15. Tiers and entitlements
+
+Four tiers. Not five — a fifth advanced tier only makes sense once customers demonstrably
+split into two advanced segments, and inventing that split before it exists forces
+artificial feature gating.
+
+| Plan | Monthly | Position |
+|---|---:|---|
+| **Free** | $0 | Discover APEX |
+| **APEX Core** | $39 | Technical intelligence |
+| **APEX Pro** | $89 | Full catalyst + market intelligence |
+| **APEX Black** | $199 | Advanced analytics + AI |
+
+### Capability matrix
+
+| | Free | Core | Pro | Black |
+|---|---|---|---|---|
+| Market Brain | lite | full | full | personalized |
+| APEX Scanner | limited | full | full | full |
+| Live Intelligence | — | — | full | full |
+| Danger Zones | summary | full | full | full |
+| Catalyst Playbooks | — | — | full | advanced |
+| APEX Copilot | — | — | basic | full |
+| Safe / Pro modes | — | ✓ | ✓ | ✓ |
+| Macro calendar | ✓ | ✓ | ✓ | ✓ |
+| Technical / catalyst alignment | — | — | ✓ | ✓ |
+| Event-preparation alerts | — | — | ✓ | ✓ |
+| Custom scanner filters | — | — | ✓ | ✓ |
+| Portfolio exposure analysis | — | — | — | ✓ |
+| Advanced event studies | — | — | — | ✓ |
+| Scenario analysis | — | — | — | ✓ |
+| API access | — | — | — | ✓ |
+| Export | — | — | CSV | CSV + API |
+
+### Limits
+
+| | Free | Core | Pro | Black |
+|---|---|---|---|---|
+| Data latency | **real-time** | real-time | real-time | real-time |
+| Watchlist symbols | 5 | 50 | unlimited | unlimited |
+| Scanner results shown | 5 | all | all | all |
+| Alerts / day | 5 | 50 | unlimited | unlimited |
+| Alert channels | in-app | + email | + push | + webhook |
+| Event history | 7d | 30d | 365d | full |
+| Brain refresh | 5 min | 60s | 30s | 15s |
+
+**Free is limited, never stale.** It is capped on breadth so a free user still sees the
+real product working on live data — which is the only way they learn why it is different.
+
+Machine-readable source of truth: **`docs/entitlements.json`**. The application, the
+Stripe configuration and this table all read from it, so they cannot drift.
+
+### Licence-gated features
+
+`options_gamma_context` and `realtime_level2` are defined in `entitlements.json` with
+`enabled_anywhere: false`. They stay off in every tier until the underlying data is
+licensed. Selling an entitlement that does not run is the fastest way to lose a customer.
+
+---
+
+## 16. Alert logic per tier
+
+Priority is computed by the engine (§8) and then filtered by entitlement.
+
+| Priority | Free | Core | Pro | Black |
+|---|---|---|---|---|
+| **P0 CRITICAL** | in-app, counts against the 5/day cap | in-app + email | all channels, uncapped | all channels + webhook |
+| **P1 HIGH** | watchlist only | in-app + email | all channels | all channels + webhook |
+| **P2 MEDIUM** | — | in-app | in-app + email | all channels |
+| **P3 INFO** | — | — | in-app | in-app |
+| **Event-preparation ladder** | — | — | T-1d, T-60m, T-15m, T-0 | + T-7d and custom rungs |
+
+Anti-spam rules apply at every tier: one alert per deduplicated catalyst event regardless
+of how many outlets carried it; one alert per ladder rung, not per stage; and no alert for
+an event that only repeats information already delivered.
+
+---
+
+## 17. Backend data requirements
+
+Everything below is what the static client cannot do (see `CATALYST_ARCHITECTURE.md`).
+
+| Requirement | Why | Blocks |
+|---|---|---|
+| **Authoritative macro calendar** | CPI/PPI/PCE/FOMC/GDP dates are published, not derivable. `MACRO_SEED` ships empty rather than guessing. | Event-preparation alerts, accurate `MACRO_RISK` |
+| **Continuous news ingestion** | A browser tab cannot poll while closed. | Live Intelligence as a paid capability |
+| **Multi-wire ingestion** | One endpoint cannot corroborate. Confirmation status depends on independent sources. | Source-tier confidence |
+| **Shared event database** | localStorage is per-browser; statistics need pooled samples. | Catalyst Playbooks |
+| **Reaction capture at close** | The client only measures while open. | Full event studies |
+| **Entity resolution** | The seed ticker map is deliberately incomplete. | Coverage beyond large caps |
+| **Push delivery** | No service worker / no server. | Pro and Black alert channels |
+| **Auth + subscription state** | Entitlements need a server-side check; a client-side flag is not a paywall. | Every paid tier |
+
+**Data licences to settle before the matching entitlement ships:** options/greeks feed
+(gamma context), depth feed (level 2), and redistribution terms for any news wire whose
+headlines are shown verbatim.
+
+---
+
+## 18. Stripe mapping
+
+Uses Stripe's actual mechanisms and names. No invented product terms.
+
+**Catalog.** One Product per tier, one recurring monthly Price each, addressed by
+`lookup_key` (`apex_core_monthly`, `apex_pro_monthly`, `apex_black_monthly`) so the
+application never hardcodes a price ID. Free has a Product for entitlement symmetry and no
+Price.
+
+**Entitlements.** Use Stripe's Entitlements: define a **Feature** per capability
+(`market_brain`, `live_intelligence`, `danger_zones`, `catalyst_playbooks`,
+`apex_copilot`, `custom_scanner_filters`, `api_access`, …), attach them to Products as
+**Product Features**, and read a customer's **Active Entitlements** at session start.
+Feature IDs mirror the keys in `entitlements.json` exactly.
+
+**Upgrades.** Update the subscription item to the new Price with a proration behaviour —
+`create_prorations` for immediate access with a prorated charge. Access changes as soon as
+the webhook lands.
+
+**Downgrades.** Do **not** apply immediately. Schedule the change for the end of the
+current billing period using a Subscription Schedule, so the customer keeps what they paid
+for. This is a *scheduled downgrade at period end*, not a product feature with a name.
+
+**Cancellation.** `cancel_at_period_end`, with entitlements remaining active until the
+period actually ends.
+
+**Self-serve.** The Stripe Customer Portal handles payment method updates, invoices,
+plan changes and cancellation. Configure which Prices the portal may switch between so it
+matches this matrix.
+
+**Discounts.** Coupons with Promotion Codes for launch and referral offers. Restrict by
+first-time-customer and redemption count where appropriate.
+
+**Trials.** A trial on the Pro Price is the correct shape if you want new users to
+experience the catalyst layer — free tier alone never demonstrates it, since Live
+Intelligence is the differentiator.
+
+**Webhooks to handle:** `customer.subscription.created|updated|deleted`,
+`invoice.payment_failed`, `entitlements.active_entitlement_summary.updated`. Entitlement
+state is derived from Stripe and cached server-side; the client is never the authority.
+
+**Failed payment.** Dunning through Smart Retries, then downgrade to Free rather than hard
+lockout — a user who loses access entirely does not come back.
+
+---
+
+## 19. Competitive positioning method
+
+Do not publish a ✔/✖ table. Score each capability on a scale that admits uncertainty, and
+only assert what has been tested:
+
+```
+                          APEX      Competitor A   Competitor B
+Technical scanning        Strong    Strong         Strong
+Real-time news            Strong    Varies         Strong
+Macro calendar            Strong    Available      Available
+Catalyst/signal fusion    Core      Limited        Limited
+Event reaction stats      Core      Varies         Varies
+Danger windows            Core      Limited        Limited
+Beginner risk mode        Core      Varies         Varies
+Signal explanation        Core      Varies         Varies
+```
+
+**Strong / Available / Partial / Limited / Varies / Not verified.** "Core" marks a
+capability the product is built around. Use "Not verified" wherever the competitor has not
+actually been tested — never a bare "no". Competitor pricing is deliberately absent from
+this repo: it changes frequently, and a stale number in a spec becomes a stale number in
+a sales deck.
+
+The defensible claim is the integration, not per-feature superiority:
+
+> APEX is not trying to beat every competitor at every individual feature. Its
+> differentiation is combining technical scanning, catalyst intelligence, event timing and
+> risk interpretation into one decision workflow.
+
+---
+
+## 20. Evidence rules
+
+**No testimonial is published until a real customer says it and gives written permission.**
+No composite quotes, no illustrative quotes, no "representative of typical feedback".
+
+**No performance claim is published without the underlying sample**, and the sample size
+is shown next to the number.
+
+**Alpha before beta.** 20–30 active traders, instrumented on: daily active users, signals
+opened per session, Market Brain open rate, alert click-through, watchlist additions,
+time-to-first-useful-signal, Safe vs Pro usage, 7- and 30-day retention, free→paid
+conversion, cancellation reasons, alert mute rate, false-positive complaints. Then
+100–250 public beta. Spend on distribution only after retention holds.
+
+Screenshots of good signals attract users. Retention is the only evidence that the product
+created value.

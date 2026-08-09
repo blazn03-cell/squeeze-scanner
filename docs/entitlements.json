@@ -1,0 +1,188 @@
+{
+  "$comment": "Machine-readable source of truth for tier entitlements. The app, the Stripe configuration and docs/V5_PRODUCT_SPEC.md all read from this file so they cannot drift. Prices are a launch decision, not a benchmarked claim.",
+  "version": "5.0.0",
+  "currency": "usd",
+  "interval": "month",
+
+  "capabilities": {
+    "market_brain":       { "label": "Market Brain",       "question": "What kind of market am I trading today?" },
+    "apex_scanner":       { "label": "APEX Scanner",       "question": "What is setting up right now?" },
+    "live_intelligence":  { "label": "Live Intelligence",  "question": "What just happened and what does it affect?" },
+    "danger_zones":       { "label": "Danger Zones",       "question": "When is market risk about to change?" },
+    "catalyst_playbooks": { "label": "Catalyst Playbooks", "question": "How has the market historically behaved around this event?" },
+    "apex_copilot":       { "label": "APEX Copilot",       "question": "Why is this signal being surfaced?" }
+  },
+
+  "license_gated": {
+    "$comment": "Never enabled in any tier until the underlying data is licensed. Shipping these as entitlements before the licence exists would sell something that does not run.",
+    "options_gamma_context": { "requires": "licensed options/greeks feed", "enabled_anywhere": false },
+    "realtime_level2":       { "requires": "licensed depth feed",          "enabled_anywhere": false }
+  },
+
+  "tiers": [
+    {
+      "id": "free",
+      "name": "Free",
+      "price": 0,
+      "position": "Discover APEX",
+      "stripe": { "product_lookup_key": "apex_free", "price_lookup_key": null },
+      "principle": "Useful but limited — never intentionally stale. A free user must be able to experience why APEX is different, on live data.",
+      "entitlements": {
+        "market_brain": "lite",
+        "apex_scanner": "limited",
+        "live_intelligence": "none",
+        "danger_zones": "summary",
+        "catalyst_playbooks": "none",
+        "apex_copilot": "none",
+        "safe_pro_modes": false,
+        "macro_calendar": true,
+        "technical_news_alignment": false,
+        "event_preparation_alerts": false,
+        "custom_scanner_filters": false,
+        "api_access": false,
+        "export": false
+      },
+      "limits": {
+        "data_latency": "realtime",
+        "watchlist_symbols": 5,
+        "scanner_results_visible": 5,
+        "alerts_per_day": 5,
+        "alert_channels": ["in_app"],
+        "event_history_days": 7,
+        "market_brain_refresh_sec": 300
+      }
+    },
+    {
+      "id": "core",
+      "name": "APEX Core",
+      "price": 39,
+      "position": "Technical intelligence",
+      "stripe": { "product_lookup_key": "apex_core", "price_lookup_key": "apex_core_monthly" },
+      "principle": "The complete real-time technical engine, with the risk context that makes it usable.",
+      "entitlements": {
+        "market_brain": "full",
+        "apex_scanner": "full",
+        "live_intelligence": "none",
+        "danger_zones": "full",
+        "catalyst_playbooks": "none",
+        "apex_copilot": "none",
+        "safe_pro_modes": true,
+        "macro_calendar": true,
+        "technical_news_alignment": false,
+        "event_preparation_alerts": false,
+        "custom_scanner_filters": false,
+        "api_access": false,
+        "export": false
+      },
+      "limits": {
+        "data_latency": "realtime",
+        "watchlist_symbols": 50,
+        "scanner_results_visible": null,
+        "alerts_per_day": 50,
+        "alert_channels": ["in_app", "email"],
+        "event_history_days": 30,
+        "market_brain_refresh_sec": 60
+      }
+    },
+    {
+      "id": "pro",
+      "name": "APEX Pro",
+      "price": 89,
+      "position": "Full catalyst + market intelligence",
+      "stripe": { "product_lookup_key": "apex_pro", "price_lookup_key": "apex_pro_monthly" },
+      "principle": "The differentiator tier. Everything in Core plus the catalyst layer — this is where technical-versus-catalyst fusion lives.",
+      "entitlements": {
+        "market_brain": "full",
+        "apex_scanner": "full",
+        "live_intelligence": "full",
+        "danger_zones": "full",
+        "catalyst_playbooks": "full",
+        "apex_copilot": "basic",
+        "safe_pro_modes": true,
+        "macro_calendar": true,
+        "technical_news_alignment": true,
+        "event_preparation_alerts": true,
+        "custom_scanner_filters": true,
+        "api_access": false,
+        "export": "csv"
+      },
+      "limits": {
+        "data_latency": "realtime",
+        "watchlist_symbols": null,
+        "scanner_results_visible": null,
+        "alerts_per_day": null,
+        "alert_channels": ["in_app", "email", "push"],
+        "event_history_days": 365,
+        "market_brain_refresh_sec": 30
+      }
+    },
+    {
+      "id": "black",
+      "name": "APEX Black",
+      "price": 199,
+      "position": "Advanced analytics + AI",
+      "stripe": { "product_lookup_key": "apex_black", "price_lookup_key": "apex_black_monthly" },
+      "principle": "Genuinely different work, not simply more of the same. Portfolio-level exposure, event studies, scenario analysis and programmatic access.",
+      "entitlements": {
+        "market_brain": "personalized",
+        "apex_scanner": "full",
+        "live_intelligence": "full",
+        "danger_zones": "full",
+        "catalyst_playbooks": "advanced",
+        "apex_copilot": "full",
+        "safe_pro_modes": true,
+        "macro_calendar": true,
+        "technical_news_alignment": true,
+        "event_preparation_alerts": true,
+        "custom_scanner_filters": true,
+        "portfolio_exposure_analysis": true,
+        "advanced_event_studies": true,
+        "scenario_analysis": true,
+        "api_access": true,
+        "export": "csv+api"
+      },
+      "limits": {
+        "data_latency": "realtime",
+        "watchlist_symbols": null,
+        "scanner_results_visible": null,
+        "alerts_per_day": null,
+        "alert_channels": ["in_app", "email", "push", "webhook"],
+        "event_history_days": null,
+        "market_brain_refresh_sec": 15,
+        "api_requests_per_day": 10000
+      }
+    }
+  ],
+
+  "capability_levels": {
+    "market_brain": {
+      "none": "not available",
+      "lite": "market state, next scheduled catalyst, danger-zone summary. No conflicts list, no ranked setups, no per-ticker fusion.",
+      "full": "every field in the MarketBrain schema, including conflicts and ranked setups.",
+      "personalized": "full, plus a brief scoped to the user's own watchlist and positions."
+    },
+    "apex_scanner": {
+      "limited": "top N results only, no custom filters, no scan presets.",
+      "full": "all ten scans, all columns, saved presets."
+    },
+    "live_intelligence": {
+      "none": "not available",
+      "full": "catalyst feed with impact / direction / confidence, source tiering, confirmation status, dedup, propagation and per-ticker fusion."
+    },
+    "danger_zones": {
+      "none": "not available",
+      "summary": "current window and severity only.",
+      "full": "the full generated timeline with per-window provenance."
+    },
+    "catalyst_playbooks": {
+      "none": "not available",
+      "full": "measured reaction statistics per category, with sample size.",
+      "advanced": "full, plus cross-asset studies and user-defined event cohorts."
+    },
+    "apex_copilot": {
+      "none": "not available",
+      "basic": "explains why a signal was surfaced, from the stored factor values.",
+      "full": "basic, plus scenario walkthroughs and personalised briefs."
+    }
+  }
+}
