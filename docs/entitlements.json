@@ -3,6 +3,19 @@
   "version": "5.0.0",
   "currency": "usd",
   "interval": "month",
+  "billing": {
+    "$comment": "Billing is OFF during launch. The tier matrix below is fully defined so it can be switched on without redesign, but while mode is 'free_launch' every user receives the entitlements of `free_launch_grants` and no Stripe object is required. Flip mode to 'subscriptions' only after the product has proven itself.",
+    "mode": "free_launch",
+    "free_launch_grants": "pro",
+    "free_launch_note": "Pro is granted rather than Black: Pro is the tier whose value has to be proven (catalyst intelligence, technical/news alignment, Poly). Black carries API access and export, which have real cost and no demonstration value during a free launch.",
+    "stripe_objects_created": false,
+    "stripe_account": {
+      "status": "not_created",
+      "requirement": "APEX must use its OWN Stripe account, separate from any other business in this org.",
+      "do_not_use": "acct_1Sr1rAA99FsxroMn — holds an unrelated live catalog (Frontline Sales Support).",
+      "first_step": "Create a dedicated APEX account, then build and verify the catalog in its sandbox before live."
+    }
+  },
   "capabilities": {
     "market_brain": {
       "label": "Market Brain",
@@ -57,7 +70,8 @@
       "position": "Discover APEX",
       "stripe": {
         "product_lookup_key": "apex_free",
-        "price_lookup_key": null
+        "price_lookup_key": null,
+        "price_lookup_key_annual": null
       },
       "principle": "Useful but limited — never intentionally stale. A free user must be able to experience why APEX is different, on live data.",
       "entitlements": {
@@ -86,7 +100,8 @@
         ],
         "event_history_days": 7,
         "market_brain_refresh_sec": 300
-      }
+      },
+      "price_annual": 0
     },
     {
       "id": "core",
@@ -95,7 +110,8 @@
       "position": "Technical intelligence",
       "stripe": {
         "product_lookup_key": "apex_core",
-        "price_lookup_key": "apex_core_monthly"
+        "price_lookup_key": "apex_core_monthly",
+        "price_lookup_key_annual": "apex_core_annual"
       },
       "principle": "The complete real-time technical engine, with the risk context that makes it usable.",
       "entitlements": {
@@ -125,7 +141,9 @@
         ],
         "event_history_days": 30,
         "market_brain_refresh_sec": 60
-      }
+      },
+      "price_annual": 390,
+      "annual_note": "Two months free vs $468/yr monthly. Inert until billing.mode == 'subscriptions'."
     },
     {
       "id": "pro",
@@ -134,7 +152,8 @@
       "position": "Full catalyst + market intelligence",
       "stripe": {
         "product_lookup_key": "apex_pro",
-        "price_lookup_key": "apex_pro_monthly"
+        "price_lookup_key": "apex_pro_monthly",
+        "price_lookup_key_annual": "apex_pro_annual"
       },
       "principle": "The differentiator tier. Everything in Core plus the catalyst layer — this is where technical-versus-catalyst fusion lives.",
       "entitlements": {
@@ -165,7 +184,9 @@
         ],
         "event_history_days": 365,
         "market_brain_refresh_sec": 30
-      }
+      },
+      "price_annual": 890,
+      "annual_note": "Two months free vs $1068/yr monthly. Inert until billing.mode == 'subscriptions'."
     },
     {
       "id": "black",
@@ -174,7 +195,8 @@
       "position": "Advanced analytics + AI",
       "stripe": {
         "product_lookup_key": "apex_black",
-        "price_lookup_key": "apex_black_monthly"
+        "price_lookup_key": "apex_black_monthly",
+        "price_lookup_key_annual": "apex_black_annual"
       },
       "principle": "Genuinely different work, not simply more of the same. Portfolio-level exposure, event studies, scenario analysis and programmatic access.",
       "entitlements": {
@@ -210,7 +232,9 @@
         "event_history_days": null,
         "market_brain_refresh_sec": 15,
         "api_requests_per_day": 10000
-      }
+      },
+      "price_annual": 1990,
+      "annual_note": "Two months free vs $2388/yr monthly. Inert until billing.mode == 'subscriptions'."
     }
   ],
   "capability_levels": {
@@ -249,5 +273,9 @@
       "full": "research, plus wallet intelligence with provenance labelling.",
       "advanced": "full, plus Paper Lab on supplied fill history, cohort studies and export."
     }
-  }
+  },
+  "interval_options": [
+    "month",
+    "year"
+  ]
 }

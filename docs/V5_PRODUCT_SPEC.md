@@ -346,16 +346,39 @@ exactly one of these.
 
 ## 15. Tiers and entitlements
 
+### Billing is OFF during launch
+
+`entitlements.json` carries `billing.mode: "free_launch"`. While that holds, **every user
+receives Pro-level entitlements and no Stripe object is required.** The tier matrix below
+is fully specified so it can be switched on without redesign — flip `billing.mode` to
+`"subscriptions"` once the product has proven itself.
+
+Pro is granted rather than Black on purpose: Pro is the tier whose value has to be proven
+(catalyst intelligence, technical/catalyst alignment, Poly). Black carries API access and
+export, which have real cost and no demonstration value during a free launch.
+
+**No Stripe objects have been created.** `billing.stripe_objects_created` is `false`, and
+it should stay false until the launch decision is made.
+
 Four tiers. Not five — a fifth advanced tier only makes sense once customers demonstrably
 split into two advanced segments, and inventing that split before it exists forces
 artificial feature gating.
 
-| Plan | Monthly | Position |
-|---|---:|---|
-| **Free** | $0 | Discover APEX |
-| **APEX Core** | $39 | Technical intelligence |
-| **APEX Pro** | $89 | Full catalyst + market intelligence |
-| **APEX Black** | $199 | Advanced analytics + AI |
+| Plan | Monthly | Annual | Position |
+|---|---:|---:|---|
+| **Free** | $0 | — | Discover APEX |
+| **APEX Core** | $39 | $390 | Technical intelligence |
+| **APEX Pro** | $89 | $890 | Full catalyst + market intelligence |
+| **APEX Black** | $199 | $1,990 | Advanced analytics + AI |
+
+**Annual is priced at two months free (~17% off).** That convention is near-universal in
+subscription software, so it needs no explanation at the point of sale, and it lands on
+round numbers — $390 / $890 / $1,990 read better on a pricing card than the $374 / $854 /
+$1,910 a flat 20% would produce. It is a launch decision, not a benchmarked one; no
+competitor price is asserted anywhere in this repo (§19).
+
+Annual prices are defined in `entitlements.json` and are **inert** while
+`billing.mode == "free_launch"`.
 
 ### Capability matrix
 
@@ -448,10 +471,16 @@ headlines are shown verbatim.
 
 Uses Stripe's actual mechanisms and names. No invented product terms.
 
-**Catalog.** One Product per tier, one recurring monthly Price each, addressed by
-`lookup_key` (`apex_core_monthly`, `apex_pro_monthly`, `apex_black_monthly`) so the
-application never hardcodes a price ID. Free has a Product for entitlement symmetry and no
-Price.
+**Account.** APEX requires its **own Stripe account**, separate from any other business.
+Do not build the catalog into an account that already carries an unrelated live product
+line — shared accounts mean shared Radar rules, shared payout schedules, shared dispute
+history, and a Customer Portal that lists products the customer never bought. Build and
+verify in that account's **sandbox** first; only then mirror to live.
+
+**Catalog.** One Product per tier, one recurring monthly Price and one annual Price each,
+addressed by `lookup_key` (`apex_core_monthly` / `apex_core_annual`, and the same pattern
+for pro and black) so the application never hardcodes a price ID. Free has a Product for
+entitlement symmetry and no Price.
 
 **Entitlements.** Use Stripe's Entitlements: define a **Feature** per capability
 (`market_brain`, `live_intelligence`, `danger_zones`, `catalyst_playbooks`,
@@ -477,9 +506,23 @@ matches this matrix.
 **Discounts.** Coupons with Promotion Codes for launch and referral offers. Restrict by
 first-time-customer and redemption count where appropriate.
 
-**Trials.** A trial on the Pro Price is the correct shape if you want new users to
-experience the catalyst layer — free tier alone never demonstrates it, since Live
-Intelligence is the differentiator.
+**Trials.** Not applicable during the free launch — the whole product is the trial. When
+billing is switched on, a trial on the Pro Price is the correct shape, because the Free
+tier alone never demonstrates the catalyst layer. Prefer a length that spans at least one
+scheduled macro event; a trial that expires before a single CPI or FOMC print has not
+shown the buyer the thing they would be paying for.
+
+### Switching billing on later
+
+1. Create a dedicated APEX Stripe account. Verify the catalog in its **sandbox**.
+2. Create Products + monthly/annual Prices with the `lookup_key`s above.
+3. Create one Feature per capability, IDs mirroring `entitlements.json`; attach as Product
+   Features.
+4. Set `billing.stripe_objects_created: true` and record the account id in
+   `billing.stripe_account`.
+5. Flip `billing.mode` to `"subscriptions"`. Existing free users must be migrated
+   deliberately — decide grandfathering **before** the flip, not after.
+6. Configure the Customer Portal to switch only between the Prices in this matrix.
 
 **Webhooks to handle:** `customer.subscription.created|updated|deleted`,
 `invoice.payment_failed`, `entitlements.active_entitlement_summary.updated`. Entitlement
