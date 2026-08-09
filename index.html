@@ -823,16 +823,770 @@ const v4DirLabel = d => d === 2 ? "+2" : d === 1 ? "+1" : d === -1 ? "−1" : d 
 const v4DirColor = d => d > 0 ? (d === 2 ? "#00ff88" : "#44cc88") : d < 0 ? (d === -2 ? "#ff3355" : "#cc5566") : "#7591a8";
 const V4_REGIME_COLOR = { CHOP:"#7591a8", TREND:"#00ff88", BREAKOUT:"#00ddff", SQUEEZE:"#cc88ff", REVERSAL:"#ff9955", "HIGH VOL":"#ff3355", "LOW VOL":"#556677" };
 
+// ── APEX CATALYST & NEWS INTELLIGENCE ENGINE ─────────────────────────────────
+// Separate architecture from the technical scanner, on purpose. ThinkorSwim /
+// FINAL_V4 is the technical signal engine; this is the intelligence engine.
+// Nothing in here ever mutates APEX, Direction, Confidence or StableScore —
+// news is carried as its own dimensions and FUSED at display time, never
+// subtracted. `fuseState()` takes the technical read as a read-only input.
+//
+// WHAT RUNS HERE vs WHAT NEEDS A BACKEND — read this before trusting a number.
+// This dashboard is a static page. It can normalise, dedupe, score, decay,
+// propagate, fuse and persist to localStorage. It CANNOT ingest continuously
+// while closed, share an event database between devices, poll dozens of wires,
+// or push notifications. Those need a server. Every stat shown here is computed
+// from samples this browser actually observed, and the sample size is always
+// displayed. See docs/CATALYST_ARCHITECTURE.md and docs/V5_PRODUCT_SPEC.md.
+
+// ── SOURCE TIERS ─────────────────────────────────────────────────────────────
+const SOURCE_TIERS = {
+  1: { label:"PRIMARY",   weight:1.00, color:"#00ff88", note:"Authoritative issuer: SEC, Fed, BLS, BEA, Treasury, FDA, exchange notice, company IR." },
+  2: { label:"WIRE",      weight:0.88, color:"#00ddff", note:"Professional financial newswire." },
+  3: { label:"SECONDARY", weight:0.68, color:"#ffe033", note:"Established secondary reporting." },
+  4: { label:"SOCIAL",    weight:0.42, color:"#ff9955", note:"Social / community / aggregator." },
+  5: { label:"UNVERIFIED",weight:0.22, color:"#ff3355", note:"Unverified rumour. Never displayed as fact." },
+};
+
+const TIER1_PATTERNS = [/\bsec\.gov\b/i, /federalreserve\.gov/i, /\bbls\.gov\b/i, /\bbea\.gov\b/i,
+  /treasury\.gov/i, /\bfda\.gov\b/i, /investor relations/i, /\b8-?k\b/i, /\b10-?[qk]\b/i,
+  /press release/i, /\bnyse\b|\bnasdaq\b.*notice/i, /whitehouse\.gov/i, /\bcftc\.gov\b/i];
+const TIER2_PATTERNS = [/reuters/i, /bloomberg/i, /dow jones/i, /\bap\b|associated press/i,
+  /marketwatch/i, /barron/i, /wall street journal|wsj/i, /financial times|\bft\b/i, /cnbc/i, /benzinga/i];
+const TIER3_PATTERNS = [/yahoo/i, /investing\.com/i, /seeking ?alpha/i, /the street/i, /forbes/i, /business insider/i];
+const TIER4_PATTERNS = [/reddit/i, /twitter|\bx\.com\b/i, /stocktwits/i, /discord/i, /telegram/i, /\bblog\b/i];
+const RUMOUR_PATTERNS = [/\brumou?r\b/i, /sources say/i, /people familiar/i, /reportedly/i,
+  /is said to/i, /may be (?:in talks|considering)/i, /unconfirmed/i, /speculat/i, /\bcould\b.*\btalks\b/i];
+
+function classifySource(sourceName, headline) {
+  const s = String(sourceName || ""), h = String(headline || "");
+  if (RUMOUR_PATTERNS.some(r => r.test(h))) return 5;
+  if (TIER1_PATTERNS.some(r => r.test(s) || r.test(h))) return 1;
+  if (TIER2_PATTERNS.some(r => r.test(s))) return 2;
+  if (TIER4_PATTERNS.some(r => r.test(s))) return 4;
+  if (TIER3_PATTERNS.some(r => r.test(s))) return 3;
+  return 3;   // unknown named source → secondary, never primary
+}
+
+// CONFIRMED / REPORTED / DEVELOPING / RUMOR / UNVERIFIED
+function confirmationStatus(tier, sourceCount, hasPrimaryDoc) {
+  if (hasPrimaryDoc || tier === 1) return "CONFIRMED";
+  if (tier === 5) return sourceCount >= 3 ? "DEVELOPING" : "RUMOR";
+  if (tier === 2 && sourceCount >= 2) return "CONFIRMED";
+  if (tier <= 3 && sourceCount >= 2) return "REPORTED";
+  if (tier === 4) return "UNVERIFIED";
+  return "REPORTED";
+}
+
+// ── CATEGORY TAXONOMY ────────────────────────────────────────────────────────
+// baseImpact: ceiling contribution before source/entity/surprise adjustment.
+// halfLifeMin: how fast relevance decays. A trading halt is stale in an hour;
+// a Fed regime shift is not stale in three days.
+const CATEGORIES = {
+  FED_POLICY:     { label:"Fed / Central Bank", base:92, halfLifeMin:4320, color:"#ff66cc", macro:true },
+  MACRO_RELEASE:  { label:"Economic Release",   base:85, halfLifeMin:480,  color:"#66ccff", macro:true },
+  GOV_POLICY:     { label:"Government / Policy",base:78, halfLifeMin:2880, color:"#ffaa44", macro:true },
+  TARIFF_TRADE:   { label:"Tariffs / Trade",    base:80, halfLifeMin:2880, color:"#ffaa44", macro:true },
+  GEOPOLITICS:    { label:"Geopolitics",        base:76, halfLifeMin:2880, color:"#ff5577", macro:true },
+  REGULATORY:     { label:"SEC / Regulatory",   base:70, halfLifeMin:4320, color:"#cc88ff", macro:false },
+  EARNINGS:       { label:"Earnings / Guidance",base:82, halfLifeMin:1440, color:"#00ff88", macro:false },
+  FILING:         { label:"SEC Filing",         base:60, halfLifeMin:1440, color:"#88aacc", macro:false },
+  MA:             { label:"M&A",                base:85, halfLifeMin:2880, color:"#00ddff", macro:false },
+  ANALYST:        { label:"Analyst Action",     base:42, halfLifeMin:720,  color:"#ffe033", macro:false },
+  BIOTECH:        { label:"FDA / Clinical",     base:88, halfLifeMin:2880, color:"#44ffdd", macro:false },
+  LEGAL:          { label:"Litigation",         base:55, halfLifeMin:2880, color:"#cc7799", macro:false },
+  CYBER:          { label:"Cybersecurity",      base:62, halfLifeMin:1440, color:"#ff5577", macro:false },
+  SUPPLY_CHAIN:   { label:"Supply Chain",       base:58, halfLifeMin:2880, color:"#ffaa44", macro:false },
+  COMMODITY:      { label:"Commodity / Energy", base:66, halfLifeMin:1440, color:"#ff9955", macro:true },
+  RATES:          { label:"Treasury / Yields",  base:72, halfLifeMin:1440, color:"#66ccff", macro:true },
+  MARKET_STRUCT:  { label:"Market Structure",   base:64, halfLifeMin:60,   color:"#cc88ff", macro:false },
+  CORP_ACTION:    { label:"Corporate Action",   base:56, halfLifeMin:1440, color:"#88aacc", macro:false },
+  OTHER:          { label:"Other",              base:30, halfLifeMin:360,  color:"#7591a8", macro:false },
+};
+
+const CATEGORY_RULES = [
+  [/\bfomc\b|federal reserve|\bfed\b(?!ex)|powell|rate (?:cut|hike|decision)|dot plot|\bsep\b|central bank|\becb\b|\bboj\b/i, "FED_POLICY"],
+  [/\bcpi\b|\bppi\b|\bpce\b|nonfarm|payroll|\bnfp\b|jobless claims|\bgdp\b|retail sales|\bism\b|\bpmi\b|jolts|consumer confidence|michigan|unemployment rate/i, "MACRO_RELEASE"],
+  [/tariff|trade (?:war|deal|restriction)|import dut|export control|sanction/i, "TARIFF_TRADE"],
+  [/white house|executive order|congress|shutdown|debt ceiling|fiscal|budget deal|treasury secretary/i, "GOV_POLICY"],
+  [/\bwar\b|missile|strike[sd]? on|ceasefire|invasion|military|escalation|strait|shipping lane|opec/i, "GEOPOLITICS"],
+  [/\bsec\b (?:charge|probe|investigat)|\bftc\b|\bdoj\b|antitrust|regulator|\bcftc\b|consent order/i, "REGULATORY"],
+  [/earnings|\beps\b|revenue|guidance|preannounce|quarterly result|beats|misses|outlook/i, "EARNINGS"],
+  [/\b8-?k\b|\b10-?[qk]\b|\bs-1\b|\b13[dfg]\b|proxy|prospectus|filing/i, "FILING"],
+  [/\bmerger\b|acquisition|acquire|takeover|buyout|\blbo\b|stake in|\bm&a\b/i, "MA"],
+  [/upgrade|downgrade|initiat(?:e|ed|ing) coverage|price target|\bpt\b raise|overweight|underweight|reiterat/i, "ANALYST"],
+  [/\bfda\b|clinical trial|phase [123]|\bcrl\b|approval|breakthrough therapy|\bpdufa\b|adcom/i, "BIOTECH"],
+  [/lawsuit|litigation|sue[ds]?|court|verdict|settlement|class action/i, "LEGAL"],
+  [/cyber|breach|hack(?:ed|ing)?|ransomware|data leak|security incident/i, "CYBER"],
+  [/supply chain|shortage|factory|plant (?:closure|fire)|logistics|recall/i, "SUPPLY_CHAIN"],
+  [/\boil\b|\bcrude\b|natural gas|\bgold\b|copper|commodity|\bwti\b|\bbrent\b/i, "COMMODITY"],
+  [/treasury yield|10-?year|\b2-?year\b|bond market|yield curve|auction|basis points|\bbps\b/i, "RATES"],
+  [/trading halt|halted|circuit breaker|index (?:addition|removal)|rebalanc|delist/i, "MARKET_STRUCT"],
+  [/buyback|repurchase|dividend|split|offering|secondary|\bipo\b|ceo|cfo|resign|appoint/i, "CORP_ACTION"],
+];
+
+function classifyCategory(headline) {
+  const h = String(headline || "");
+  for (const [re, cat] of CATEGORY_RULES) if (re.test(h)) return cat;
+  return "OTHER";
+}
+
+// ── DIRECTION LEXICON ────────────────────────────────────────────────────────
+// Heuristic sentiment, deliberately narrow. Each entry is [pattern, points].
+// This is a keyword classifier, not language understanding — it is why
+// NEWS_CONFIDENCE exists and why an ambiguous headline resolves to 0.
+const BULLISH_TERMS = [
+  [/\bbeat[s]?\b|\btops\b|above (?:consensus|estimates)|better than expected/i, 55],
+  [/\bupgrade[sd]?\b|raise[sd]? (?:price target|guidance|outlook)|overweight|\bbuy\b rating/i, 45],
+  [/approval|approved|breakthrough therapy|positive (?:results|data)|met primary endpoint/i, 65],
+  [/\bacquire[sd]?\b|takeover|buyout|merger|stake in/i, 50],
+  [/buyback|repurchase|dividend (?:increase|hike)|special dividend/i, 35],
+  [/record (?:revenue|profit|quarter)|surge[sd]?|soar[sd]?|jump[sd]?/i, 40],
+  [/ceasefire|de-?escalat|trade deal|tariff (?:relief|exemption|removed)/i, 45],
+  [/rate cut|dovish|easing|accommodative/i, 40],
+  [/settle[ds]? (?:lawsuit|litigation)|dismissed/i, 30],
+];
+const BEARISH_TERMS = [
+  [/\bmiss(?:es|ed)?\b|below (?:consensus|estimates)|worse than expected|shortfall/i, -55],
+  [/\bdowngrade[sd]?\b|cut[s]? (?:price target|guidance|outlook)|underweight|\bsell\b rating/i, -45],
+  [/\bcrl\b|complete response letter|failed|did not meet|negative (?:results|data)|halted trial/i, -70],
+  [/investigation|probe|charge[sd]?|subpoena|fraud|antitrust suit/i, -50],
+  [/recall|breach|hack(?:ed)?|ransomware|outage|shutdown of/i, -45],
+  [/bankrupt|chapter 11|default|going concern|delist/i, -80],
+  [/layoff|job cut|restructur|impairment|writedown/i, -35],
+  [/tariff|sanction|export control|trade restriction/i, -40],
+  [/rate hike|hawkish|tightening/i, -40],
+  [/plunge[sd]?|slump[sd]?|tumble[sd]?|crash|sink[s]?/i, -40],
+  [/offering|dilut|secondary offering/i, -30],
+  [/\bwar\b|missile|invasion|escalation|strike[sd]? on/i, -45],
+];
+
+// For macro releases the sign flips: a HOT inflation print is bearish for
+// equities even though the words read "higher than expected".
+const INVERTED_MACRO = /\bcpi\b|\bppi\b|\bpce\b|inflation|unemployment rate|jobless claims/i;
+
+function scoreDirection({ headline, category, surprise }) {
+  const h = String(headline || "");
+  // Explicit surprise data beats keywords when we have it.
+  if (surprise && Number.isFinite(surprise.actual) && Number.isFinite(surprise.consensus)) {
+    const denom = Math.abs(surprise.consensus) > 1e-9 ? Math.abs(surprise.consensus) : 1;
+    const rel = (surprise.actual - surprise.consensus) / denom;
+    const mag = Math.max(-1, Math.min(1, rel * 4));      // ±25% surprise saturates
+    const inverted = INVERTED_MACRO.test(h) || surprise.invert === true;
+    return Math.round((inverted ? -mag : mag) * 100);
+  }
+  let score = 0, hits = 0;
+  for (const [re, pts] of BULLISH_TERMS) if (re.test(h)) { score += pts; hits++; }
+  for (const [re, pts] of BEARISH_TERMS) if (re.test(h)) { score += pts; hits++; }
+  if (!hits) return 0;                                    // ambiguous stays 0
+  if (hits > 1) score = score / Math.sqrt(hits);           // conflicting terms damp
+  // A scheduled event that has not happened yet has impact but no direction.
+  if (/ahead of|awaits|preview|expected (?:to|at)|due (?:today|tomorrow)/i.test(h)) return 0;
+  return Math.max(-100, Math.min(100, Math.round(score)));
+}
+
+// ── ENTITY / TICKER MAPPING ──────────────────────────────────────────────────
+// Seed map. A backend would resolve entities properly; this covers the names
+// that actually move an index and is explicitly incomplete.
+const INDEX_TIER = {
+  MEGA:  { weight:1.00, names:["AAPL","MSFT","NVDA","AMZN","GOOGL","GOOG","META","AVGO","TSLA"] },
+  LARGE: { weight:0.62, names:["JPM","V","MA","UNH","XOM","LLY","WMT","JNJ","PG","HD","COST","ORCL","AMD","NFLX","CRM","BAC","KO","PEP","CVX","MRK","ABBV","ADBE","QCOM","TXN","INTC","MU","SMCI","PLTR"] },
+};
+const SECTOR_MAP = {
+  semis:   { etfs:["SMH","SOXX"], index:["QQQ","SPY"], names:["NVDA","AMD","AVGO","MU","INTC","QCOM","TXN","SMCI","ASML","TSM","ARM","MRVL","LRCX","AMAT","KLAC"] },
+  megatech:{ etfs:["XLK","QQQ"],  index:["QQQ","SPY"], names:["AAPL","MSFT","GOOGL","GOOG","META","AMZN","ORCL","CRM","ADBE","NFLX","PLTR"] },
+  banks:   { etfs:["XLF","KRE"],  index:["SPY","DIA"], names:["JPM","BAC","WFC","C","GS","MS","SCHW","USB","PNC"] },
+  energy:  { etfs:["XLE","OIH"],  index:["SPY"],       names:["XOM","CVX","COP","SLB","OXY","PSX","MPC","HAL"] },
+  health:  { etfs:["XLV","IBB"],  index:["SPY"],       names:["UNH","JNJ","LLY","PFE","MRK","ABBV","AMGN","GILD","BMY"] },
+  consumer:{ etfs:["XLY","XRT"],  index:["SPY"],       names:["AMZN","TSLA","HD","MCD","NKE","SBUX","LOW","TGT"] },
+  staples: { etfs:["XLP"],        index:["SPY"],       names:["WMT","COST","PG","KO","PEP","PM","MO"] },
+  utils:   { etfs:["XLU"],        index:["SPY"],       names:["NEE","DUK","SO","D","AEP"] },
+  reits:   { etfs:["XLRE","IYR"], index:["SPY"],       names:["PLD","AMT","EQIX","SPG","O"] },
+  crypto:  { etfs:["BITO"],       index:["QQQ"],       names:["MSTR","COIN","MARA","RIOT","CLSK","HOOD"] },
+};
+const TICKER_RE = /\b([A-Z]{1,5})\b/g;
+const TICKER_STOPWORDS = new Set(["A","I","AI","AN","AND","ARE","AS","AT","BE","BUT","BY","CEO","CFO","COO","CPI","PPI","PCE","GDP","FDA","SEC","FOMC","ETF","EPS","FOR","FROM","HAS","IN","IS","IT","ITS","NEW","NOT","OF","ON","OR","THE","TO","UP","US","USA","VS","WAS","WITH","Q1","Q2","Q3","Q4","YOY","QOQ","M&A","IPO","NFP","ISM","PMI","EU","UK","UN","GM","AM","PM","ET","OPEC","NATO","IMF","WTI"]);
+
+function extractTickers(headline, explicitTickers) {
+  const out = new Set();
+  (explicitTickers || []).forEach(t => { if (t) out.add(String(t).toUpperCase()); });
+  const h = String(headline || "");
+  // $TICKER form is unambiguous
+  for (const m of h.matchAll(/\$([A-Za-z]{1,5})\b/g)) out.add(m[1].toUpperCase());
+  // bare caps: only accept if we recognise it, to avoid mapping "CEO" to a stock
+  const known = new Set(Object.values(SECTOR_MAP).flatMap(s => s.names)
+    .concat(INDEX_TIER.MEGA.names, INDEX_TIER.LARGE.names, ["SPY","QQQ","IWM","DIA","TLT","GLD","VIX","UVXY"]));
+  for (const m of h.matchAll(TICKER_RE)) {
+    const t = m[1];
+    if (!TICKER_STOPWORDS.has(t) && known.has(t)) out.add(t);
+  }
+  return [...out];
+}
+
+function indexTierOf(ticker) {
+  if (INDEX_TIER.MEGA.names.includes(ticker))  return { tier:"MEGA",  weight:1.00 };
+  if (INDEX_TIER.LARGE.names.includes(ticker)) return { tier:"LARGE", weight:0.62 };
+  if (["SPY","QQQ","IWM","DIA"].includes(ticker)) return { tier:"INDEX", weight:1.00 };
+  return { tier:"OTHER", weight:0.28 };
+}
+
+// NEWS → COMPANY → SECTOR → ETF → INDEX. Relationships only; direction is NOT
+// assumed to propagate unchanged, it is carried with a damping factor.
+function propagate(tickers, category) {
+  const chain = { direct:[...tickers], sectors:[], etfs:[], indices:[] };
+  for (const t of tickers) {
+    for (const [name, s] of Object.entries(SECTOR_MAP)) {
+      if (s.names.includes(t)) {
+        if (!chain.sectors.includes(name)) chain.sectors.push(name);
+        s.etfs.forEach(e => { if (!chain.etfs.includes(e)) chain.etfs.push(e); });
+        s.index.forEach(i => { if (!chain.indices.includes(i)) chain.indices.push(i); });
+      }
+    }
+  }
+  if (CATEGORIES[category]?.macro) ["SPY","QQQ","IWM","DIA"].forEach(i => { if (!chain.indices.includes(i)) chain.indices.push(i); });
+  return chain;
+}
+
+// ── IMPACT ───────────────────────────────────────────────────────────────────
+function scoreImpact({ category, sourceTier, tickers, surprise, marketOpen, isNovel, sourceCount }) {
+  const cat = CATEGORIES[category] || CATEGORIES.OTHER;
+  let impact = cat.base;
+  impact *= SOURCE_TIERS[sourceTier].weight;
+  // entity relevance — a mega-cap headline matters more to the tape
+  const best = (tickers || []).reduce((a, t) => Math.max(a, indexTierOf(t).weight), cat.macro ? 1.0 : 0.28);
+  impact *= (0.55 + 0.45 * best);
+  // surprise magnitude, when we have real numbers
+  if (surprise && Number.isFinite(surprise.actual) && Number.isFinite(surprise.consensus)) {
+    const denom = Math.abs(surprise.consensus) > 1e-9 ? Math.abs(surprise.consensus) : 1;
+    const rel = Math.abs((surprise.actual - surprise.consensus) / denom);
+    impact *= (1 + Math.min(0.35, rel * 1.4));
+  }
+  if (marketOpen === false) impact *= 0.88;             // still matters, lands later
+  if (isNovel === false) impact *= 0.55;                 // repeat of known information
+  if ((sourceCount || 1) >= 3) impact *= 1.06;           // corroborated
+  return Math.max(0, Math.min(100, Math.round(impact)));
+}
+
+const IMPACT_BANDS = [[90,"MARKET-MOVING","#ff3355"],[80,"CRITICAL","#ff5577"],[60,"MAJOR","#ff9955"],
+                      [40,"RELEVANT","#ffe033"],[20,"MINOR","#88aacc"],[0,"NOISE","#7591a8"]];
+const impactBand = v => (IMPACT_BANDS.find(b => v >= b[0]) || IMPACT_BANDS.at(-1));
+
+// ── CONFIDENCE ───────────────────────────────────────────────────────────────
+function scoreConfidence({ sourceTier, sourceCount, tickers, hasPrimaryDoc, conflicting, headline }) {
+  let c = 100 * SOURCE_TIERS[sourceTier].weight;
+  c += Math.min(18, ((sourceCount || 1) - 1) * 7);       // independent corroboration
+  if (hasPrimaryDoc) c += 12;
+  if (!tickers || tickers.length === 0) c -= 20;          // could not map to anything
+  else if (tickers.length > 6) c -= 10;                   // mapped to everything = mapped to nothing
+  if (conflicting) c -= 25;
+  if (RUMOUR_PATTERNS.some(r => r.test(String(headline || "")))) c -= 30;
+  if (!/\d/.test(String(headline || ""))) c -= 5;         // no figures = softer claim
+  return Math.max(0, Math.min(100, Math.round(c)));
+}
+
+// ── DECAY ────────────────────────────────────────────────────────────────────
+function decayedImpact(impact, category, ageMinutes) {
+  const hl = (CATEGORIES[category] || CATEGORIES.OTHER).halfLifeMin;
+  if (!(ageMinutes > 0)) return impact;
+  return Math.max(0, Math.round(impact * Math.pow(0.5, ageMinutes / hl)));
+}
+
+// ── NORMALIZATION PIPELINE ───────────────────────────────────────────────────
+// SOURCE → INGEST → NORMALIZE → ENTITIES → TICKERS → CATEGORY → DEDUPE →
+// VERIFY → IMPACT → DIRECTION → CONFIDENCE → RELEVANCE → ALERT → OVERLAY
+function normalizeNewsItem(raw, nowMs) {
+  const headline = String(raw.headline ?? raw.title ?? raw.text ?? "").trim();
+  if (!headline) return null;
+  const source = raw.source ?? raw.publisher ?? raw.provider ?? "";
+  const tsRaw = raw.timestamp ?? raw.created_at ?? raw.published_at ?? raw.time ?? null;
+  const ts = tsRaw ? new Date(tsRaw).getTime() : nowMs;
+  const tier = classifySource(source, headline);
+  const category = raw.category && CATEGORIES[raw.category] ? raw.category : classifyCategory(headline);
+  const tickers = extractTickers(headline, raw.tickers ?? raw.symbols ?? (raw.ticker ? [raw.ticker] : []));
+  return {
+    id: raw.id || `${ts}-${headline.slice(0, 48)}`,
+    headline, source, sourceTier: tier, category, tickers,
+    timestamp: Number.isFinite(ts) ? ts : nowMs,
+    surprise: raw.surprise || null,
+    hasPrimaryDoc: tier === 1 || !!raw.primary_doc_url,
+    raw,
+  };
+}
+
+// Collapse the same story from N outlets into ONE catalyst event.
+function eventKey(item) {
+  const words = item.headline.toLowerCase()
+    .replace(/[^a-z0-9 ]/g, " ").split(/\s+/)
+    .filter(w => w.length > 3 && !["that","this","with","from","have","been","will","said","after","says"].includes(w))
+    .slice(0, 6).sort().join("-");
+  return `${item.category}|${(item.tickers[0] || "MACRO")}|${words}`;
+}
+
+function buildCatalystEvents(rawItems, opts = {}) {
+  const now = opts.now ?? Date.now();
+  const marketOpen = opts.marketOpen ?? null;
+  const knownIds = opts.knownIds instanceof Set ? opts.knownIds : new Set();
+  const items = (rawItems || []).map(r => normalizeNewsItem(r, now)).filter(Boolean);
+
+  const groups = new Map();
+  for (const it of items) {
+    const k = eventKey(it);
+    if (!groups.has(k)) groups.set(k, []);
+    groups.get(k).push(it);
+  }
+
+  const events = [];
+  for (const [key, group] of groups) {
+    group.sort((a, b) => a.timestamp - b.timestamp);
+    const primary = group.reduce((best, x) => (x.sourceTier < best.sourceTier ? x : best), group[0]);
+    const firstSeen = group[0].timestamp, latest = group.at(-1).timestamp;
+    const sourceCount = new Set(group.map(g => g.source || g.sourceTier)).size;
+    const tickers = [...new Set(group.flatMap(g => g.tickers))];
+    const surprise = group.find(g => g.surprise)?.surprise || null;
+    const hasPrimaryDoc = group.some(g => g.hasPrimaryDoc);
+    const dirs = group.map(g => scoreDirection({ headline: g.headline, category: primary.category, surprise }));
+    const nonZero = dirs.filter(d => d !== 0);
+    const conflicting = nonZero.length > 1 && nonZero.some(d => d > 0) && nonZero.some(d => d < 0);
+    const direction = nonZero.length ? Math.round(nonZero.reduce((a, b) => a + b, 0) / nonZero.length) : 0;
+    const isNovel = !knownIds.has(key);
+    const impact = scoreImpact({ category: primary.category, sourceTier: primary.sourceTier, tickers,
+                                 surprise, marketOpen, isNovel, sourceCount });
+    const confidence = scoreConfidence({ sourceTier: primary.sourceTier, sourceCount, tickers,
+                                         hasPrimaryDoc, conflicting, headline: primary.headline });
+    const ageMin = Math.max(0, (now - latest) / 60000);
+    events.push({
+      key, headline: primary.headline, source: primary.source, sourceTier: primary.sourceTier,
+      category: primary.category, tickers, sourceCount, firstSeen, latest, ageMin,
+      status: confirmationStatus(primary.sourceTier, sourceCount, hasPrimaryDoc),
+      impact, impactNow: decayedImpact(impact, primary.category, ageMin),
+      direction, confidence, conflicting, surprise, isNovel,
+      propagation: propagate(tickers, primary.category),
+      headlines: group.map(g => ({ h: g.headline, s: g.source, t: g.timestamp })),
+    });
+  }
+  events.sort((a, b) => (b.impactNow - a.impactNow) || (b.latest - a.latest));
+  return events;
+}
+
+// ── ALERT PRIORITY ───────────────────────────────────────────────────────────
+function alertPriority(ev, watchlist) {
+  const onWatch = (watchlist || []).some(t => ev.tickers.includes(t));
+  const i = ev.impactNow;
+  if (i >= 85 && ev.confidence >= 60) return 0;
+  if (i >= 70 || (onWatch && i >= 55)) return 1;
+  if (i >= 45 || (onWatch && i >= 30)) return 2;
+  return 3;
+}
+const PRIORITY_META = [
+  { label:"P0 CRITICAL",      color:"#ff3355" },
+  { label:"P1 HIGH",          color:"#ff9955" },
+  { label:"P2 MEDIUM",        color:"#ffe033" },
+  { label:"P3 INFORMATIONAL", color:"#7591a8" },
+];
+
+// ── FUSION ───────────────────────────────────────────────────────────────────
+// Reads the technical dimensions. Never writes them. There is no subtraction
+// anywhere in this function — that is the whole point.
+const FUSION_STATES = {
+  ALIGNED_BULLISH:        { label:"CATALYST + TECHNICAL ALIGNED (BULL)", icon:"🔥", color:"#00ff88" },
+  ALIGNED_BEARISH:        { label:"CATALYST + TECHNICAL ALIGNED (BEAR)", icon:"🔥", color:"#ff3355" },
+  CONFLICT:               { label:"TECHNICAL / CATALYST CONFLICT",       icon:"⚠",  color:"#ffaa44" },
+  HIGH_EVENT_RISK:        { label:"HIGH EVENT RISK",                     icon:"⚠",  color:"#ff5577" },
+  WAITING_FOR_RELEASE:    { label:"WAITING FOR RELEASE",                 icon:"⏳", color:"#66ccff" },
+  POST_EVENT_CONFIRMATION:{ label:"POST-EVENT PRICE DISCOVERY",          icon:"🔎", color:"#cc88ff" },
+  CATALYST_ONLY:          { label:"CATALYST, NO TECHNICAL SETUP",        icon:"📡", color:"#88aacc" },
+  TECHNICAL_ONLY:         { label:"TECHNICAL ONLY",                      icon:"📈", color:"#9fb5c8" },
+  NORMAL:                 { label:"NORMAL CONDITIONS",                   icon:"·",  color:"#7591a8" },
+};
+
+function fuseState({ technical, news, eventProximityMin }) {
+  const tDir = technical?.direction ?? 0;
+  const tApex = technical?.apex ?? 0;
+  const hasTech = tApex >= 55 && tDir !== 0;
+  const ni = news?.impactNow ?? 0;
+  const nd = news?.direction ?? 0;
+  const nc = news?.confidence ?? 0;
+  const hasNews = ni >= 40;
+
+  // An imminent scheduled release dominates: direction is unknown by definition.
+  if (Number.isFinite(eventProximityMin) && eventProximityMin >= 0 && eventProximityMin <= 60)
+    return { state:"WAITING_FOR_RELEASE", note:`Scheduled release in ${Math.round(eventProximityMin)} min. Direction is unknown until it prints.` };
+  if (hasNews && ni >= 80 && Math.abs(nd) < 25)
+    return { state:"HIGH_EVENT_RISK", note:"Large catalyst with no clear direction yet. Size down or stand aside." };
+  if (hasNews && news.ageMin <= 30 && Math.abs(nd) >= 25)
+    if (!hasTech) return { state:"CATALYST_ONLY", note:"Catalyst is live but the technical setup does not qualify." };
+
+  if (hasTech && hasNews && nc >= 50) {
+    const agree = (tDir > 0 && nd > 20) || (tDir < 0 && nd < -20);
+    const oppose = (tDir > 0 && nd < -20) || (tDir < 0 && nd > 20);
+    if (agree)  return { state: tDir > 0 ? "ALIGNED_BULLISH" : "ALIGNED_BEARISH",
+                         note:"Price structure and the catalyst point the same way." };
+    if (oppose) return { state:"CONFLICT",
+                         note:`Technical direction ${tDir > 0 ? "+" : ""}${tDir} against news direction ${nd > 0 ? "+" : ""}${nd}. Do not read the APEX score as normal conditions.` };
+  }
+  if (hasNews && news.ageMin <= 120 && !hasTech)
+    return { state:"POST_EVENT_CONFIRMATION", note:"Catalyst has landed. Watch how price actually responds." };
+  if (hasNews && !hasTech) return { state:"CATALYST_ONLY", note:"Catalyst present, technical setup does not qualify." };
+  if (hasTech && !hasNews) return { state:"TECHNICAL_ONLY", note:"No material catalyst detected. Technical read stands on its own." };
+  return { state:"NORMAL", note:"Nothing material on either side." };
+}
+
+// ── SCHEDULED MACRO CALENDAR ─────────────────────────────────────────────────
+// Only RULE-DERIVABLE events are generated. Dates that are published rather
+// than derivable (CPI, PPI, PCE, FOMC, GDP) are NOT guessed — they come from
+// MACRO_SEED, which ships empty and is meant to be filled from the official
+// calendar or a backend. An empty seed shows "not loaded", never a fake date.
+const MACRO_SEED = [
+  // { date:"2026-08-12", timeET:"08:30", name:"CPI", importance:"CRITICAL", consensus:null },
+];
+
+const IMPORTANCE = {
+  CRITICAL: { alertLadder:[10080, 1440, 60, 15, 0], color:"#ff3355" },
+  HIGH:     { alertLadder:[1440, 60, 0],            color:"#ff9955" },
+  MEDIUM:   { alertLadder:[1440, 0],                color:"#ffe033" },
+  LOW:      { alertLadder:[0],                      color:"#7591a8" },
+};
+
+function etParts(d) {
+  // Intl gives us ET without pulling in a tz library.
+  const f = new Intl.DateTimeFormat("en-US", { timeZone:"America/New_York",
+    year:"numeric", month:"2-digit", day:"2-digit", hour:"2-digit", minute:"2-digit", weekday:"short", hour12:false });
+  const p = Object.fromEntries(f.formatToParts(d).map(x => [x.type, x.value]));
+  return { y:+p.year, m:+p.month, d:+p.day, hh:+p.hour % 24, mm:+p.minute, wd:p.weekday };
+}
+
+function deriveScheduledEvents(nowMs, daysAhead = 21) {
+  const out = [];
+  const push = (dt, name, importance, note) => out.push({
+    ts: dt.getTime(), name, importance, note, derived: true,
+  });
+  for (let i = 0; i <= daysAhead; i++) {
+    const day = new Date(nowMs + i * 86400000);
+    const p = etParts(day);
+    const at = (hh, mm) => {
+      // build a UTC instant for hh:mm ET on that calendar day
+      const guess = new Date(Date.UTC(p.y, p.m - 1, p.d, hh + 4, mm));   // EDT
+      const chk = etParts(guess);
+      if (chk.hh === hh && chk.mm === mm) return guess;
+      return new Date(Date.UTC(p.y, p.m - 1, p.d, hh + 5, mm));          // EST
+    };
+    // Weekly jobless claims — every Thursday 08:30 ET
+    if (p.wd === "Thu") push(at(8, 30), "Initial Jobless Claims", "MEDIUM", "Weekly. Rule-derived.");
+    // NFP — first Friday of the month 08:30 ET
+    if (p.wd === "Fri" && p.d <= 7) push(at(8, 30), "Nonfarm Payrolls", "CRITICAL", "First Friday. Rule-derived.");
+    // Triple witching — third Friday of Mar/Jun/Sep/Dec
+    if (p.wd === "Fri" && p.d >= 15 && p.d <= 21 && [3, 6, 9, 12].includes(p.m))
+      push(at(16, 0), "Triple Witching", "HIGH", "Third Friday of quarter-end month. Rule-derived.");
+    // Monthly opex — third Friday
+    else if (p.wd === "Fri" && p.d >= 15 && p.d <= 21)
+      push(at(16, 0), "Monthly Options Expiration", "MEDIUM", "Third Friday. Rule-derived.");
+  }
+  for (const s of MACRO_SEED) {
+    const [hh, mm] = String(s.timeET || "08:30").split(":").map(Number);
+    const [Y, M, D] = String(s.date).split("-").map(Number);
+    const guess = new Date(Date.UTC(Y, M - 1, D, hh + 4, mm));
+    const chk = etParts(guess);
+    const dt = (chk.hh === hh) ? guess : new Date(Date.UTC(Y, M - 1, D, hh + 5, mm));
+    out.push({ ts: dt.getTime(), name: s.name, importance: s.importance || "HIGH",
+               note:"From MACRO_SEED.", consensus: s.consensus ?? null, derived: false });
+  }
+  return out.filter(e => e.ts >= nowMs - 3600000).sort((a, b) => a.ts - b.ts);
+}
+
+// Which ladder rung is currently active, so the UI does not alert at every stage.
+function calendarAlerts(events, nowMs) {
+  return events.map(e => {
+    const minsOut = (e.ts - nowMs) / 60000;
+    const ladder = IMPORTANCE[e.importance]?.alertLadder || [0];
+    const rung = ladder.find(r => minsOut <= r && minsOut > (ladder[ladder.indexOf(r) + 1] ?? -9999));
+    return { ...e, minsOut, active: rung !== undefined, rung: rung ?? null };
+  });
+}
+
+// MACRO_RISK 0-100 from proximity and importance of what is coming.
+function macroRisk(events, nowMs) {
+  let risk = 0;
+  for (const e of events) {
+    const mins = (e.ts - nowMs) / 60000;
+    if (mins < -60 || mins > 10080) continue;
+    const base = { CRITICAL:100, HIGH:70, MEDIUM:40, LOW:15 }[e.importance] || 15;
+    const prox = mins <= 0 ? 1 : mins <= 15 ? 1 : mins <= 60 ? 0.85 : mins <= 1440 ? 0.55 : mins <= 4320 ? 0.3 : 0.12;
+    risk = Math.max(risk, base * prox);
+  }
+  return Math.round(risk);
+}
+
+// ── EVENT DATABASE + MARKET REACTION (localStorage) ──────────────────────────
+// Persists what THIS BROWSER observed. Stats are computed from real samples and
+// always report n. Nothing is hard-coded, and no folklore is presented as data.
+const INTEL_KEY = "apex_intel_events_v1";
+const INTEL_MAX = 600;
+
+function loadIntel() {
+  try { const r = JSON.parse(localStorage.getItem(INTEL_KEY) || "[]"); return Array.isArray(r) ? r : []; }
+  catch { return []; }
+}
+function saveIntel(rows) {
+  try { localStorage.setItem(INTEL_KEY, JSON.stringify(rows.slice(-INTEL_MAX))); } catch {}
+}
+
+// Record an event with a reference snapshot so reactions can be measured later.
+function recordEvents(existing, events, refPrices, nowMs) {
+  const seen = new Set(existing.map(r => r.key));
+  const add = events.filter(e => !seen.has(e.key)).map(e => ({
+    key:e.key, ts:e.latest, recorded:nowMs, category:e.category, headline:e.headline,
+    sourceTier:e.sourceTier, status:e.status, impact:e.impact, direction:e.direction,
+    confidence:e.confidence, tickers:e.tickers,
+    surprise: e.surprise ? { actual:e.surprise.actual ?? null, consensus:e.surprise.consensus ?? null,
+                             previous:e.surprise.previous ?? null, revision:e.surprise.revision ?? null } : null,
+    ref: refPrices || null,
+    reactions: {},           // filled in by captureReaction at 5/15/30/60m
+  }));
+  return add.length ? [...existing, ...add] : existing;
+}
+
+const REACTION_MARKS = [5, 15, 30, 60];
+function captureReactions(rows, refPrices, nowMs) {
+  if (!refPrices) return rows;
+  let changed = false;
+  const next = rows.map(r => {
+    if (!r.ref) return r;
+    const ageMin = (nowMs - r.recorded) / 60000;
+    const mark = REACTION_MARKS.find(m => ageMin >= m && r.reactions[`m${m}`] === undefined);
+    if (mark === undefined) return r;
+    const rx = {};
+    for (const sym of Object.keys(r.ref)) {
+      const a = r.ref[sym], b = refPrices[sym];
+      if (Number.isFinite(a) && Number.isFinite(b) && a > 0) rx[sym] = +(((b - a) / a) * 100).toFixed(3);
+    }
+    changed = true;
+    return { ...r, reactions: { ...r.reactions, [`m${mark}`]: rx } };
+  });
+  return changed ? next : rows;
+}
+
+// Self-improving statistics. Returns null below minSample rather than a number
+// that looks authoritative and is not.
+function reactionStats(rows, { category, symbol = "QQQ", mark = 30, minSample = 8 } = {}) {
+  const vals = rows
+    .filter(r => (!category || r.category === category) && r.reactions?.[`m${mark}`]?.[symbol] !== undefined)
+    .map(r => ({ move: r.reactions[`m${mark}`][symbol], dir: r.direction }));
+  const n = vals.length;
+  if (n < minSample) return { n, minSample, insufficient: true };
+  const moves = vals.map(v => v.move);
+  const abs = moves.map(Math.abs).sort((a, b) => a - b);
+  const median = abs[Math.floor(abs.length / 2)];
+  const agreed = vals.filter(v => v.dir !== 0 && Math.sign(v.move) === Math.sign(v.dir)).length;
+  const directional = vals.filter(v => v.dir !== 0).length;
+  return {
+    n, insufficient:false, symbol, mark,
+    medianAbsMove: +median.toFixed(3),
+    meanAbsMove: +(abs.reduce((a, b) => a + b, 0) / n).toFixed(3),
+    maxAbsMove: +abs.at(-1).toFixed(3),
+    continuationPct: directional ? +((agreed / directional) * 100).toFixed(1) : null,
+    reversalPct: directional ? +(((directional - agreed) / directional) * 100).toFixed(1) : null,
+    directionalSample: directional,
+  };
+}
+
+// ── DANGER ZONE ENGINE ───────────────────────────────────────────────────────
+// Windows are GENERATED from the day's calendar and live events. The only fixed
+// windows are the two structural ones — the opening auction settling and the
+// closing cross — which are microstructure facts, not folklore. Everything else
+// exists because a specific event exists.
+const ZONE_SEV = { 3:{ label:"CRITICAL", color:"#ff3355", bar:"█████" },
+                   2:{ label:"ELEVATED", color:"#ff9955", bar:"███──" },
+                   1:{ label:"WATCH",    color:"#ffe033", bar:"██───" },
+                   0:{ label:"NORMAL",   color:"#7591a8", bar:"─────" } };
+
+function dangerZones(calendarEvents, liveEvents, nowMs) {
+  const zones = [];
+  const p = etParts(new Date(nowMs));
+  const etAt = (hh, mm) => {
+    const guess = new Date(Date.UTC(p.y, p.m - 1, p.d, hh + 4, mm));
+    return etParts(guess).hh === hh ? guess.getTime() : Date.UTC(p.y, p.m - 1, p.d, hh + 5, mm);
+  };
+  const dayStart = etAt(4, 0), dayEnd = etAt(20, 0);
+
+  // structural
+  zones.push({ start: etAt(9, 30), end: etAt(10, 0), label:"Opening volatility", severity:2, kind:"STRUCTURAL",
+               note:"Opening auction imbalances settling. The existing playbook already says no entries here." });
+  zones.push({ start: etAt(15, 30), end: etAt(16, 0), label:"Closing flows", severity:1, kind:"STRUCTURAL",
+               note:"MOC/LOC imbalances and index rebalancing pressure." });
+
+  // event-driven
+  for (const e of calendarEvents || []) {
+    if (e.ts < dayStart || e.ts > dayEnd) continue;
+    const crit = e.importance === "CRITICAL";
+    zones.push({ start: e.ts - 15 * 60000, end: e.ts, label:`Pre-event: ${e.name}`, severity: crit ? 2 : 1,
+                 kind:"PRE_EVENT", note:"Liquidity thins ahead of the print. Spreads widen." });
+    zones.push({ start: e.ts, end: e.ts + 15 * 60000, label: e.name, severity: crit ? 3 : 2,
+                 kind:"EVENT", note:"Release window. Direction is unknown until it prints." });
+    zones.push({ start: e.ts + 15 * 60000, end: e.ts + 45 * 60000, label:`Price discovery: ${e.name}`,
+                 severity: crit ? 2 : 1, kind:"DISCOVERY", note:"First move frequently unwinds. Let it resolve." });
+  }
+
+  // live P0/P1 catalysts create their own window
+  for (const ev of liveEvents || []) {
+    if (ev.impactNow < 70) continue;
+    zones.push({ start: ev.latest, end: ev.latest + 30 * 60000,
+                 label:`Breaking: ${ev.headline.slice(0, 46)}${ev.headline.length > 46 ? "…" : ""}`,
+                 severity: ev.impactNow >= 85 ? 3 : 2, kind:"BREAKING",
+                 note:`Impact ${ev.impactNow}, ${ev.status.toLowerCase()}.` });
+  }
+
+  zones.sort((a, b) => a.start - b.start);
+  return zones;
+}
+
+function activeZone(zones, nowMs) {
+  const live = (zones || []).filter(z => nowMs >= z.start && nowMs < z.end);
+  if (!live.length) return { severity: 0, labels: [] };
+  return { severity: Math.max(...live.map(z => z.severity)), labels: live.map(z => z.label), zones: live };
+}
+
+// ── MARKET BRAIN ─────────────────────────────────────────────────────────────
+// One card answering: what kind of market am I walking into?
+function marketBrain({ feed, events, calendar, zones, nowMs }) {
+  const v4s = [];
+  const byTicker = {};
+  (feed || []).forEach(p => { if (p.v4 && !byTicker[p.ticker]) { byTicker[p.ticker] = p.v4; v4s.push({ t:p.ticker, ...p.v4 }); } });
+
+  const med = arr => { if (!arr.length) return null; const s = [...arr].sort((a, b) => a - b); return s[Math.floor(s.length / 2)]; };
+  const biasOf = t => {
+    const v = byTicker[t];
+    if (!v) return { label:"NO READ", color:"#5a7a92", value:null };
+    const l = v.direction === 2 ? "STRONG BULL" : v.direction === 1 ? "BULLISH"
+            : v.direction === -1 ? "BEARISH" : v.direction === -2 ? "STRONG BEAR" : "NEUTRAL";
+    return { label:l, color: v.direction > 0 ? "#00ff88" : v.direction < 0 ? "#ff3355" : "#7591a8",
+             value:v.direction, confidence:v.confidence };
+  };
+
+  const confidence = med(v4s.map(v => v.confidence)) ?? null;
+  const atrMed = med(v4s.map(v => v.atrPct).filter(Number.isFinite));
+  const volatility = atrMed == null ? "NO READ" : atrMed >= 5 ? "EXTREME" : atrMed >= 3 ? "ELEVATED" : atrMed >= 1.5 ? "NORMAL" : "COMPRESSED";
+  const liqMed = med(v4s.map(v => v.liquidityScore).filter(Number.isFinite));
+  const liquidity = liqMed == null ? "NO READ" : liqMed >= 70 ? "NORMAL" : liqMed >= 50 ? "THIN" : "POOR";
+
+  // News pressure: impact-weighted mean direction, -100..+100
+  const weighted = (events || []).filter(e => e.impactNow >= 30);
+  const wSum = weighted.reduce((a, e) => a + e.impactNow, 0);
+  const newsPressure = wSum > 0
+    ? Math.round(weighted.reduce((a, e) => a + e.direction * e.impactNow, 0) / wSum)
+    : 0;
+
+  const mRisk = macroRisk(calendar || [], nowMs);
+  const zone = activeZone(zones, nowMs);
+  const next = (calendar || []).find(e => e.ts >= nowMs) || null;
+  const nextMins = next ? (next.ts - nowMs) / 60000 : null;
+  const topBreaking = (events || []).filter(e => e.impactNow >= 70).slice(0, 3);
+
+  // Market state
+  let marketState, stateColor;
+  if (zone.severity === 3)                      { marketState = "CRITICAL EVENT WINDOW";        stateColor = "#ff3355"; }
+  else if (mRisk >= 70)                         { marketState = "HIGH EVENT-RISK ENVIRONMENT";  stateColor = "#ff5577"; }
+  else if (topBreaking.length)                  { marketState = "BREAKING-NEWS DRIVEN";         stateColor = "#ff9955"; }
+  else if (volatility === "EXTREME")            { marketState = "HIGH VOLATILITY";              stateColor = "#ff9955"; }
+  else if (zone.severity === 2)                 { marketState = "ELEVATED RISK WINDOW";         stateColor = "#ffaa44"; }
+  else if (volatility === "COMPRESSED")         { marketState = "LOW VOLATILITY / COMPRESSED";  stateColor = "#88aacc"; }
+  else                                          { marketState = "NORMAL CONDITIONS";            stateColor = "#00ff88"; }
+
+  // APEX mode
+  let apexMode;
+  if (nextMins != null && nextMins <= 60 && (next.importance === "CRITICAL" || next.importance === "HIGH")) apexMode = "EVENT PREPARATION";
+  else if (zone.severity === 3) apexMode = "STAND ASIDE";
+  else if (topBreaking.length) apexMode = "POST-EVENT PRICE DISCOVERY";
+  else if (mRisk >= 60) apexMode = "REDUCED SIZE";
+  else apexMode = "NORMAL OPERATION";
+
+  // Conflicts — technical vs catalyst, computed per ticker
+  const conflicts = [];
+  for (const ev of events || []) {
+    for (const t of ev.tickers) {
+      const tech = byTicker[t];
+      if (!tech) continue;
+      const f = fuseState({ technical: tech, news: ev, eventProximityMin: null });
+      if (f.state === "CONFLICT") conflicts.push({ ticker:t, tech, ev, note:f.note });
+    }
+  }
+
+  const best = v4s.filter(v => v.apex >= 55 && v.direction !== 0)
+                  .sort((a, b) => b.apex - a.apex).slice(0, 5);
+
+  // Plain-language message, assembled from what is actually true right now.
+  const bits = [];
+  if (best.length) bits.push(`${best.length} qualifying setup${best.length === 1 ? "" : "s"} on the board`);
+  else bits.push("No setups currently clear the quality gates");
+  if (next && nextMins != null && nextMins <= 1440)
+    bits.push(`${next.name} in ${nextMins < 60 ? Math.round(nextMins) + " minutes" : Math.round(nextMins / 60) + " hours"} materially raises event risk`);
+  if (topBreaking.length) bits.push(`${topBreaking.length} high-impact headline${topBreaking.length === 1 ? "" : "s"} live`);
+  if (conflicts.length) bits.push(`${conflicts.length} technical/catalyst conflict${conflicts.length === 1 ? "" : "s"}`);
+  if (liquidity === "POOR") bits.push("liquidity is poor across the board");
+
+  return {
+    marketState, stateColor, apexMode,
+    spy: biasOf("SPY"), qqq: biasOf("QQQ"), iwm: biasOf("IWM"),
+    confidence, volatility, atrMed, liquidity, liqMed, newsPressure, macroRisk: mRisk,
+    nextCatalyst: next, nextMins, zone, zones, topBreaking, conflicts, best,
+    message: bits.join(". ") + ".",
+    sampleSize: v4s.length,
+  };
+}
+
+// ── SAFE / PRO MODE ──────────────────────────────────────────────────────────
+// Safe Mode does not merely hide columns. It changes which opportunities are
+// surfaced at all, by applying hard gates.
+const MODE_GATES = {
+  safe: {
+    label:"SAFE", color:"#00ff88",
+    minApex:80, minConfidence:75, minLiquidity:70, maxExtension:1.25, minRvol:1.2,
+    requireDirection:true, minTiming:0, blockEventWithinMin:60, blockUnverifiedHighImpact:true,
+    note:"Higher bar on every axis, and it stands down near critical events or unverified high-impact headlines.",
+  },
+  pro: {
+    label:"PRO", color:"#ffe033",
+    minApex:55, minConfidence:0, minLiquidity:35, maxExtension:99, minRvol:0,
+    requireDirection:false, minTiming:-2, blockEventWithinMin:0, blockUnverifiedHighImpact:false,
+    note:"Everything the engine sees, including developing setups, conflicts and event trades. Raw factors exposed.",
+  },
+};
+
+function applyMode(rows, mode, ctx = {}) {
+  const g = MODE_GATES[mode] || MODE_GATES.pro;
+  const { nextCriticalMins = null, unverifiedHighImpactTickers = new Set() } = ctx;
+  const eventBlocked = g.blockEventWithinMin > 0 && Number.isFinite(nextCriticalMins)
+                       && nextCriticalMins >= 0 && nextCriticalMins <= g.blockEventWithinMin;
+  const out = [], rejected = [];
+  for (const r of rows) {
+    const v = r.v4 || r;
+    const fails = [];
+    if ((v.apex ?? 0) < g.minApex) fails.push(`APEX ${v.apex} < ${g.minApex}`);
+    if ((v.confidence ?? 0) < g.minConfidence) fails.push(`CONF ${v.confidence} < ${g.minConfidence}`);
+    if ((v.liquidityScore ?? 0) < g.minLiquidity) fails.push(`LIQ ${v.liquidityScore} < ${g.minLiquidity}`);
+    if (Number.isFinite(v.extension) && v.extension > g.maxExtension) fails.push(`EXT ${v.extension} > ${g.maxExtension}`);
+    if ((v.rvol ?? 0) < g.minRvol) fails.push(`RVOL ${v.rvol} < ${g.minRvol}`);
+    if (g.requireDirection && (v.direction ?? 0) === 0) fails.push("no directional read");
+    if ((v.timing ?? 0) < g.minTiming) fails.push(`TIMING ${v.timing} < ${g.minTiming}`);
+    if (eventBlocked) fails.push(`critical event in ${Math.round(nextCriticalMins)}m`);
+    if (g.blockUnverifiedHighImpact && unverifiedHighImpactTickers.has(r.ticker)) fails.push("unverified high-impact headline");
+    (fails.length ? rejected : out).push(fails.length ? { ...r, _rejectedFor: fails } : r);
+  }
+  return { passed: out, rejected, gates: g, eventBlocked };
+}
+
 async function fetchUWDirect(uwKey, signal) {
   const H = { Authorization: `Bearer ${uwKey}` };
   const get = (path) => fetch(`https://api.unusualwhales.com/api${path}`, { headers: H, signal })
     .then(r => r.ok ? r.json() : { data: [] }).catch(() => ({ data: [] }));
 
   // Phase 1: parallel-fetch the broad data (3 calls, ~150ms total)
-  const [flow, dp, tide] = await Promise.all([
+  const [flow, dp, tide, news] = await Promise.all([
     get(`/option-trades/flow-alerts?limit=30&size_greater_oi=true&is_otm=true&min_ask_perc=0.7`),
     get(`/darkpool/recent?limit=25`),
     get(`/market/market-tide`),
+    // Headlines feed the catalyst engine. If the endpoint is unavailable on this
+    // plan it resolves to [] like every other call here and the engine falls
+    // back to the news attached to individual signals.
+    get(`/news/headlines?limit=50`),
   ]);
 
   // Phase 2: pick top 6 tickers by premium for heavy DP/GEX, all unique for light OHLC
@@ -882,6 +1636,7 @@ async function fetchUWDirect(uwKey, signal) {
     per_ticker,
     ichimokuByTicker,
     v4ByTicker,
+    news_headlines: news.data || [],
   };
 }
 
@@ -1604,15 +2359,19 @@ function Setup({ onConnect }) {
 // The FINAL_V4 watchlist, rendered from the same numbers ThinkorSwim would show.
 // One row per ticker (deduped), sorted by APEX. Read left to right: is it
 // tradeable → which side → do the signals agree → how strong → early or late.
-function V4Grid({ feed, onClose }) {
+function V4Grid({ feed, onClose, modeResult, mode }) {
   const seenT = new Set();
-  const rows = [];
+  const all = [];
   feed.forEach(p => {
     if (!p.v4 || seenT.has(p.ticker)) return;
     seenT.add(p.ticker);
-    rows.push({ ticker: p.ticker, cat: p.cat, ...p.v4 });
+    all.push({ ticker: p.ticker, cat: p.cat, ...p.v4 });
   });
-  rows.sort((a, b) => b.apex - a.apex);
+  all.sort((a, b) => b.apex - a.apex);
+  // Safe Mode does not merely hide columns — it changes which rows are surfaced.
+  const passSet = modeResult ? new Set(modeResult.passed.map(r => r.ticker)) : null;
+  const rows = passSet ? all.filter(r => passSet.has(r.ticker)) : all;
+  const hidden = all.length - rows.length;
 
   const th = { padding:"7px 10px", textAlign:"right", fontSize:10, letterSpacing:"0.12em", color:"#7591a8", fontWeight:700, whiteSpace:"nowrap", borderBottom:"1px solid #1a2a3a" };
   const td = { padding:"7px 10px", textAlign:"right", fontSize:13, fontWeight:600, whiteSpace:"nowrap", fontFamily:"'JetBrains Mono','SF Mono',Menlo,Consolas,monospace" };
@@ -1624,6 +2383,10 @@ function V4Grid({ feed, onClose }) {
       <div style={{ display:"flex", alignItems:"center", gap:12, padding:"9px 20px", borderBottom:"1px solid #0e1a24", position:"sticky", top:0, background:"#04080c", zIndex:2 }}>
         <span style={{ fontSize:12, fontWeight:700, letterSpacing:"0.16em", color:"#66ffcc" }}>🧮 V4 QUANT GRID</span>
         <span style={{ fontSize:11, color:"#7591a8" }}>{rows.length} ticker{rows.length===1?"":"s"} · same math as FINAL_V4 ThinkScript · sorted by APEX</span>
+        {mode && <span style={{ fontSize:10, padding:"2px 8px", borderRadius:2, fontWeight:700, letterSpacing:"0.08em",
+                                background:(MODE_GATES[mode]?.color||"#7591a8")+"1f", border:`1px solid ${(MODE_GATES[mode]?.color||"#7591a8")}66`,
+                                color:MODE_GATES[mode]?.color||"#7591a8" }}>{MODE_GATES[mode]?.label} MODE</span>}
+        {hidden > 0 && <span style={{ fontSize:11, color:"#ff9955" }}>{hidden} hidden by mode gates</span>}
         <button onClick={onClose} style={{ marginLeft:"auto", background:"transparent", border:"1px solid #15212e", color:"#7591a8", fontSize:12, padding:"4px 10px", cursor:"pointer", borderRadius:3 }}>✕ close</button>
       </div>
       {rows.length === 0 ? (
@@ -2101,6 +2864,509 @@ function IncomeTab({ onClose }) {
   );
 }
 
+
+// ── APEX LIVE INTELLIGENCE — UI ──────────────────────────────────────────────
+const STATUS_STYLE = {
+  CONFIRMED:  { color:"#00ff88", bg:"#00ff8818" },
+  REPORTED:   { color:"#00ddff", bg:"#00ddff18" },
+  DEVELOPING: { color:"#ffe033", bg:"#ffe03318" },
+  RUMOR:      { color:"#ff9955", bg:"#ff995518" },
+  UNVERIFIED: { color:"#ff3355", bg:"#ff335518" },
+};
+const agoTxt = ms => {
+  const s = Math.max(0, Math.round(ms / 1000));
+  if (s < 60) return `${s}s`;
+  if (s < 3600) return `${Math.round(s / 60)}m`;
+  if (s < 86400) return `${Math.round(s / 3600)}h`;
+  return `${Math.round(s / 86400)}d`;
+};
+const etClock = ts => new Date(ts).toLocaleTimeString("en-US", { timeZone:"America/New_York", hour12:false });
+
+function DimBar({ label, value, min = 0, max = 100, color, hint }) {
+  const pct = Math.max(0, Math.min(100, ((value - min) / (max - min)) * 100));
+  return (
+    <div title={hint} style={{ marginBottom:7 }}>
+      <div style={{ display:"flex", justifyContent:"space-between", fontSize:10, letterSpacing:"0.1em", color:"#7591a8", marginBottom:3 }}>
+        <span>{label}</span>
+        <span style={{ color, fontWeight:700, fontFamily:"'JetBrains Mono',monospace" }}>{value > 0 && min < 0 ? "+" : ""}{value}</span>
+      </div>
+      <div style={{ height:4, background:"#0d1620", borderRadius:2, overflow:"hidden" }}>
+        <div style={{ width:`${pct}%`, height:"100%", background:color, transition:"width .3s" }}/>
+      </div>
+    </div>
+  );
+}
+
+function EventCard({ ev, technical, watchlist, now }) {
+  const [open, setOpen] = useState(false);
+  const cat = CATEGORIES[ev.category] || CATEGORIES.OTHER;
+  const st = STATUS_STYLE[ev.status] || STATUS_STYLE.REPORTED;
+  const band = impactBand(ev.impactNow);
+  const pri = alertPriority(ev, watchlist);
+  const priM = PRIORITY_META[pri];
+  const dirColor = ev.direction > 20 ? "#00ff88" : ev.direction < -20 ? "#ff3355" : "#7591a8";
+  const fusion = fuseState({ technical, news: ev, eventProximityMin: null });
+  const fs = FUSION_STATES[fusion.state];
+  const onWatch = (watchlist || []).some(t => ev.tickers.includes(t));
+
+  return (
+    <div style={{ border:`1px solid ${pri <= 1 ? priM.color + "55" : "#13202e"}`, background:"#070d15",
+                  borderLeft:`3px solid ${cat.color}`, borderRadius:4, marginBottom:8, overflow:"hidden" }}>
+      <div onClick={() => setOpen(o => !o)} style={{ padding:"11px 14px", cursor:"pointer" }}>
+        <div style={{ display:"flex", alignItems:"center", gap:9, flexWrap:"wrap", marginBottom:7 }}>
+          <span style={{ fontSize:11, fontFamily:"'JetBrains Mono',monospace", color:"#8aabc2" }}>{etClock(ev.latest)} ET</span>
+          <span style={{ fontSize:10, padding:"2px 7px", background:priM.color + "1f", border:`1px solid ${priM.color}55`, color:priM.color, fontWeight:700, borderRadius:2 }}>{priM.label}</span>
+          <span style={{ fontSize:10, padding:"2px 7px", background:cat.color + "1a", border:`1px solid ${cat.color}44`, color:cat.color, fontWeight:600, borderRadius:2 }}>{cat.label}</span>
+          <span style={{ fontSize:10, padding:"2px 7px", background:st.bg, border:`1px solid ${st.color}66`, color:st.color, fontWeight:700, borderRadius:2 }}>{ev.status}</span>
+          {ev.sourceCount > 1 && <span style={{ fontSize:10, color:"#7591a8" }}>{ev.sourceCount} sources</span>}
+          {onWatch && <span style={{ fontSize:10, color:"#ffe033", fontWeight:700 }}>★ WATCHLIST</span>}
+          <span style={{ marginLeft:"auto", fontSize:10, color:"#7591a8" }}>{agoTxt(now - ev.latest)} ago</span>
+        </div>
+        <div style={{ fontSize:14, color:"#eaf2ff", fontWeight:600, lineHeight:1.5, marginBottom:8 }}>{ev.headline}</div>
+        <div style={{ display:"flex", gap:8, flexWrap:"wrap", alignItems:"center" }}>
+          {ev.tickers.slice(0, 8).map(t => (
+            <span key={t} style={{ fontSize:11, padding:"2px 7px", background:"#0d1a26", border:"1px solid #1a2a3a", color:"#9fb5c8", fontWeight:700, borderRadius:2, fontFamily:"'JetBrains Mono',monospace" }}>{t}</span>
+          ))}
+          {ev.tickers.length === 0 && <span style={{ fontSize:11, color:"#5a7a92", fontStyle:"italic" }}>macro — no single ticker</span>}
+          <span style={{ marginLeft:"auto", fontSize:11, color:fs.color, fontWeight:700 }}>{fs.icon} {fs.label}</span>
+          <span style={{ fontSize:12, color:"#7591a8" }}>{open ? "▲" : "▼"}</span>
+        </div>
+      </div>
+
+      {open && (
+        <div style={{ borderTop:"1px solid #0e1a24", padding:"12px 14px", background:"#050a10" }}>
+          <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(190px,1fr))", gap:14 }}>
+            <div>
+              <div className="sec-label" style={{ marginBottom:8 }}>CATALYST DIMENSIONS</div>
+              <DimBar label="NEWS IMPACT" value={ev.impactNow} color={band[2]} hint={`${band[1]} · raw ${ev.impact} before time decay`}/>
+              <DimBar label="NEWS DIRECTION" value={ev.direction} min={-100} color={dirColor} hint="Independent of impact. 0 = ambiguous or not yet released."/>
+              <DimBar label="NEWS CONFIDENCE" value={ev.confidence} color={ev.confidence >= 70 ? "#00ff88" : ev.confidence >= 45 ? "#ffe033" : "#ff5577"} hint="Source quality, corroboration, ticker-mapping certainty. NOT bullishness."/>
+              <div style={{ fontSize:11, color:"#7591a8", marginTop:6, lineHeight:1.6 }}>
+                Source: <b style={{ color:SOURCE_TIERS[ev.sourceTier].color }}>T{ev.sourceTier} {SOURCE_TIERS[ev.sourceTier].label}</b>
+                {ev.source ? ` · ${ev.source}` : ""}<br/>
+                Raw impact {ev.impact} → {ev.impactNow} after {Math.round(ev.ageMin)}m decay (half-life {cat.halfLifeMin}m)
+              </div>
+            </div>
+
+            <div>
+              <div className="sec-label" style={{ marginBottom:8 }}>TECHNICAL ALIGNMENT</div>
+              {technical ? (
+                <>
+                  <DimBar label="TECHNICAL APEX" value={technical.apex} color="#00ddff"/>
+                  <DimBar label="TECHNICAL DIRECTION" value={technical.direction} min={-2} max={2} color={technical.direction > 0 ? "#00ff88" : technical.direction < 0 ? "#ff3355" : "#7591a8"}/>
+                  <DimBar label="TECHNICAL CONFIDENCE" value={technical.confidence} color="#66ccff"/>
+                </>
+              ) : <div style={{ fontSize:12, color:"#5a7a92", fontStyle:"italic" }}>No technical read for these tickers in the current scan.</div>}
+              <div style={{ marginTop:8, padding:"8px 10px", background:fs.color + "12", border:`1px solid ${fs.color}44`, borderRadius:3 }}>
+                <div style={{ fontSize:11, color:fs.color, fontWeight:700, marginBottom:4 }}>{fs.icon} {fs.label}</div>
+                <div style={{ fontSize:12, color:"#b5c8dc", lineHeight:1.6 }}>{fusion.note}</div>
+              </div>
+            </div>
+
+            <div>
+              <div className="sec-label" style={{ marginBottom:8 }}>PROPAGATION</div>
+              <div style={{ fontSize:12, color:"#9fb5c8", lineHeight:1.9 }}>
+                {ev.propagation.direct.length > 0 && <>Direct: <b style={{color:"#eaf2ff"}}>{ev.propagation.direct.join(", ")}</b><br/></>}
+                {ev.propagation.sectors.length > 0 && <>Sector: {ev.propagation.sectors.join(", ")}<br/></>}
+                {ev.propagation.etfs.length > 0 && <>ETFs: {ev.propagation.etfs.join(", ")}<br/></>}
+                {ev.propagation.indices.length > 0 && <>Index: <b style={{color:"#66ccff"}}>{ev.propagation.indices.join(", ")}</b></>}
+                {ev.propagation.direct.length === 0 && ev.propagation.indices.length === 0 && <span style={{ fontStyle:"italic", color:"#5a7a92" }}>No mapped relationships.</span>}
+              </div>
+              <div style={{ fontSize:11, color:"#5a7a92", marginTop:8, lineHeight:1.6, fontStyle:"italic" }}>
+                Relationships only. Direction is not assumed to propagate unchanged — measure the reaction.
+              </div>
+              {ev.surprise && (
+                <div style={{ marginTop:10, fontSize:12, color:"#9fb5c8", lineHeight:1.8 }}>
+                  <b style={{color:"#eaf2ff"}}>Surprise</b><br/>
+                  Actual {ev.surprise.actual ?? "—"} · Consensus {ev.surprise.consensus ?? "—"}<br/>
+                  Previous {ev.surprise.previous ?? "—"} · Revision {ev.surprise.revision ?? "—"}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {ev.headlines.length > 1 && (
+            <div style={{ marginTop:12, borderTop:"1px solid #0e1a24", paddingTop:10 }}>
+              <div className="sec-label" style={{ marginBottom:6 }}>{ev.headlines.length} REPORTS, ONE EVENT</div>
+              {ev.headlines.map((h, i) => (
+                <div key={i} style={{ fontSize:11, color:"#8aabc2", marginBottom:3, lineHeight:1.5 }}>
+                  <span style={{ color:"#5a7a92" }}>{etClock(h.t)}</span> · {h.s || "unknown"} · {h.h}
+                </div>
+              ))}
+            </div>
+          )}
+          {ev.conflicting && (
+            <div style={{ marginTop:10, fontSize:12, color:"#ffaa44" }}>⚠ Reports conflict on direction — confidence reduced accordingly.</div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function IntelTab({ onClose, events, feed, calendar, macroRiskScore, stats, now, ingestStatus }) {
+  const [tab, setTab] = useState("live");
+  const [minImpact, setMinImpact] = useState(20);
+
+  const techByTicker = {};
+  (feed || []).forEach(p => { if (p.v4 && !techByTicker[p.ticker]) techByTicker[p.ticker] = p.v4; });
+  const watchlist = Object.keys(techByTicker);
+  const techFor = ev => { for (const t of ev.tickers) if (techByTicker[t]) return techByTicker[t]; return null; };
+  const shown = (events || []).filter(e => e.impactNow >= minImpact);
+
+  const card = { background:"#070d15", border:"1px solid #13202e", borderRadius:5, padding:14 };
+  const tabBtn = k => ({ padding:"7px 14px", background: tab===k ? "#0d1a26" : "transparent",
+    border:`1px solid ${tab===k ? "#66ccff" : "#15212e"}`, color: tab===k ? "#66ccff" : "#7591a8",
+    fontSize:12, fontWeight:600, cursor:"pointer", borderRadius:3, letterSpacing:"0.05em" });
+
+  const upcoming = (calendar || []).filter(e => e.ts >= now).slice(0, 12);
+  const nextEv = upcoming[0];
+  const nextMins = nextEv ? (nextEv.ts - now) / 60000 : null;
+
+  return (
+    <div style={{ background:"#04080c", borderBottom:"1px solid #0e1a24", maxHeight:"76vh", overflow:"auto", flexShrink:0 }}>
+      <div style={{ display:"flex", alignItems:"center", gap:12, padding:"10px 20px", borderBottom:"1px solid #0e1a24", position:"sticky", top:0, background:"#04080c", zIndex:3, flexWrap:"wrap" }}>
+        <span style={{ fontSize:12, fontWeight:700, letterSpacing:"0.16em", color:"#66ccff" }}>📡 APEX LIVE INTELLIGENCE</span>
+        <button style={tabBtn("live")}   onClick={()=>setTab("live")}>LIVE FEED</button>
+        <button style={tabBtn("cal")}    onClick={()=>setTab("cal")}>CALENDAR</button>
+        <button style={tabBtn("stats")}  onClick={()=>setTab("stats")}>REACTION STATS</button>
+        <div style={{ display:"flex", alignItems:"center", gap:7, marginLeft:8 }}>
+          <span style={{ fontSize:10, color:"#7591a8", letterSpacing:"0.1em" }}>MACRO RISK</span>
+          <span style={{ fontSize:16, fontWeight:700, fontFamily:"'JetBrains Mono',monospace",
+                         color: macroRiskScore>=70?"#ff3355":macroRiskScore>=40?"#ffaa44":"#00ff88" }}>{macroRiskScore}</span>
+        </div>
+        {nextEv && (
+          <span style={{ fontSize:11, color: nextMins<=60 ? "#ff9955" : "#7591a8" }}>
+            next: <b style={{color:"#eaf2ff"}}>{nextEv.name}</b> in {nextMins < 60 ? `${Math.round(nextMins)}m` : `${Math.round(nextMins/60)}h`}
+          </span>
+        )}
+        <button onClick={onClose} style={{ marginLeft:"auto", background:"transparent", border:"1px solid #15212e", color:"#7591a8", fontSize:12, padding:"4px 10px", cursor:"pointer", borderRadius:3 }}>✕ close</button>
+      </div>
+
+      {tab === "live" && (
+        <div style={{ padding:"14px 20px" }}>
+          <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:12, flexWrap:"wrap" }}>
+            <span style={{ fontSize:11, color:"#7591a8" }}>
+              {shown.length} catalyst event{shown.length===1?"":"s"} · deduplicated from {(events||[]).reduce((a,e)=>a+e.headlines.length,0)} reports
+            </span>
+            <label style={{ fontSize:11, color:"#7591a8", display:"flex", alignItems:"center", gap:6 }}>
+              min impact
+              <input type="range" min="0" max="90" step="10" value={minImpact} onChange={e=>setMinImpact(+e.target.value)} style={{ accentColor:"#66ccff" }}/>
+              <b style={{ color:"#eaf2ff", fontFamily:"'JetBrains Mono',monospace" }}>{minImpact}</b>
+            </label>
+            <span style={{ fontSize:11, color: ingestStatus?.ok ? "#00ff88" : "#ffaa44" }}>{ingestStatus?.text || ""}</span>
+          </div>
+          {shown.length === 0 ? (
+            <div style={{ ...card, color:"#7591a8", fontSize:13, lineHeight:1.8 }}>
+              No catalyst events above impact {minImpact}. The feed populates from the news attached to scanner
+              signals and, when the endpoint is reachable, the Unusual Whales headlines feed. A static page cannot
+              poll wires continuously — see the architecture note below.
+            </div>
+          ) : shown.map(ev => (
+            <EventCard key={ev.key} ev={ev} technical={techFor(ev)} watchlist={watchlist} now={now}/>
+          ))}
+        </div>
+      )}
+
+      {tab === "cal" && (
+        <div style={{ padding:"14px 20px" }}>
+          <div style={{ ...card, marginBottom:12, borderLeft:"3px solid #ffaa44" }}>
+            <div style={{ fontSize:12, fontWeight:700, color:"#ffcc66", marginBottom:6 }}>What is and is not in this calendar</div>
+            <div className="body-text" style={{ fontSize:13 }}>
+              Only <b style={{color:"#eaf2ff"}}>rule-derivable</b> events are generated: weekly jobless claims (Thursday 08:30 ET),
+              nonfarm payrolls (first Friday 08:30 ET), monthly opex and triple witching (third Friday).
+              CPI, PPI, PCE, FOMC and GDP dates are <b style={{color:"#eaf2ff"}}>published, not derivable</b> — so they are
+              not guessed. They come from <code style={{color:"#9fb5c8"}}>MACRO_SEED</code>, which ships empty. An empty seed
+              shows nothing rather than a fabricated date. Fill it from the official calendar or wire a backend.
+            </div>
+          </div>
+          {upcoming.length === 0 ? <div style={{ ...card, color:"#7591a8", fontSize:13 }}>Nothing scheduled in the next 21 days.</div> : (
+            <table style={{ borderCollapse:"collapse", width:"100%" }}>
+              <thead><tr>
+                {["WHEN","COUNTDOWN","EVENT","IMPORTANCE","SOURCE"].map(h=>(
+                  <th key={h} style={{ padding:"7px 10px", textAlign:"left", fontSize:10, letterSpacing:"0.12em", color:"#7591a8", fontWeight:700, borderBottom:"1px solid #1a2a3a" }}>{h}</th>
+                ))}
+              </tr></thead>
+              <tbody>
+                {upcoming.map((e,i) => {
+                  const mins = (e.ts - now)/60000;
+                  const c = IMPORTANCE[e.importance]?.color || "#7591a8";
+                  return (
+                    <tr key={i} style={{ borderBottom:"1px solid #0b141c" }}>
+                      <td style={{ padding:"7px 10px", fontSize:12, color:"#9fb5c8", fontFamily:"'JetBrains Mono',monospace" }}>
+                        {new Date(e.ts).toLocaleString("en-US",{ timeZone:"America/New_York", month:"short", day:"numeric", hour:"2-digit", minute:"2-digit", hour12:false })} ET
+                      </td>
+                      <td style={{ padding:"7px 10px", fontSize:12, fontFamily:"'JetBrains Mono',monospace",
+                                   color: mins<=60?"#ff5577":mins<=1440?"#ffaa44":"#7591a8", fontWeight:700 }}>
+                        {mins < 60 ? `T-${Math.round(mins)}m` : mins < 1440 ? `T-${Math.round(mins/60)}h` : `T-${Math.round(mins/1440)}d`}
+                      </td>
+                      <td style={{ padding:"7px 10px", fontSize:13, color:"#eaf2ff", fontWeight:600 }}>{e.name}</td>
+                      <td style={{ padding:"7px 10px", fontSize:11, color:c, fontWeight:700 }}>{e.importance}</td>
+                      <td style={{ padding:"7px 10px", fontSize:11, color:"#5a7a92" }}>{e.derived ? "rule-derived" : "seeded"}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
+
+      {tab === "stats" && (
+        <div style={{ padding:"14px 20px" }}>
+          <div style={{ ...card, marginBottom:12, borderLeft:"3px solid #00ddff" }}>
+            <div style={{ fontSize:12, fontWeight:700, color:"#66ccff", marginBottom:6 }}>These are measured, not claimed</div>
+            <div className="body-text" style={{ fontSize:13 }}>
+              Every figure below is computed from events <b style={{color:"#eaf2ff"}}>this browser actually observed and
+              measured</b>, with the reference price snapshotted at event time and the reaction sampled at 5/15/30/60
+              minutes. Sample size is always shown. Below the minimum sample the cell reads <i>insufficient</i> rather
+              than printing a number that looks authoritative. Nothing here is hard-coded, and no folklore
+              (&ldquo;most first moves reverse&rdquo;) is presented as a statistic.
+              <br/><br/>
+              The database is <b style={{color:"#eaf2ff"}}>local to this browser</b> and only grows while the page is open.
+              A shared, continuously-populated event history needs a backend.
+            </div>
+          </div>
+          <table style={{ borderCollapse:"collapse", width:"100%" }}>
+            <thead><tr>
+              {["CATEGORY","n","MEDIAN |MOVE|","MEAN |MOVE|","MAX |MOVE|","CONTINUATION","REVERSAL"].map(h=>(
+                <th key={h} style={{ padding:"7px 10px", textAlign:h==="CATEGORY"?"left":"right", fontSize:10, letterSpacing:"0.12em", color:"#7591a8", fontWeight:700, borderBottom:"1px solid #1a2a3a" }}>{h}</th>
+              ))}
+            </tr></thead>
+            <tbody>
+              {stats.map(s => (
+                <tr key={s.category} style={{ borderBottom:"1px solid #0b141c" }}>
+                  <td style={{ padding:"7px 10px", fontSize:12, color:CATEGORIES[s.category]?.color || "#9fb5c8", fontWeight:600 }}>
+                    {CATEGORIES[s.category]?.label || s.category}
+                  </td>
+                  <td style={{ padding:"7px 10px", textAlign:"right", fontSize:12, color:"#9fb5c8", fontFamily:"'JetBrains Mono',monospace" }}>{s.r.n}</td>
+                  {s.r.insufficient ? (
+                    <td colSpan={5} style={{ padding:"7px 10px", textAlign:"right", fontSize:12, color:"#5a7a92", fontStyle:"italic" }}>
+                      insufficient sample — need {s.r.minSample}, have {s.r.n}
+                    </td>
+                  ) : (
+                    <>
+                      <td style={{ padding:"7px 10px", textAlign:"right", fontSize:12, color:"#eaf2ff", fontFamily:"'JetBrains Mono',monospace" }}>{s.r.medianAbsMove}%</td>
+                      <td style={{ padding:"7px 10px", textAlign:"right", fontSize:12, color:"#9fb5c8", fontFamily:"'JetBrains Mono',monospace" }}>{s.r.meanAbsMove}%</td>
+                      <td style={{ padding:"7px 10px", textAlign:"right", fontSize:12, color:"#9fb5c8", fontFamily:"'JetBrains Mono',monospace" }}>{s.r.maxAbsMove}%</td>
+                      <td style={{ padding:"7px 10px", textAlign:"right", fontSize:12, color:"#00ff88", fontFamily:"'JetBrains Mono',monospace" }}>{s.r.continuationPct ?? "—"}%</td>
+                      <td style={{ padding:"7px 10px", textAlign:"right", fontSize:12, color:"#ff9955", fontFamily:"'JetBrains Mono',monospace" }}>{s.r.reversalPct ?? "—"}%</td>
+                    </>
+                  )}
+                </tr>
+              ))}
+              {stats.length === 0 && <tr><td colSpan={7} style={{ padding:"14px 10px", fontSize:13, color:"#7591a8" }}>No events recorded yet. The database fills as catalysts arrive while the page is open.</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      <div style={{ padding:"12px 20px", borderTop:"1px solid #0e1a24", fontSize:11, color:"#7591a8", lineHeight:1.8 }}>
+        <b style={{ color:"#8aabc2" }}>Architecture.</b> ThinkorSwim / FINAL_V4 is the technical signal engine; this is the
+        intelligence engine. They are kept separate on purpose and no news score ever touches APEX, Direction, Confidence
+        or StableScore — the dimensions stay independent and are fused for display only.
+        <b style={{ color:"#8aabc2" }}> Limits.</b> This is a static page: it cannot ingest while closed, cannot share a
+        database across devices, cannot poll dozens of wires, and cannot push notifications. Those need a backend.
+        Direction and category are keyword classifiers, not language understanding — which is exactly why NEWS_CONFIDENCE
+        exists and why ambiguous headlines resolve to direction 0.
+        <b style={{ color:"#8aabc2" }}> This does not predict news, know future direction, or detect institutional
+        positioning.</b> It detects catalysts, scores relevance, tracks confirmation, and tells you whether price action
+        and news agree. ⚠ Education only · Not financial advice.
+      </div>
+    </div>
+  );
+}
+
+// ── MARKET BRAIN ─────────────────────────────────────────────────────────────
+function DangerTimeline({ zones, now }) {
+  const p = new Date(now);
+  const fmt = ts => new Date(ts).toLocaleTimeString("en-US", { timeZone:"America/New_York", hour:"2-digit", minute:"2-digit", hour12:false });
+  const merged = [];
+  for (const z of zones) {
+    const last = merged[merged.length - 1];
+    if (last && z.start <= last.end && z.severity === last.severity && z.label === last.label) { last.end = Math.max(last.end, z.end); continue; }
+    merged.push({ ...z });
+  }
+  if (!merged.length) return <div style={{ fontSize:12, color:"#5a7a92", fontStyle:"italic" }}>No risk windows generated for today.</div>;
+  return (
+    <div style={{ fontFamily:"'JetBrains Mono','SF Mono',Menlo,monospace", fontSize:12, lineHeight:1.9 }}>
+      {merged.map((z, i) => {
+        const sev = ZONE_SEV[z.severity];
+        const live = now >= z.start && now < z.end;
+        return (
+          <div key={i} title={z.note} style={{ display:"flex", gap:10, alignItems:"center",
+                background: live ? sev.color + "18" : "transparent", padding:"1px 6px", borderRadius:2 }}>
+            <span style={{ color:"#7591a8", minWidth:88 }}>{fmt(z.start)}–{fmt(z.end)}</span>
+            <span style={{ color:sev.color, letterSpacing:"-1px" }}>{sev.bar}</span>
+            <span style={{ color: live ? "#eaf2ff" : "#9fb5c8", fontWeight: live ? 700 : 500, fontFamily:"'Inter',sans-serif", fontSize:12 }}>
+              {z.label}{live && <span style={{ color:sev.color, fontWeight:700 }}> ← NOW</span>}
+            </span>
+            <span style={{ marginLeft:"auto", fontSize:10, color:"#5a7a92" }}>{z.kind}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function MarketBrain({ brain, mode, onMode, modeResult, onClose, now }) {
+  if (!brain) return null;
+  const card = { background:"#070d15", border:"1px solid #13202e", borderRadius:5, padding:13 };
+  const kv = (k, v, c) => (
+    <div style={{ display:"flex", justifyContent:"space-between", gap:10, marginBottom:6 }}>
+      <span style={{ fontSize:11, color:"#7591a8", letterSpacing:"0.08em" }}>{k}</span>
+      <span style={{ fontSize:13, fontWeight:700, color:c || "#e4edf7", fontFamily:"'JetBrains Mono',monospace" }}>{v}</span>
+    </div>
+  );
+  const np = brain.newsPressure;
+  const gates = MODE_GATES[mode];
+
+  return (
+    <div style={{ background:"#04080c", borderBottom:"1px solid #0e1a24", flexShrink:0, maxHeight:"62vh", overflow:"auto" }}>
+      <div style={{ display:"flex", alignItems:"center", gap:12, padding:"10px 20px", borderBottom:"1px solid #0e1a24", flexWrap:"wrap" }}>
+        <span style={{ fontSize:12, fontWeight:700, letterSpacing:"0.16em", color:"#c9a5ff" }}>🧠 APEX MARKET BRAIN</span>
+        <span style={{ fontSize:11, color:"#7591a8" }}>{etClock(now)} ET</span>
+        <span style={{ padding:"4px 12px", background:brain.stateColor + "1f", border:`1px solid ${brain.stateColor}66`,
+                       color:brain.stateColor, fontSize:12, fontWeight:700, borderRadius:3, letterSpacing:"0.06em" }}>
+          {brain.marketState}
+        </span>
+        <span style={{ fontSize:11, color:"#7591a8" }}>MODE</span>
+        {["safe","pro"].map(m => (
+          <button key={m} onClick={()=>onMode(m)} title={MODE_GATES[m].note}
+            style={{ padding:"5px 12px", background: mode===m ? MODE_GATES[m].color+"1f" : "transparent",
+                     border:`1px solid ${mode===m ? MODE_GATES[m].color : "#15212e"}`,
+                     color: mode===m ? MODE_GATES[m].color : "#7591a8",
+                     fontSize:11, fontWeight:700, cursor:"pointer", borderRadius:3, letterSpacing:"0.08em" }}>
+            {MODE_GATES[m].label}
+          </button>
+        ))}
+        <button onClick={onClose} style={{ marginLeft:"auto", background:"transparent", border:"1px solid #15212e", color:"#7591a8", fontSize:12, padding:"4px 10px", cursor:"pointer", borderRadius:3 }}>✕ hide</button>
+      </div>
+
+      <div style={{ padding:"14px 20px", display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(230px,1fr))", gap:12 }}>
+        <div style={card}>
+          <div className="sec-label" style={{ marginBottom:9 }}>MARKET STATE</div>
+          {kv("SPY BIAS", brain.spy.label, brain.spy.color)}
+          {kv("QQQ BIAS", brain.qqq.label, brain.qqq.color)}
+          {kv("IWM BIAS", brain.iwm.label, brain.iwm.color)}
+          {kv("CONFIDENCE", brain.confidence ?? "—", brain.confidence >= 70 ? "#00ff88" : brain.confidence >= 50 ? "#ffe033" : "#7591a8")}
+          {kv("VOLATILITY", brain.volatility, brain.volatility==="EXTREME"?"#ff3355":brain.volatility==="ELEVATED"?"#ff9955":"#9fb5c8")}
+          {kv("LIQUIDITY", brain.liquidity, brain.liquidity==="NORMAL"?"#00ff88":brain.liquidity==="THIN"?"#ffe033":"#ff5577")}
+          {kv("NEWS PRESSURE", (np>0?"+":"")+np, np>20?"#00ff88":np<-20?"#ff3355":"#7591a8")}
+          {kv("MACRO RISK", brain.macroRisk, brain.macroRisk>=70?"#ff3355":brain.macroRisk>=40?"#ffaa44":"#00ff88")}
+          <div style={{ fontSize:10, color:"#5a7a92", marginTop:6, fontStyle:"italic" }}>
+            Biases read from the V4 engine where SPY/QQQ/IWM appear in the scan; "NO READ" means they did not.
+            Sample: {brain.sampleSize} ticker{brain.sampleSize===1?"":"s"}.
+          </div>
+        </div>
+
+        <div style={card}>
+          <div className="sec-label" style={{ marginBottom:9 }}>NEXT MAJOR CATALYST</div>
+          {brain.nextCatalyst ? (
+            <>
+              <div style={{ fontSize:16, fontWeight:700, color:"#eaf2ff", marginBottom:5 }}>{brain.nextCatalyst.name}</div>
+              <div style={{ fontSize:12, color:"#9fb5c8", marginBottom:8 }}>
+                {new Date(brain.nextCatalyst.ts).toLocaleString("en-US",{ timeZone:"America/New_York", weekday:"short", month:"short", day:"numeric", hour:"2-digit", minute:"2-digit", hour12:false })} ET
+              </div>
+              {kv("IMPORTANCE", brain.nextCatalyst.importance, IMPORTANCE[brain.nextCatalyst.importance]?.color)}
+              {kv("COUNTDOWN", brain.nextMins < 60 ? `${Math.round(brain.nextMins)}m`
+                : brain.nextMins < 1440 ? `${Math.floor(brain.nextMins/60)}h ${Math.round(brain.nextMins%60)}m`
+                : `${Math.floor(brain.nextMins/1440)}d ${Math.round((brain.nextMins%1440)/60)}h`,
+                brain.nextMins<=60?"#ff5577":"#9fb5c8")}
+              <div style={{ fontSize:10, color:"#5a7a92", marginTop:6, fontStyle:"italic" }}>{brain.nextCatalyst.note}</div>
+            </>
+          ) : <div style={{ fontSize:12, color:"#5a7a92", fontStyle:"italic" }}>Nothing scheduled. Published dates (CPI, FOMC…) require MACRO_SEED — see the Calendar tab.</div>}
+
+          <div className="sec-label" style={{ margin:"14px 0 7px" }}>APEX MODE</div>
+          <div style={{ fontSize:14, fontWeight:700, color: brain.apexMode==="NORMAL OPERATION" ? "#00ff88" : brain.apexMode==="STAND ASIDE" ? "#ff3355" : "#ffaa44" }}>
+            {brain.apexMode}
+          </div>
+        </div>
+
+        <div style={card}>
+          <div className="sec-label" style={{ marginBottom:9 }}>TODAY&rsquo;S DANGER ZONES</div>
+          <DangerTimeline zones={brain.zones || []} now={now}/>
+        </div>
+
+        <div style={card}>
+          <div className="sec-label" style={{ marginBottom:9 }}>BEST CURRENT SETUPS · {gates.label} MODE</div>
+          {modeResult.passed.length === 0 ? (
+            <div style={{ fontSize:12, color:"#7591a8", lineHeight:1.7 }}>
+              Nothing clears {gates.label} mode right now.
+              {modeResult.eventBlocked && <><br/><b style={{color:"#ff9955"}}>Critical event inside the window — Safe Mode is standing down by design.</b></>}
+              {mode === "safe" && !modeResult.eventBlocked && modeResult.rejected.length > 0 &&
+                <><br/>{modeResult.rejected.length} setup{modeResult.rejected.length===1?"":"s"} rejected. Switch to PRO to see them and why.</>}
+            </div>
+          ) : modeResult.passed.slice(0,5).map((r,i) => {
+            const v = r.v4 || r;
+            return (
+              <div key={r.ticker} style={{ display:"flex", gap:9, alignItems:"center", marginBottom:6, fontSize:12, fontFamily:"'JetBrains Mono',monospace" }}>
+                <span style={{ color:"#5a7a92", minWidth:14 }}>{i+1}.</span>
+                <span style={{ color:"#eaf2ff", fontWeight:700, minWidth:52 }}>{r.ticker}</span>
+                <span style={{ color:v4Color(v.apex, V4_SCORE_BAND), fontWeight:700 }}>{v.apex}</span>
+                <span style={{ color:v4DirColor(v.direction), fontWeight:700 }}>{v4DirLabel(v.direction)}</span>
+                <span style={{ color:"#7591a8" }}>CONF {v.confidence}</span>
+                <span style={{ color:v4DirColor(v.timing) }}>{v.timing>=2?"PRIME":v.timing===1?"EARLY":v.timing===0?"NEUTRAL":v.timing===-1?"EXT":"LATE"}</span>
+              </div>
+            );
+          })}
+          {mode === "pro" && modeResult.rejected.length > 0 && (
+            <div style={{ marginTop:9, fontSize:10, color:"#5a7a92" }}>
+              {modeResult.rejected.length} below the PRO floor.
+            </div>
+          )}
+          <div style={{ fontSize:10, color:"#5a7a92", marginTop:8, lineHeight:1.6, fontStyle:"italic" }}>
+            {gates.note}
+          </div>
+        </div>
+
+        {brain.conflicts.length > 0 && (
+          <div style={{ ...card, borderLeft:"3px solid #ffaa44" }}>
+            <div className="sec-label" style={{ marginBottom:9, color:"#ffaa44" }}>TECHNICAL / CATALYST CONFLICTS</div>
+            {brain.conflicts.slice(0,5).map((c,i) => (
+              <div key={i} style={{ marginBottom:9 }}>
+                <div style={{ fontSize:13, color:"#eaf2ff", fontWeight:700 }}>
+                  {c.ticker} — technical {v4DirLabel(c.tech.direction)} / catalyst {c.ev.direction>0?"+":""}{c.ev.direction}
+                </div>
+                <div style={{ fontSize:11, color:"#9fb5c8", lineHeight:1.6 }}>{c.ev.headline.slice(0,90)}</div>
+              </div>
+            ))}
+            <div style={{ fontSize:11, color:"#ffcc88", marginTop:4 }}>
+              Do not read these APEX scores as normal conditions.
+            </div>
+          </div>
+        )}
+
+        {brain.topBreaking.length > 0 && (
+          <div style={{ ...card, borderLeft:"3px solid #ff5577" }}>
+            <div className="sec-label" style={{ marginBottom:9, color:"#ff8899" }}>HIGH-IMPACT HEADLINES LIVE</div>
+            {brain.topBreaking.map(e => (
+              <div key={e.key} style={{ marginBottom:8 }}>
+                <div style={{ fontSize:12, color:"#eaf2ff", lineHeight:1.5 }}>{e.headline.slice(0,110)}</div>
+                <div style={{ fontSize:10, color:"#7591a8", marginTop:2 }}>
+                  impact {e.impactNow} · dir {e.direction>0?"+":""}{e.direction} · conf {e.confidence} · {e.status} · {agoTxt(now-e.latest)} ago
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div style={{ padding:"0 20px 14px" }}>
+        <div style={{ ...card, borderLeft:"3px solid #c9a5ff" }}>
+          <div className="sec-label" style={{ marginBottom:6 }}>MARKET MESSAGE</div>
+          <div className="body-text" style={{ fontSize:13 }}>{brain.message}</div>
+          <div style={{ fontSize:11, color:"#5a7a92", marginTop:8, lineHeight:1.7, fontStyle:"italic" }}>
+            Assembled from what is measurably true in this session — setups on the board, scheduled proximity, live
+            headline impact, conflicts, liquidity. It does not forecast, and it does not know the outcome of any
+            upcoming release. ⚠ Education only · Not financial advice.
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function App() {
   const [ready,     setReady]     = useState(false);
   const [feed,      setFeed]      = useState([]);
@@ -2129,6 +3395,12 @@ function App() {
   const [directMode,setDirectMode]= useState(true);                      // true = REST direct (fast), false = MCP (slower)
   const [showV4,    setShowV4]    = useState(false);                     // V4 quant grid panel
   const [showIncome,setShowIncome]= useState(false);                     // income ETF lab panel
+  const [showBrain, setShowBrain] = useState(true);                      // Market Brain — first thing you see
+  const [showIntel, setShowIntel] = useState(false);                     // live catalyst intelligence
+  const [tradeMode, setTradeMode] = useState("pro");                     // "safe" | "pro" — changes what is surfaced
+  const [newsRaw,   setNewsRaw]   = useState([]);                        // normalised inputs to the catalyst engine
+  const [intelRows, setIntelRows] = useState(() => loadIntel());         // observed event database (localStorage)
+  const [nowMs,     setNowMs]     = useState(() => Date.now());
 
   const seen       = useRef(new Set());
   const intv       = useRef(null);
@@ -2257,6 +3529,7 @@ function App() {
       const freshIds = new Set();
       const ichMap = rawFetched?.ichimokuByTicker || {};
       const v4Map  = rawFetched?.v4ByTicker || {};
+      if (rawFetched?.news_headlines?.length) setNewsRaw(rawFetched.news_headlines);
       const fresh = prints
         .filter(p=>p.ticker&&p.sig)
         .map(p=>({
@@ -2305,6 +3578,7 @@ function App() {
 
   useEffect(()=>{ if(paused) clearInterval(intv.current); }, [paused]);
   useEffect(() => { const id = setInterval(() => setNowMin(nowETMin()), 30000); return () => clearInterval(id); }, []);
+  useEffect(() => { const id = setInterval(() => setNowMs(Date.now()), 15000); return () => clearInterval(id); }, []);
 
   const connect = (a, u) => {
     akRef.current=a; ukRef.current=u;
@@ -2334,6 +3608,63 @@ function App() {
       if (ae!==be) return ae-be;
       return (ALL[a.sig]?.tier||9)-(ALL[b.sig]?.tier||9)||(b.winProb||0)-(a.winProb||0);
     });
+
+  // ── CATALYST INTELLIGENCE LAYER ────────────────────────────────────────────
+  // Built fresh from whatever the scan returned. Never writes back into the
+  // technical scores — the dimensions stay independent and are fused for display.
+  const rawCatalystItems = [
+    ...(newsRaw || []),
+    // news attached to individual signals, so the engine still works when the
+    // headlines endpoint is unavailable
+    ...feed.filter(p => p.news?.any && p.news.latest).map(p => ({
+      headline: p.news.latest, source: p.news.source || "", ticker: p.ticker,
+      timestamp: p.news.hours_ago != null ? nowMs - p.news.hours_ago * 3600000 : nowMs,
+      category: null,
+    })),
+  ];
+  const marketOpen = nowMin >= 9 * 60 + 30 && nowMin < 16 * 60;
+  const catalystEvents = buildCatalystEvents(rawCatalystItems, {
+    now: nowMs, marketOpen, knownIds: new Set(intelRows.map(r => r.key)),
+  });
+  const scheduled = deriveScheduledEvents(nowMs);
+  const zones = dangerZones(scheduled, catalystEvents, nowMs);
+  const brain = marketBrain({ feed, events: catalystEvents, calendar: scheduled, zones, nowMs });
+
+  // Safe Mode stands down near a critical event and on unverified high-impact news.
+  const nextCritical = scheduled.find(e => e.importance === "CRITICAL");
+  const unverifiedHot = new Set(catalystEvents
+    .filter(e => e.impactNow >= 70 && (e.status === "RUMOR" || e.status === "UNVERIFIED"))
+    .flatMap(e => e.tickers));
+  const v4Rows = (() => {
+    const seenT = new Set(), rows = [];
+    feed.forEach(p => { if (p.v4 && !seenT.has(p.ticker)) { seenT.add(p.ticker); rows.push({ ticker:p.ticker, v4:p.v4 }); } });
+    return rows.sort((a,b) => b.v4.apex - a.v4.apex);
+  })();
+  const modeResult = applyMode(v4Rows, tradeMode, {
+    nextCriticalMins: nextCritical ? (nextCritical.ts - nowMs) / 60000 : null,
+    unverifiedHighImpactTickers: unverifiedHot,
+  });
+
+  // Persist observed events + measure how the tape actually reacted.
+  const refPrices = (() => {
+    const r = {};
+    for (const sym of ["SPY","QQQ","IWM"]) { const v = feed.find(p => p.ticker === sym)?.v4?.last; if (Number.isFinite(v)) r[sym] = v; }
+    return Object.keys(r).length ? r : null;
+  })();
+  useEffect(() => {
+    if (!catalystEvents.length && !intelRows.length) return;
+    let next = recordEvents(intelRows, catalystEvents.filter(e => e.impactNow >= 40), refPrices, nowMs);
+    next = captureReactions(next, refPrices, nowMs);
+    if (next !== intelRows) { setIntelRows(next); saveIntel(next); }
+  }, [nowMs]);
+
+  const intelStats = Object.keys(CATEGORIES)
+    .map(c => ({ category: c, r: reactionStats(intelRows, { category: c, symbol: "QQQ", mark: 30 }) }))
+    .filter(s => s.r.n > 0)
+    .sort((a, b) => b.r.n - a.r.n);
+  const ingestStatus = { ok: (newsRaw || []).length > 0,
+    text: (newsRaw || []).length > 0 ? `headlines feed live (${newsRaw.length})`
+                                     : "headlines endpoint unavailable — using signal-attached news only" };
 
   if (!ready) return (
     <div style={{ display:"flex", flexDirection:"column", height:"100vh", fontFamily:"'Inter','Segoe UI',system-ui,sans-serif", background:"#060b10" }}>
@@ -2367,6 +3698,7 @@ function App() {
   const gexShort = feed.filter(p=>p.gex?.bias==="short_gamma" && p.cat==="squeeze").length;
   const gexLong  = feed.filter(p=>p.gex?.bias==="long_gamma"  && p.cat==="flush").length;
   const gexAmp   = gexShort + gexLong;
+
 
   return (
     <div style={{ fontFamily:"'Inter','Segoe UI',system-ui,sans-serif", background:"#05090e", height:"100vh", display:"flex", flexDirection:"column", overflow:"hidden", color:"#b0c4d8" }}>
@@ -2457,6 +3789,9 @@ function App() {
               { icon:"⟳", label:"", active:false, onClick:manualFetch, disabled:loading, tip:"Manual refresh" },
               { icon:paused?"▶":"⏸", label:"", active:paused, onClick:()=>setPaused(p=>!p), ac:"#6080a0", tip:paused?"Resume":"Pause" },
               { icon:"🧮", label:"V4", active:showV4, onClick:()=>setShowV4(p=>!p), ac:"#66ffcc", tip:"V4 quant grid — APEX / DIR / CONF / STABLE / EARLY, same math as FINAL_V4 ThinkScript" },
+              { icon:"🧠", label:"BRAIN", active:showBrain, onClick:()=>setShowBrain(p=>!p), ac:"#c9a5ff", tip:"Market Brain — regime, catalysts, danger zones, best setups" },
+              { icon:"📡", label:"INTEL", active:showIntel, onClick:()=>setShowIntel(p=>!p), ac:"#66ccff", tip:"Live catalyst intelligence — news impact / direction / confidence, calendar, reaction stats" },
+              { icon: tradeMode==="safe"?"🛡":"⚙", label: tradeMode==="safe"?"SAFE":"PRO", active:true, onClick:()=>setTradeMode(m=>m==="safe"?"pro":"safe"), ac: tradeMode==="safe"?"#00ff88":"#ffe033", tip:"Safe Mode raises every gate and stands down near critical events. Pro Mode shows everything." },
               { icon:"💰", label:"INCOME", active:showIncome, onClick:()=>setShowIncome(p=>!p), ac:"#ffcc66", tip:"Income ETF Lab — option-income funds, monthly cash, compounding model" },
               { icon:"≡", label:"LOG", active:showLog, onClick:()=>setShowLog(p=>!p), ac:"#7aaed0", tip:"Activity log" },
             ].map(({icon,label,active,onClick,disabled,ac="#ffe033",tip})=>(
@@ -2533,7 +3868,11 @@ function App() {
         })()}
       </div>
 
-      {showV4 && <V4Grid feed={feed} onClose={()=>setShowV4(false)}/>}
+      {showBrain && <MarketBrain brain={brain} mode={tradeMode} onMode={setTradeMode} modeResult={modeResult} onClose={()=>setShowBrain(false)} now={nowMs}/>}
+      {showIntel && <IntelTab onClose={()=>setShowIntel(false)} events={catalystEvents} feed={feed}
+                              calendar={scheduled} macroRiskScore={brain.macroRisk} stats={intelStats}
+                              now={nowMs} ingestStatus={ingestStatus}/>}
+      {showV4 && <V4Grid feed={feed} onClose={()=>setShowV4(false)} modeResult={modeResult} mode={tradeMode}/>}
       {showIncome && <IncomeTab onClose={()=>setShowIncome(false)}/>}
 
       <div style={{ display:"grid", gridTemplateColumns:showLog?"1fr 1fr 0.7fr 200px":"1fr 1fr 0.7fr", flex:1, overflow:"hidden", background:"#05090e" }}>

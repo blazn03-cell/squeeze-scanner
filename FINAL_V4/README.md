@@ -102,6 +102,20 @@ The full decision hierarchy and interpretation tables are in
 
 ---
 
+## The architectural boundary
+
+FINAL_V4 is the **technical signal engine** and nothing else. No news, no calendar feed,
+no catalyst scoring is implemented in ThinkScript — it cannot reach those sources, and
+attempting it would mean fabricating data. That layer lives in the web app and is
+specified in `docs/V5_PRODUCT_SPEC.md`.
+
+The one boundary case is `EarningsRisk.ts` / `V4_DaysToEarnings.ts`, which read
+ThinkorSwim's own event calendar. That is a scheduled corporate event, not news.
+
+No catalyst score ever modifies APEX, Direction, Confidence or StableScore. The
+dimensions stay independent and are fused for display only — see
+`docs/CATALYST_ARCHITECTURE.md` for why subtraction destroys information.
+
 ## Also in this branch: the Income ETF Lab
 
 Separate discipline, separate tab. The scanner hunts 1-3 day moves; the **💰 INCOME**
