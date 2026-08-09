@@ -4291,8 +4291,8 @@ function plainMarketRead(brain, zone, liveMode) {
   };
   if (!liveMode) return {
     light:"blue",
-    headline:"Live options flow is off, so there is no list of setups today.",
-    what:"Everything else still works: the danger windows below are real, and the ThinkorSwim scanner in Step 3 runs on its own without any key.",
+    headline:"No price data is connected, so there is no list of setups today.",
+    what:"The danger windows below are still real — they come from the clock and the calendar, not from a data feed. Step 3 explains what the score is measuring once data is flowing.",
   };
   if (n === 0) return {
     light:"amber",
@@ -4403,11 +4403,12 @@ function SimpleHome({ brain, zones, zone, calendar, liveMode, nowMs, feed, onExp
           {!liveMode ? (
             <div>
               <div style={{ marginBottom:12 }}>
-                The live setup list needs the paid options-flow feed, which is switched off right now.
-                <b style={{ color:"#c2d4e4" }}> The ThinkorSwim scanner in Step 3 does the same job with no key at all</b> — that is the better place to start anyway.
+                The scoring engine is running, but it has no price data to score. Right now the only
+                way in is the paid options-flow connection, and it is switched off.
               </div>
               <div style={{ fontSize:13, color:"#7591a8" }}>
-                We are not going to show you made-up rows to fill the space.
+                So this list is empty rather than filled with made-up rows. Step 1 above is real and
+                does not need any data connection.
               </div>
             </div>
           ) : best.length === 0 ? (
@@ -4444,24 +4445,31 @@ function SimpleHome({ brain, zones, zone, calendar, liveMode, nowMs, feed, onExp
         </BigCard>
 
         {/* STEP 3 */}
-        <BigCard tone="neutral" title="Step 3 — Put the scanner into ThinkorSwim (free, no key)">
+        <BigCard tone="neutral" title="Step 3 — How the score is worked out">
           <div style={{ marginBottom:14 }}>
-            This is the part that works for everybody. You copy some text into ThinkorSwim once,
-            and it scans the whole market for you forever after.
+            The scoring runs right here in this app. Nothing to install. Every stock is put
+            through the same six checks, and each check has a ceiling so no single number can
+            run away with the score.
           </div>
           {[
-            [<>Open the <b style={{color:"#c2d4e4"}}>FINAL_V4</b> folder in the project on GitHub: <span style={{fontFamily:"'JetBrains Mono',monospace", fontSize:12.5, color:"#66ccff"}}>github.com/blazn03-cell/squeeze-scanner</span></>,
-             "Inside are three folders: WATCHLIST_COLUMNS, SCANNERS and STUDIES. Everything is plain text — nothing to install."],
-            ["Open WATCHLIST_COLUMNS / V4_SCORE.ts and copy the whole file.", "Every line, including the ones starting with #. Those are comments and ThinkorSwim ignores them."],
-            ["In ThinkorSwim, open a watchlist. Click the gear icon → Customize → Add Custom Quote → scroll to the bottom → thinkScript Editor.", "Paste what you copied. Give it the name SCORE. Click Apply."],
-            ["Do the same for V4_DIRECTION.ts, V4_CONFIDENCE.ts and V4_TIMING.ts.", "Four columns is enough to start. The rest are extras."],
-            ["Set the watchlist to Daily.", "Daily is what these numbers are built for. Sort by the SCORE column, biggest first."],
-            ["Read the top row.", "High score + up direction + timing that is not negative = the kind of setup this whole system is looking for."],
+            ["Trend — is it going somewhere?", "Are the moving averages stacked in order, and is the trend strong enough to bother with. Worth up to 20 points."],
+            ["Momentum — is it moving cleanly?", "Smooth moves score better than jerky ones. Up to 15 points."],
+            ["Participation — is anyone actually trading it?", "Today's volume against its normal volume. Up to 20 points."],
+            ["Volatility — does it move enough, but not too much?", "Too quiet and there is no trade. Too wild and you cannot size it. Up to 15 points."],
+            ["Structure — is it breaking out of a real box?", "A clean range that price is leaving, not random noise. Up to 15 points."],
+            ["Liquidity — can you get out?", "Dollar volume and spread. Up to 15 points, and below a floor the whole thing is blocked no matter how good it looks."],
           ].map(([t, b], i) => <Step key={i} n={i+1} title={t}>{b}</Step>)}
-          <div style={{ fontSize:13, color:"#ffaa44", background:"#ffaa440c", border:"1px solid #ffaa4433", borderRadius:5, padding:"12px 14px", marginTop:6, lineHeight:1.7 }}>
-            Honest note: this code has been checked line by line by machine, but it has not yet been
-            compiled inside ThinkorSwim on a real account. If a file throws an error when you paste
-            it, that is a bug worth reporting, not something you did wrong.
+          <div style={{ fontSize:13.5, color:"#9bb3c6", lineHeight:1.75, marginTop:4 }}>
+            Then three things can hold the score down: no clear direction, too thin to trade, or
+            price has already run too far from normal. Any one of those caps it at 55 — the score
+            is built to say <b style={{color:"#c2d4e4"}}>no</b> more often than it says yes.
+          </div>
+          <div style={{ fontSize:13, color:"#7591a8", marginTop:14, paddingTop:14, borderTop:"1px solid #12202c", lineHeight:1.7 }}>
+            The same six checks are also written out as ThinkorSwim columns in the
+            <b style={{color:"#9bb3c6"}}> FINAL_V4</b> folder of the project. That is there as a
+            <b style={{color:"#9bb3c6"}}> reference</b> — a second, readable copy of exactly what the
+            app computes, useful for checking the logic or reading it in a familiar syntax. The app
+            does not run it and does not need it.
           </div>
         </BigCard>
 

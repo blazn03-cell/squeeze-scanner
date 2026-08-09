@@ -1,11 +1,24 @@
-# FINAL_V4 — ThinkorSwim quant column & scanner system
+# FINAL_V4 — the reference implementation
 
 36 ThinkScript files: 22 watchlist columns, 10 Stock Hacker scans, 4 chart studies.
 
+**This is a reference, not the product.** The product is the web app, and the scoring
+engine that runs in it is `computeV4` in `index.html`. This folder is the *same six checks
+written out a second time*, in ThinkScript, for three reasons:
+
+1. **Auditability.** ThinkScript is declarative and reads like a spec. Every weight, cap,
+   gate and penalty is visible on one screen, which makes the model far easier to check
+   than the equivalent JavaScript.
+2. **Portability.** Anyone who does run ThinkorSwim can paste these in and get the same
+   numbers, without the app.
+3. **A second opinion.** Two independent expressions of the same math catch mistakes that
+   one expression hides.
+
+The app does not execute any of this and does not depend on it. The idea came from
+ThinkorSwim; the product does not run inside it.
+
 **This folder is completely standalone.** Nothing in it calls an API, reads this repo's
-JavaScript, or needs the web dashboard. Hand `FINAL_V4/` to anyone with ThinkorSwim and
-it works. The dashboard integration described at the bottom is a convenience, not a
-dependency.
+JavaScript, or needs the web dashboard.
 
 **Daily is the default and the maximum aggregation.** The parameters are tuned for a
 **1-3 day** holding period, stretching to a couple of weeks on the cleanest trends —

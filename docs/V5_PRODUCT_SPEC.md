@@ -24,21 +24,28 @@ building a credible competitive table without asserting anything untested.
 
 This is the rule everything else hangs off.
 
+**The web app is the product.** The scoring engine (`computeV4`) runs in the app, on the
+app's own data. The ThinkScript in `FINAL_V4/` is a **reference implementation of the same
+six checks** — a second, readable copy of the logic, kept in sync so the math can be audited
+in a syntax traders already know, and used by anyone who happens to run ThinkorSwim. The app
+does not execute it and does not depend on it. The idea came from ThinkorSwim; the product
+does not run inside it.
+
 ```
 ┌──────────────────────────┐        ┌──────────────────────────────────────┐
-│  THINKORSWIM             │        │  SQUEEZE SCANNER WEB / BACKEND       │
-│  technical signal engine │        │  intelligence engine                 │
+│  FINAL_V4  (reference)   │        │  SQUEEZE SCANNER APP  (the product)  │
+│  same math, ThinkScript  │        │  scoring + intelligence engine       │
 ├──────────────────────────┤        ├──────────────────────────────────────┤
-│ ATR, EMA, ADX, RSI       │        │ news ingestion & normalisation       │
-│ RelVol, Darvas, Squeeze  │        │ macro calendar                       │
-│ SmartFlow proxy          │        │ source verification & dedup          │
-│ StableScore              │        │ catalyst scoring                     │
-│ SCORE / Direction / Conf │        │ event database & reaction stats      │
-│ Timing / Extension       │        │ cross-asset propagation              │
-│ Liquidity score          │        │ Market Brain, Danger Zones           │
+│ ATR, EMA, ADX, RSI       │        │ computeV4 — the same six checks      │
+│ RelVol, Darvas, Squeeze  │        │ SCORE / Direction / Confidence       │
+│ SmartFlow proxy          │        │ Timing / Extension / Liquidity       │
+│ StableScore              │        │ news ingestion & dedup               │
+│ SCORE / Direction / Conf │        │ macro calendar & danger zones        │
+│ Timing / Extension       │        │ event database & reaction stats      │
+│ Liquidity score          │        │ Market Brain, cross-asset spread     │
 │ 10 Stock Hacker scans    │        │ alerts, playbooks, Copilot           │
 └──────────────────────────┘        └──────────────────────────────────────┘
-              └─── merged in the Squeeze Scanner UI ────┘
+              └───── same math, audited both ways ──────┘
 ```
 
 **No news, calendar, or catalyst logic is ever implemented in ThinkScript.** ThinkScript
