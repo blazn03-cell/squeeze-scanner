@@ -4497,10 +4497,13 @@ function applyTheme(mode) {
 }
 
 function SimpleHome({ brain, zones, zone, calendar, liveMode, dataStatus, nowMs, feed, onExpert, onOpen, mode, onMode, theme, onTheme, budget, riskPct, onMoney }) {
-  const [fold, setFold] = useState(null);
+  // A Set, not a single value: opening one explanation must not close the one you
+  // were already reading.
+  const [openFolds, setOpenFolds] = useState(() => new Set());
+  const flip   = k => setOpenFolds(o => { const n = new Set(o); n.has(k) ? n.delete(k) : n.add(k); return n; });
+  const isOpen = k => openFolds.has(k);
   const [dte, setDte]     = useState(1);        // 1DTE first: it is the one that overlaps the signal
   const [debit, setDebit] = useState("");       // the reader reads this off their own broker
-  const flip = k => setFold(f => f === k ? null : k);
 
   // Re-read whenever the theme changes. applyTheme has already set the attribute
   // synchronously, so the computed values are correct by the time we get here.
@@ -4532,13 +4535,33 @@ function SimpleHome({ brain, zones, zone, calendar, liveMode, dataStatus, nowMs,
             aria-label={theme === "light" ? "Switch to dark" : "Switch to light"}
             style={{ marginLeft:"auto", background:"transparent", border:`1px solid ${V.line}`, color:V.text4,
                      fontSize:13, cursor:"pointer", fontFamily:"inherit", padding:"5px 9px", borderRadius:6 }}>
-            {theme === "light" ? "🌙" : "☀"}
+            {theme === "light" ? "🌙 Dark" : "☀ Light"}
           </button>
           <button onClick={onExpert}
-            style={{ background:"transparent", border:"none", color:V.text4, fontSize:12.5,
-                     cursor:"pointer", fontFamily:"inherit", padding:4 }}>
-            all numbers →
+            style={{ background:"transparent", border:`1px solid ${V.line}`, color:V.text3, fontSize:12.5,
+                     cursor:"pointer", fontFamily:"inherit", padding:"5px 10px", borderRadius:6 }}>
+            Expert view →
           </button>
+        </div>
+
+        {/* Always visible. These are whole features — they were buried inside a
+            collapsed "Other tools" fold, which is three clicks and a guess away
+            from anyone who does not already know they exist. */}
+        <div style={{ display:"flex", gap:6, marginBottom:18, flexWrap:"wrap" }}>
+          {[
+            { k:"v4",     icon:"📊", label:"Scores",  hint:"Every score for every stock, in a table" },
+            { k:"income", icon:"💵", label:"Income",  hint:"High-payout funds, explained simply" },
+            { k:"intel",  icon:"📡", label:"News",    hint:"What just happened and which way it points" },
+            { k:"poly",   icon:"◈",  label:"Markets", hint:"Prediction markets. Research only." },
+          ].map(o => (
+            <button key={o.k} onClick={()=>onOpen(o.k)} title={o.hint} aria-label={o.label}
+              style={{ flex:"1 1 auto", minWidth:92, background:V.surface, border:`1px solid ${V.line}`,
+                       color:V.text2, borderRadius:8, padding:"9px 10px", cursor:"pointer",
+                       fontFamily:"inherit", fontSize:13, fontWeight:600, display:"flex",
+                       alignItems:"center", justifyContent:"center", gap:6 }}>
+              <span aria-hidden="true" style={{ fontSize:14 }}>{o.icon}</span>{o.label}
+            </button>
+          ))}
         </div>
 
         {/* The whole point of the screen. */}
@@ -4650,7 +4673,7 @@ function SimpleHome({ brain, zones, zone, calendar, liveMode, dataStatus, nowMs,
           ))}
         </div>
 
-        <Fold V={V} title="When to be careful today" open={fold==="times"} onToggle={()=>flip("times")}>
+        <Fold V={V} title="When to be careful today" open={isOpen("times")} onToggle={()=>flip("times")}>
           {soon.length === 0 ? (
             <div>Nothing scheduled for the rest of today. Surprises are not on a calendar, though.</div>
           ) : soon.map((z, i) => (
@@ -4665,7 +4688,7 @@ function SimpleHome({ brain, zones, zone, calendar, liveMode, dataStatus, nowMs,
           </div>
         </Fold>
 
-        <Fold V={V} title="What do the words mean?" open={fold==="words"} onToggle={()=>flip("words")}>
+        <Fold V={V} title="What do the words mean?" open={isOpen("words")} onToggle={()=>flip("words")}>
           {Object.entries(PLAIN).map(([k, v]) => (
             <div key={k} style={{ marginBottom:11 }}>
               <span style={{ color:V.accent, fontWeight:700, textTransform:"uppercase", fontSize:12.5, letterSpacing:"0.05em" }}>{k}</span>
@@ -4674,7 +4697,7 @@ function SimpleHome({ brain, zones, zone, calendar, liveMode, dataStatus, nowMs,
           ))}
         </Fold>
 
-        <Fold V={V} title="How does it decide?" open={fold==="how"} onToggle={()=>flip("how")}>
+        <Fold V={V} title="How does it decide?" open={isOpen("how")} onToggle={()=>flip("how")}>
           <div style={{ marginBottom:12 }}>Six checks. Each one has a ceiling, so no single check can run away with the score.</div>
           {[
             ["Trend", "Is it going somewhere? Up to 20 points."],
@@ -4707,7 +4730,7 @@ function SimpleHome({ brain, zones, zone, calendar, liveMode, dataStatus, nowMs,
           </div>
         </Fold>
 
-        <Fold V={V} title="Trading these with options?  ⚠ HIGH RISK" open={fold==="dte"} onToggle={()=>flip("dte")}>
+        <Fold V={V} title="Trading these with options?  ⚠ HIGH RISK" open={isOpen("dte")} onToggle={()=>flip("dte")}>
           <div style={{ background:V.bad+"14", border:`1px solid ${V.bad}55`, borderRadius:8,
                         padding:"12px 14px", marginBottom:14 }}>
             <div style={{ color:V.bad, fontWeight:800, fontSize:14, letterSpacing:"0.04em", marginBottom:5 }}>
@@ -4813,23 +4836,7 @@ function SimpleHome({ brain, zones, zone, calendar, liveMode, dataStatus, nowMs,
           })()}
         </Fold>
 
-        <Fold V={V} title="Other tools" open={fold==="tools"} onToggle={()=>flip("tools")}>
-          {[
-            { k:"v4",     t:"The number grid", d:"Every score for every stock, in a table." },
-            { k:"income", t:"Income lab",      d:"High-payout funds explained simply, with the catch shown as well as the payout." },
-            { k:"intel",  t:"News",            d:"What just happened and which way it points." },
-            { k:"poly",   t:"Prediction markets", d:"Research only. It cannot place an order or hold your money." },
-          ].map(o => (
-            <button key={o.k} onClick={()=>onOpen(o.k)}
-              style={{ display:"block", width:"100%", textAlign:"left", background:"transparent", border:"none",
-                       borderBottom:"1px solid #12202c", padding:"11px 0", cursor:"pointer", fontFamily:"inherit" }}>
-              <div style={{ fontSize:14.5, fontWeight:600, color:V.text }}>{o.t} →</div>
-              <div style={{ fontSize:13, color:V.text4, lineHeight:1.6 }}>{o.d}</div>
-            </button>
-          ))}
-        </Fold>
-
-        <Fold V={V} title="What this cannot do" open={fold==="limits"} onToggle={()=>flip("limits")}>
+        <Fold V={V} title="What this cannot do" open={isOpen("limits")} onToggle={()=>flip("limits")}>
           <ul style={{ margin:0, paddingLeft:18, lineHeight:2 }}>
             <li>It does not predict prices. It puts setups in order.</li>
             <li>A high score is not a guarantee. Plenty of high scores lose.</li>
