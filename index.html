@@ -19,6 +19,45 @@
   <style>
     *{box-sizing:border-box;margin:0;padding:0}
     html{font-size:16px}
+
+    /* ── Theme tokens ────────────────────────────────────────────────────────
+       Only the simple view is themed. The expert grid is thousands of lines of
+       hand-tuned dark inline styles; re-tokenising all of it would be a large
+       change with real regression risk for a screen traders expect to be dark
+       anyway. The simple view is the default and the one beginners live on, so
+       that is where a light option actually matters.
+
+       Dark is the default here (the app has always been dark). The light block
+       is opt-in via [data-theme="light"], and the media query only applies when
+       the user has made no explicit choice. */
+    :root{
+      --bg:#05090e; --surface:#080d13; --raised:#0a0f15;
+      --line:#16232f; --line-soft:#12202c;
+      --text:#eaf2ff; --text-2:#c2d4e4; --text-3:#9bb3c6; --text-4:#607d94;
+      --accent:#66ccff; --good:#00ff88; --warn:#ffaa44; --bad:#ff3355;
+      --warn-text:#ffcc88; --warn-bg:#ffaa440c; --warn-line:#ffaa4433;
+      --chip-bg:#0d1c26;
+    }
+    :root[data-theme="light"]{
+      --bg:#f4f7fa; --surface:#ffffff; --raised:#eef3f8;
+      --line:#d3dfe9; --line-soft:#e3ebf2;
+      --text:#0d1b26; --text-2:#243748; --text-3:#3f5567; --text-4:#5c7286;
+      /* Darkened from the dark-mode values — the originals are tuned for glowing
+         on black and fail contrast on white. */
+      --accent:#0b6fa8; --good:#067a45; --warn:#a35c00; --bad:#c0122f;
+      --warn-text:#7a4400; --warn-bg:#ffaa4418; --warn-line:#e0a55c66;
+      --chip-bg:#e2edf6;
+    }
+    @media (prefers-color-scheme: light){
+      :root:not([data-theme="dark"]):not([data-theme="light"]){
+        --bg:#f4f7fa; --surface:#ffffff; --raised:#eef3f8;
+        --line:#d3dfe9; --line-soft:#e3ebf2;
+        --text:#0d1b26; --text-2:#243748; --text-3:#3f5567; --text-4:#5c7286;
+        --accent:#0b6fa8; --good:#067a45; --warn:#a35c00; --bad:#c0122f;
+        --warn-text:#7a4400; --warn-bg:#ffaa4418; --warn-line:#e0a55c66;
+        --chip-bg:#e2edf6;
+      }
+    }
     body{background:#05090e;overflow:hidden;font-family:'Inter','Segoe UI',system-ui,-apple-system,sans-serif;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;color:#cfdcec;font-size:14px;line-height:1.55}
     code,kbd,.mono{font-family:'JetBrains Mono','SF Mono',Menlo,Consolas,monospace}
     ::-webkit-scrollbar{width:8px;height:8px}
@@ -4235,32 +4274,56 @@ function PolyTab({ onClose, markets, catalystEvents, now }) {
 // a beginner can act on. The dense multi-column layout is one click away and
 // completely unchanged.
 
-const SIMPLE_KEY = "wsh_ui_mode_v1";
+// Reads the CSS custom properties so the palette lives in exactly one place.
+// Re-read on every theme change; the values are strings React drops straight
+// into inline styles.
+function readTheme() {
+  const cs = getComputedStyle(document.documentElement);
+  const v = n => cs.getPropertyValue(n).trim();
+  return {
+    bg:v("--bg"), surface:v("--surface"), raised:v("--raised"),
+    line:v("--line"), lineSoft:v("--line-soft"),
+    text:v("--text"), text2:v("--text-2"), text3:v("--text-3"), text4:v("--text-4"),
+    accent:v("--accent"), good:v("--good"), warn:v("--warn"), bad:v("--bad"),
+    warnText:v("--warn-text"), warnBg:v("--warn-bg"), warnLine:v("--warn-line"),
+    chipBg:v("--chip-bg"),
+    goodBg:v("--good")+"15", goodLine:v("--good")+"55", accentLine:v("--accent")+"66",
+  };
+}
 
-// Plain-English translations. Boring and literal on purpose — a reader should
-// never have to guess what a word means.
+const SIMPLE_KEY = "wsh_ui_mode_v1";
+const THEME_KEY  = "wsh_theme_v1";
+
+// Plain-English translations. Concrete and physical on purpose — a picture beats
+// a definition. Every one of these is a word that appears on screen, so a reader
+// never has to look anything up somewhere else.
 const PLAIN = {
   score:      "How good the setup is, 0 to 100. Higher is better. Under 55 means skip it.",
   direction:  "Which way it is leaning. Up means buyers are winning, down means sellers are.",
-  confidence: "How much the different checks agree. Low means mixed signals.",
-  timing:     "Early or late. Late means most of the move already happened.",
-  extension:  "How far price has run from normal. Far means you are chasing.",
-  liquidity:  "How easy it is to get out again without losing money on the spread.",
+  confidence: "How much the different checks agree with each other. Low means they are arguing.",
+  timing:     "Early or late. Late means the move already happened and you would be chasing it.",
+  extension:  "How far the price has run from its normal spot. Like a rubber band — the further it stretches, the harder it snaps back.",
+  liquidity:  "How easy it is to sell again. Busy stocks are easy to leave; quiet ones can trap you.",
+  squeeze:    "The price goes quiet and coils up, like a spring being squished. Quiet often comes right before a fast move.",
+  volume:     "How many people are trading it today, compared to a normal day.",
+  trend:      "The direction the price has been walking for a while.",
+  support:    "A price the stock keeps bouncing up off, like a floor.",
+  resistance: "A price the stock keeps getting blocked at, like a ceiling.",
 };
 
 // Everything that is not the answer to "what do I do right now" lives behind one
 // of these. Closed by default. The information is all still here — it just is not
 // all shouting at once, which was the complaint.
-function Fold({ title, children, open, onToggle }) {
+function Fold({ title, children, open, onToggle, V }) {
   return (
-    <div style={{ borderTop:"1px solid #12202c" }}>
+    <div style={{ borderTop:`1px solid ${V.lineSoft}` }}>
       <button onClick={onToggle}
         style={{ width:"100%", textAlign:"left", background:"transparent", border:"none", cursor:"pointer",
                  fontFamily:"inherit", padding:"16px 2px", display:"flex", alignItems:"center", gap:10 }}>
-        <span style={{ color:"#5f7c93", fontSize:12, width:12 }}>{open ? "▾" : "▸"}</span>
-        <span style={{ fontSize:15, fontWeight:600, color:"#9bb3c6" }}>{title}</span>
+        <span style={{ color:V.text4, fontSize:12, width:12 }}>{open ? "▾" : "▸"}</span>
+        <span style={{ fontSize:15, fontWeight:600, color:V.text3 }}>{title}</span>
       </button>
-      {open && <div style={{ padding:"0 2px 20px 24px", fontSize:14, color:"#9bb3c6", lineHeight:1.8 }}>{children}</div>}
+      {open && <div style={{ padding:"0 2px 20px 24px", fontSize:14, color:V.text3, lineHeight:1.8 }}>{children}</div>}
     </div>
   );
 }
@@ -4309,12 +4372,30 @@ function plainMarketRead(brain, zone, dataStatus) {
   };
 }
 
-const LIGHTS = { green:{ e:"🟢", c:"#00ff88" }, amber:{ e:"🟡", c:"#ffaa44" }, red:{ e:"🔴", c:"#ff3355" },
-                 blue:{ e:"🔵", c:"#66ccff" }, grey:{ e:"⚪", c:"#7591a8" } };
+// Derived from the tokens so the traffic light stays legible on white — the
+// neon dark-mode greens are unreadable on a light background.
+const lightsFor = V => ({
+  green:{ e:"🟢", c:V.good }, amber:{ e:"🟡", c:V.warn }, red:{ e:"🔴", c:V.bad },
+  blue:{ e:"🔵", c:V.accent }, grey:{ e:"⚪", c:V.text4 },
+});
 
-function SimpleHome({ brain, zones, zone, calendar, liveMode, dataStatus, nowMs, feed, onExpert, onOpen, mode, onMode }) {
+// Set synchronously, never in an effect: the simple view reads the resulting
+// computed values during render, and a child effect would run before the parent
+// had applied the attribute.
+function applyTheme(mode) {
+  if (mode === "light" || mode === "dark") document.documentElement.dataset.theme = mode;
+  else delete document.documentElement.dataset.theme;   // "system"
+  return mode;
+}
+
+function SimpleHome({ brain, zones, zone, calendar, liveMode, dataStatus, nowMs, feed, onExpert, onOpen, mode, onMode, theme, onTheme }) {
   const [fold, setFold] = useState(null);
   const flip = k => setFold(f => f === k ? null : k);
+
+  // Re-read whenever the theme changes. applyTheme has already set the attribute
+  // synchronously, so the computed values are correct by the time we get here.
+  const V = React.useMemo(() => readTheme(), [theme]);
+  const LIGHTS = lightsFor(V);
 
   const read = plainMarketRead(brain, zone, dataStatus);
   const L = LIGHTS[read.light];
@@ -4323,14 +4404,20 @@ function SimpleHome({ brain, zones, zone, calendar, liveMode, dataStatus, nowMs,
   const fmt = ts => new Date(ts).toLocaleTimeString("en-US", { hour:"numeric", minute:"2-digit", timeZone:"America/New_York" });
 
   return (
-    <div style={{ flex:1, overflowY:"auto", background:"#05090e" }}>
+    <div style={{ flex:1, overflowY:"auto", background:V.bg }}>
       <div style={{ maxWidth:640, margin:"0 auto", padding:"26px 20px 70px" }}>
 
         <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:24, flexWrap:"wrap" }}>
-          <div style={{ fontSize:21, fontWeight:800, color:"#eaf2ff", letterSpacing:"-0.02em" }}>⚡ WallstreetHustler</div>
-          <span style={{ fontSize:10, fontWeight:700, color:"#00ff88", background:"#00ff8815", border:"1px solid #00ff8844", padding:"3px 9px", borderRadius:20 }}>FREE</span>
+          <div style={{ fontSize:21, fontWeight:800, color:V.text, letterSpacing:"-0.02em" }}>⚡ WallstreetHustler</div>
+          <span style={{ fontSize:10, fontWeight:700, color:V.good, background:V.goodBg, border:`1px solid ${V.goodLine}`, padding:"3px 9px", borderRadius:20 }}>FREE</span>
+          <button onClick={onTheme} title="Switch between light and dark"
+            aria-label={theme === "light" ? "Switch to dark" : "Switch to light"}
+            style={{ marginLeft:"auto", background:"transparent", border:`1px solid ${V.line}`, color:V.text4,
+                     fontSize:13, cursor:"pointer", fontFamily:"inherit", padding:"5px 9px", borderRadius:6 }}>
+            {theme === "light" ? "🌙" : "☀"}
+          </button>
           <button onClick={onExpert}
-            style={{ marginLeft:"auto", background:"transparent", border:"none", color:"#5f7c93", fontSize:12.5,
+            style={{ background:"transparent", border:"none", color:V.text4, fontSize:12.5,
                      cursor:"pointer", fontFamily:"inherit", padding:4 }}>
             all numbers →
           </button>
@@ -4339,20 +4426,20 @@ function SimpleHome({ brain, zones, zone, calendar, liveMode, dataStatus, nowMs,
         {/* The whole point of the screen. */}
         <div style={{ border:`1px solid ${L.c}44`, background:`${L.c}0c`, borderRadius:12, padding:"26px 24px", marginBottom:8 }}>
           <div style={{ fontSize:30, lineHeight:1, marginBottom:12 }}>{L.e}</div>
-          <div style={{ fontSize:23, fontWeight:750, color:"#eaf2ff", lineHeight:1.35, marginBottom:read.what?10:0, letterSpacing:"-0.015em" }}>
+          <div style={{ fontSize:23, fontWeight:750, color:V.text, lineHeight:1.35, marginBottom:read.what?10:0, letterSpacing:"-0.015em" }}>
             {read.headline}
           </div>
-          {read.what && <div style={{ fontSize:14.5, color:"#a9c0d2", lineHeight:1.7 }}>{read.what}</div>}
-          {read.note && <div style={{ fontSize:13, color:"#8aa3b8", lineHeight:1.7, marginTop:8 }}>{read.note}</div>}
+          {read.what && <div style={{ fontSize:14.5, color:V.text2, lineHeight:1.7 }}>{read.what}</div>}
+          {read.note && <div style={{ fontSize:13, color:V.text3, lineHeight:1.7, marginTop:8 }}>{read.note}</div>}
         </div>
 
         {/* Shown only in the one state where the person reading this IS the person
             who can fix it, AND nothing is on screen for them to look at instead.
             Alongside a working list it would be noise. One line, not a panel. */}
         {dataStatus?.reason === "NO_PROVIDER_CONFIGURED" && (brain?.sampleSize || 0) === 0 && (
-          <div style={{ fontSize:12.5, color:"#5f7c93", margin:"0 0 8px", padding:"10px 14px",
-                        background:"#0a0f15", border:"1px solid #16232f", borderRadius:8, lineHeight:1.6 }}>
-            Site owner: add <b style={{ color:"#8aa3b8", fontFamily:"'JetBrains Mono',monospace" }}>TWELVEDATA_API_KEY</b> in
+          <div style={{ fontSize:12.5, color:V.text4, margin:"0 0 8px", padding:"10px 14px",
+                        background:V.raised, border:"1px solid #16232f", borderRadius:8, lineHeight:1.6 }}>
+            Site owner: add <b style={{ color:V.text3, fontFamily:"'JetBrains Mono',monospace" }}>TWELVEDATA_API_KEY</b> in
             Vercel → Settings → Environment Variables, then redeploy.
           </div>
         )}
@@ -4360,27 +4447,27 @@ function SimpleHome({ brain, zones, zone, calendar, liveMode, dataStatus, nowMs,
         {/* One line, only when there is actually a time to avoid. */}
         {soon.length > 0 && (
           <button onClick={()=>flip("times")}
-            style={{ width:"100%", textAlign:"left", background:"#ffaa440c", border:"1px solid #ffaa4433", borderRadius:8,
+            style={{ width:"100%", textAlign:"left", background:V.warnBg, border:"1px solid #ffaa4433", borderRadius:8,
                      padding:"12px 14px", marginBottom:8, cursor:"pointer", fontFamily:"inherit",
-                     fontSize:13.5, color:"#ffcc88", lineHeight:1.6 }}>
+                     fontSize:13.5, color:V.warnText, lineHeight:1.6 }}>
             ⚠ Be careful at {fmt(soon[0].start)} — {soon[0].label.toLowerCase()}
-            <span style={{ color:"#8a7a5a" }}>{soon.length > 1 ? `  (+${soon.length - 1} more)` : ""}</span>
+            <span style={{ color:V.text4 }}>{soon.length > 1 ? `  (+${soon.length - 1} more)` : ""}</span>
           </button>
         )}
 
         {/* The list, when there is one. */}
         {best.length > 0 && (
-          <div style={{ border:"1px solid #16232f", background:"#080d13", borderRadius:10, padding:"6px 20px 14px", marginBottom:8 }}>
+          <div style={{ border:"1px solid #16232f", background:V.surface, borderRadius:10, padding:"6px 20px 14px", marginBottom:8 }}>
             {best.map((b, i) => (
               <div key={b.t} style={{ padding:"15px 0", borderTop: i ? "1px solid #12202c" : "none" }}>
                 <div style={{ display:"flex", alignItems:"baseline", gap:10, marginBottom:5, flexWrap:"wrap" }}>
-                  <span style={{ fontSize:19, fontWeight:800, color:"#eaf2ff" }}>{b.t}</span>
-                  <span style={{ fontSize:13.5, fontWeight:700, color: b.direction > 0 ? "#00ff88" : "#ff3355" }}>
+                  <span style={{ fontSize:19, fontWeight:800, color:V.text }}>{b.t}</span>
+                  <span style={{ fontSize:13.5, fontWeight:700, color: b.direction > 0 ? V.good : V.bad }}>
                     {b.direction > 0 ? "going up" : "going down"}
                   </span>
-                  <span style={{ fontSize:12.5, color:"#5f7c93" }}>{b.score}/100</span>
+                  <span style={{ fontSize:12.5, color:V.text4 }}>{b.score}/100</span>
                 </div>
-                <div style={{ fontSize:13.5, color:"#9bb3c6", lineHeight:1.65 }}>
+                <div style={{ fontSize:13.5, color:V.text3, lineHeight:1.65 }}>
                   {b.timing <= -1
                     ? "⚠ Too late. The move already happened. Chasing this is how beginners lose money."
                     : b.confidence < 60
@@ -4398,39 +4485,39 @@ function SimpleHome({ brain, zones, zone, calendar, liveMode, dataStatus, nowMs,
             <button key={o.id} onClick={()=>onMode(o.id)}
               style={{ flex:1, padding:"11px 0", borderRadius:7, cursor:"pointer", fontFamily:"inherit",
                        fontSize:13.5, fontWeight:600,
-                       color: mode===o.id ? "#eaf2ff" : "#5f7c93",
-                       background: mode===o.id ? "#0d1c26" : "transparent",
-                       border:`1px solid ${mode===o.id ? "#66ccff77" : "#16232f"}` }}>
+                       color: mode===o.id ? V.text : V.text4,
+                       background: mode===o.id ? V.chipBg : "transparent",
+                       border:`1px solid ${mode===o.id ? V.accentLine : V.line}` }}>
               {o.label}
             </button>
           ))}
         </div>
 
-        <Fold title="When to be careful today" open={fold==="times"} onToggle={()=>flip("times")}>
+        <Fold V={V} title="When to be careful today" open={fold==="times"} onToggle={()=>flip("times")}>
           {soon.length === 0 ? (
             <div>Nothing scheduled for the rest of today. Surprises are not on a calendar, though.</div>
           ) : soon.map((z, i) => (
             <div key={i} style={{ marginBottom:12 }}>
-              <div style={{ color:"#eaf2ff", fontWeight:600 }}>{fmt(z.start)} – {fmt(z.end)} · {z.label}</div>
+              <div style={{ color:V.text, fontWeight:600 }}>{fmt(z.start)} – {fmt(z.end)} · {z.label}</div>
               <div style={{ fontSize:13.5 }}>{z.note}</div>
             </div>
           ))}
-          <div style={{ fontSize:13, color:"#5f7c93", marginTop:8 }}>
+          <div style={{ fontSize:13, color:V.text4, marginTop:8 }}>
             All times are New York time. Worked out from the clock and the economic calendar —
             not a guess about price.
           </div>
         </Fold>
 
-        <Fold title="What do the words mean?" open={fold==="words"} onToggle={()=>flip("words")}>
+        <Fold V={V} title="What do the words mean?" open={fold==="words"} onToggle={()=>flip("words")}>
           {Object.entries(PLAIN).map(([k, v]) => (
             <div key={k} style={{ marginBottom:11 }}>
-              <span style={{ color:"#66ccff", fontWeight:700, textTransform:"uppercase", fontSize:12.5, letterSpacing:"0.05em" }}>{k}</span>
+              <span style={{ color:V.accent, fontWeight:700, textTransform:"uppercase", fontSize:12.5, letterSpacing:"0.05em" }}>{k}</span>
               <div style={{ fontSize:13.5 }}>{v}</div>
             </div>
           ))}
         </Fold>
 
-        <Fold title="How does it decide?" open={fold==="how"} onToggle={()=>flip("how")}>
+        <Fold V={V} title="How does it decide?" open={fold==="how"} onToggle={()=>flip("how")}>
           <div style={{ marginBottom:12 }}>Six checks. Each one has a ceiling, so no single check can run away with the score.</div>
           {[
             ["Trend", "Is it going somewhere? Up to 20 points."],
@@ -4441,22 +4528,22 @@ function SimpleHome({ brain, zones, zone, calendar, liveMode, dataStatus, nowMs,
             ["Liquidity", "Can you get back out? Up to 15 points, and too thin blocks it completely."],
           ].map(([k, v]) => (
             <div key={k} style={{ marginBottom:9 }}>
-              <span style={{ color:"#eaf2ff", fontWeight:600 }}>{k}</span> — {v}
+              <span style={{ color:V.text, fontWeight:600 }}>{k}</span> — {v}
             </div>
           ))}
           <div style={{ marginTop:12 }}>
             Three things then hold a score down: no clear direction, too thin to trade, or price has
-            already run too far. Any one of them caps it. This is built to say <b style={{color:"#c2d4e4"}}>no</b> more
+            already run too far. Any one of them caps it. This is built to say <b style={{color:V.text2}}>no</b> more
             often than it says yes.
           </div>
-          <div style={{ fontSize:13, color:"#5f7c93", marginTop:12 }}>
+          <div style={{ fontSize:13, color:V.text4, marginTop:12 }}>
             The same six checks are also written out as ThinkorSwim columns in the FINAL_V4 folder of
-            the project. That is a <b style={{color:"#8aa3b8"}}>reference</b> copy for checking the logic —
+            the project. That is a <b style={{color:V.text3}}>reference</b> copy for checking the logic —
             the app does not run it and does not need it.
           </div>
         </Fold>
 
-        <Fold title="Other tools" open={fold==="tools"} onToggle={()=>flip("tools")}>
+        <Fold V={V} title="Other tools" open={fold==="tools"} onToggle={()=>flip("tools")}>
           {[
             { k:"v4",     t:"The number grid", d:"Every score for every stock, in a table." },
             { k:"income", t:"Income lab",      d:"High-payout funds explained simply, with the catch shown as well as the payout." },
@@ -4466,20 +4553,20 @@ function SimpleHome({ brain, zones, zone, calendar, liveMode, dataStatus, nowMs,
             <button key={o.k} onClick={()=>onOpen(o.k)}
               style={{ display:"block", width:"100%", textAlign:"left", background:"transparent", border:"none",
                        borderBottom:"1px solid #12202c", padding:"11px 0", cursor:"pointer", fontFamily:"inherit" }}>
-              <div style={{ fontSize:14.5, fontWeight:600, color:"#eaf2ff" }}>{o.t} →</div>
-              <div style={{ fontSize:13, color:"#7591a8", lineHeight:1.6 }}>{o.d}</div>
+              <div style={{ fontSize:14.5, fontWeight:600, color:V.text }}>{o.t} →</div>
+              <div style={{ fontSize:13, color:V.text4, lineHeight:1.6 }}>{o.d}</div>
             </button>
           ))}
         </Fold>
 
-        <Fold title="What this cannot do" open={fold==="limits"} onToggle={()=>flip("limits")}>
+        <Fold V={V} title="What this cannot do" open={fold==="limits"} onToggle={()=>flip("limits")}>
           <ul style={{ margin:0, paddingLeft:18, lineHeight:2 }}>
             <li>It does not predict prices. It puts setups in order.</li>
             <li>A high score is not a guarantee. Plenty of high scores lose.</li>
             <li>It cannot know what a stock will do after news.</li>
             <li>It never places a trade and never touches your brokerage account.</li>
           </ul>
-          <div style={{ marginTop:12, fontSize:13, color:"#5f7c93" }}>
+          <div style={{ marginTop:12, fontSize:13, color:V.text4 }}>
             Education only. Not financial advice.
           </div>
         </Fold>
@@ -4528,6 +4615,13 @@ function App() {
   // Simple view is the default. Expert is the old dense layout, unchanged.
   const [uiMode,    setUiMode]    = useState(() => {
     try { return localStorage.getItem(SIMPLE_KEY) === "expert" ? "expert" : "simple"; } catch(_) { return "simple"; }
+  });
+  // "system" until the reader picks a side, so we follow the OS by default and
+  // never override an explicit choice.
+  const [theme,     setTheme]     = useState(() => {
+    let t = "system";
+    try { const v = localStorage.getItem(THEME_KEY); if (v === "light" || v === "dark") t = v; } catch(_){}
+    return applyTheme(t);
   });
   // True only when both paid keys were supplied. Everything else runs without them.
   const [liveMode,  setLiveMode]  = useState(false);
@@ -4772,6 +4866,16 @@ function App() {
 
   const setUi = m => { setUiMode(m); try { localStorage.setItem(SIMPLE_KEY, m); } catch(_){} };
 
+  // Toggling from "system" commits to whichever side is the opposite of what the
+  // reader is currently looking at, which is what they meant by pressing it.
+  const flipTheme = () => {
+    const showingLight = theme === "light"
+      || (theme === "system" && window.matchMedia?.("(prefers-color-scheme: light)").matches);
+    const next = showingLight ? "dark" : "light";
+    applyTheme(next); setTheme(next);
+    try { localStorage.setItem(THEME_KEY, next); } catch(_){}
+  };
+
   const manualFetch = () => { isFetching.current=false; setTimeout(()=>fetchRef.current?.(),100); };
   const savePos = (id,pos) => setPositions(p=>({...p,[id]:pos}));
   const toggle  = id => setOpenId(p=>p===id?null:id);
@@ -4869,7 +4973,7 @@ function App() {
   // expert view uses, opened as overlays, so there is exactly one implementation
   // of each and no chance of the two views disagreeing.
   if (uiMode === "simple") return (
-    <div style={{ fontFamily:"'Inter','Segoe UI',system-ui,sans-serif", background:"#05090e", height:"100vh", display:"flex", flexDirection:"column", overflow:"hidden", color:"#b0c4d8" }}>
+    <div style={{ fontFamily:"'Inter','Segoe UI',system-ui,sans-serif", background:"var(--bg)", height:"100vh", display:"flex", flexDirection:"column", overflow:"hidden", color:"var(--text-2)" }}>
       {showPoly && <PolyTab onClose={()=>setShowPoly(false)} markets={polyMarkets} catalystEvents={catalystEvents} now={nowMs}/>}
       {showIntel && <IntelTab onClose={()=>setShowIntel(false)} events={catalystEvents} feed={feed}
                               calendar={scheduled} macroRiskScore={brain.macroRisk} stats={intelStats}
@@ -4880,6 +4984,7 @@ function App() {
         brain={brain} zones={zones} zone={activeZone(zones, nowMs)} calendar={scheduled}
         liveMode={liveMode} dataStatus={barStatus} nowMs={nowMs} feed={scanFeed}
         mode={tradeMode} onMode={setTradeMode}
+        theme={theme} onTheme={flipTheme}
         onExpert={()=>setUi("expert")}
         onOpen={k => { if (k==="v4") setShowV4(true); else if (k==="income") setShowIncome(true);
                        else if (k==="intel") setShowIntel(true); else if (k==="poly") setShowPoly(true); }}/>
