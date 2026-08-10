@@ -4271,30 +4271,41 @@ function plainMarketRead(brain, zone, dataStatus) {
   const sev = zone?.severity || 0;
   const n = (brain.best || []).length;
   const st = dataStatus?.state;
+  // How many stocks actually have a score right now, from EITHER data path.
+  // The headline must key on this rather than on /api/bars alone: bar rows are
+  // retained across a refresh, and the paid options-flow feed scores tickers of
+  // its own. Keying on the endpoint status alone printed "No prices today" over
+  // a list of real setups whenever bars were down but the paid feed was live.
+  const scored = brain.sampleSize || 0;
   if (sev >= 2) return {
     light:"red",
     headline:"Do not start a trade right now.",
     what:`Big news is landing (${(zone.labels || []).join(", ")}). Prices jump around for reasons that have nothing to do with your setup. Wait.`,
   };
-  if (st === "loading" || st === "idle") return {
+  if (scored === 0 && (st === "loading" || st === "idle")) return {
     light:"grey", headline:"Getting today's prices…", what:"A few seconds.",
   };
-  if (st !== "ok") return {
+  if (scored === 0) return {
     light:"blue",
     headline:"No prices today.",
     what: dataStatus?.reason === "NO_PROVIDER_CONFIGURED"
       ? "The site owner has not added a price key yet, so there is nothing to score."
       : "Today's price download did not work. Try again later.",
   };
+  // Scores exist but the daily download is not healthy — say so, because these
+  // numbers are then either held over from earlier or came only from the paid feed.
+  const stale = st !== "ok" ? "Today's prices did not all arrive, so this is based on what we have." : "";
   if (n === 0) return {
     light:"amber",
     headline:"Nothing worth buying today.",
-    what:`Checked ${brain.sampleSize} stocks. None of them passed. Doing nothing is fine — most days look like this.`,
+    what:`Checked ${scored} stocks. None of them passed. Doing nothing is fine — most days look like this.`,
+    note: stale,
   };
   return {
     light:"green",
     headline:`${n} thing${n === 1 ? "" : "s"} to look at.`,
     what:"Worth a look is not the same as worth buying. Read the note under each one.",
+    note: stale,
   };
 }
 
@@ -4332,11 +4343,13 @@ function SimpleHome({ brain, zones, zone, calendar, liveMode, dataStatus, nowMs,
             {read.headline}
           </div>
           {read.what && <div style={{ fontSize:14.5, color:"#a9c0d2", lineHeight:1.7 }}>{read.what}</div>}
+          {read.note && <div style={{ fontSize:13, color:"#8aa3b8", lineHeight:1.7, marginTop:8 }}>{read.note}</div>}
         </div>
 
         {/* Shown only in the one state where the person reading this IS the person
-            who can fix it. One line, not a configuration panel. */}
-        {dataStatus?.reason === "NO_PROVIDER_CONFIGURED" && (
+            who can fix it, AND nothing is on screen for them to look at instead.
+            Alongside a working list it would be noise. One line, not a panel. */}
+        {dataStatus?.reason === "NO_PROVIDER_CONFIGURED" && (brain?.sampleSize || 0) === 0 && (
           <div style={{ fontSize:12.5, color:"#5f7c93", margin:"0 0 8px", padding:"10px 14px",
                         background:"#0a0f15", border:"1px solid #16232f", borderRadius:8, lineHeight:1.6 }}>
             Site owner: add <b style={{ color:"#8aa3b8", fontFamily:"'JetBrains Mono',monospace" }}>TWELVEDATA_API_KEY</b> in
