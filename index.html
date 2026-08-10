@@ -4293,6 +4293,46 @@ function readTheme() {
 
 const SIMPLE_KEY = "wsh_ui_mode_v1";
 const THEME_KEY  = "wsh_theme_v1";
+const MONEY_KEY  = "wsh_money_v1";
+
+// ── Position sizing ─────────────────────────────────────────────────────────
+// Given what someone is willing to put in, work out what they can actually take
+// on. This sizes the UNDERLYING SHARES only. It does not pick an options
+// contract, and it must not: docs/OPTIONS_TRADING_SCOPE.md Gate B requires a
+// live contract quote — real bid/ask, volume, open interest, fresh timestamp —
+// before any contract may be named, and no licensed options feed is connected.
+//
+// The stop distance is 1.5 x ATR. That is a stated convention for "further than
+// this stock's normal daily wiggle", NOT a prediction and NOT a guarantee: a gap
+// opens past a stop and the loss is larger than the number shown here.
+const STOP_ATR_MULT = 1.5;
+
+function sizeFor(v4, budget, riskPct) {
+  const price = Number(v4?.last), atrPct = Number(v4?.atrPct);
+  if (!(price > 0) || !(budget > 0)) return null;
+
+  const stopPerShare = atrPct > 0 ? price * (atrPct / 100) * STOP_ATR_MULT : null;
+  // Never round a zero result up to one — OPTIONS_TRADING_SCOPE.md calls this out
+  // explicitly, and it is the difference between "you cannot take this" and a
+  // position the person cannot actually afford.
+  const affordable = Math.floor(budget / price);
+  const riskCap    = budget * (riskPct / 100);
+  const byRisk     = stopPerShare ? Math.floor(riskCap / stopPerShare) : affordable;
+  const shares     = Math.max(0, Math.min(affordable, byRisk));
+
+  return {
+    price, shares, affordable, riskCap: +riskCap.toFixed(2),
+    cost: +(shares * price).toFixed(2),
+    stopPerShare: stopPerShare ? +stopPerShare.toFixed(2) : null,
+    stopPrice: stopPerShare ? +(price - stopPerShare).toFixed(2) : null,
+    atRisk: stopPerShare ? +(shares * stopPerShare).toFixed(2) : null,
+    fits: shares > 0,
+    // Why it does not fit, so the screen can say something useful instead of "no".
+    blocker: shares > 0 ? null : (affordable === 0 ? "PRICE" : "RISK"),
+  };
+}
+
+const usd = n => "$" + Number(n).toLocaleString("en-US", { maximumFractionDigits: 2 });
 
 // Plain-English translations. Concrete and physical on purpose — a picture beats
 // a definition. Every one of these is a word that appears on screen, so a reader
@@ -4388,7 +4428,7 @@ function applyTheme(mode) {
   return mode;
 }
 
-function SimpleHome({ brain, zones, zone, calendar, liveMode, dataStatus, nowMs, feed, onExpert, onOpen, mode, onMode, theme, onTheme }) {
+function SimpleHome({ brain, zones, zone, calendar, liveMode, dataStatus, nowMs, feed, onExpert, onOpen, mode, onMode, theme, onTheme, budget, riskPct, onMoney }) {
   const [fold, setFold] = useState(null);
   const flip = k => setFold(f => f === k ? null : k);
 
@@ -4399,7 +4439,15 @@ function SimpleHome({ brain, zones, zone, calendar, liveMode, dataStatus, nowMs,
 
   const read = plainMarketRead(brain, zone, dataStatus);
   const L = LIGHTS[read.light];
-  const best = (brain?.best || []).slice(0, 5);
+
+  // Size every candidate against the reader's money, then put what they can
+  // actually take first. A 95-score setup they cannot afford is not the best
+  // option FOR THEM — that is the whole point of asking.
+  const sized = (brain?.best || []).map(b => ({ ...b, size: sizeFor(b, budget, riskPct) }));
+  const best = (budget > 0
+    ? [...sized].sort((a, b) => (b.size?.fits ? 1 : 0) - (a.size?.fits ? 1 : 0))
+    : sized).slice(0, 5);
+  const fitCount = sized.filter(x => x.size?.fits).length;
   const soon = (zones || []).filter(z => z.end > nowMs && z.severity >= 2);
   const fmt = ts => new Date(ts).toLocaleTimeString("en-US", { hour:"numeric", minute:"2-digit", timeZone:"America/New_York" });
 
@@ -4455,6 +4503,32 @@ function SimpleHome({ brain, zones, zone, calendar, liveMode, dataStatus, nowMs,
           </button>
         )}
 
+        {/* The question that decides what "best" means for this reader. */}
+        <div style={{ border:`1px solid ${V.line}`, background:V.surface, borderRadius:10,
+                      padding:"14px 16px", marginBottom:8 }}>
+          <div style={{ display:"flex", alignItems:"center", gap:10, flexWrap:"wrap" }}>
+            <span style={{ fontSize:13.5, color:V.text2 }}>How much money are you using?</span>
+            <span style={{ fontSize:15, color:V.text3 }}>$</span>
+            <input inputMode="numeric" value={budget || ""} placeholder="500"
+              onChange={e => onMoney(e.target.value.replace(/[^0-9]/g, "").slice(0, 9), riskPct)}
+              style={{ width:96, background:V.raised, border:`1px solid ${V.line}`, color:V.text,
+                       padding:"7px 10px", fontSize:15, fontWeight:700, borderRadius:6, outline:"none" }}/>
+            <span style={{ fontSize:13.5, color:V.text2, marginLeft:4 }}>OK to lose per trade:</span>
+            <select value={riskPct} onChange={e => onMoney(budget, +e.target.value)}
+              style={{ background:V.raised, border:`1px solid ${V.line}`, color:V.text,
+                       padding:"7px 8px", fontSize:14, borderRadius:6, cursor:"pointer" }}>
+              {[1, 2, 5].map(v => <option key={v} value={v}>{v}%</option>)}
+            </select>
+          </div>
+          <div style={{ fontSize:12.5, color:V.text4, marginTop:9, lineHeight:1.6 }}>
+            {budget > 0
+              ? <>Kept on this device only. {fitCount === 0
+                  ? "Nothing on the list fits that amount right now."
+                  : `${fitCount} of these fit your ${usd(budget)}, and they are listed first.`}</>
+              : "Type an amount and each stock below will show what you can actually buy."}
+          </div>
+        </div>
+
         {/* The list, when there is one. */}
         {best.length > 0 && (
           <div style={{ border:"1px solid #16232f", background:V.surface, borderRadius:10, padding:"6px 20px 14px", marginBottom:8 }}>
@@ -4474,6 +4548,19 @@ function SimpleHome({ brain, zones, zone, calendar, liveMode, dataStatus, nowMs,
                       ? "The checks disagree. Treat it as a maybe, not a plan."
                       : "The checks agree and it has not run too far yet."}
                 </div>
+                {b.size && (
+                  <div style={{ fontSize:13, marginTop:7, lineHeight:1.7,
+                                color: b.size.fits ? V.text2 : V.text4 }}>
+                    {b.size.fits ? (
+                      <>
+                        <b style={{ color:V.text }}>{b.size.shares} share{b.size.shares===1?"":"s"}</b> at {usd(b.size.price)} = {usd(b.size.cost)}.
+                        {b.size.atRisk !== null && <> If it drops to {usd(b.size.stopPrice)} you would be out about <b style={{ color:V.text }}>{usd(b.size.atRisk)}</b>.</>}
+                      </>
+                    ) : b.size.blocker === "PRICE"
+                      ? <>Costs {usd(b.size.price)} a share — more than your {usd(budget)}.</>
+                      : <>Too jumpy for your limit. One share alone could lose {usd(b.size.stopPerShare)}.</>}
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -4535,6 +4622,13 @@ function SimpleHome({ brain, zones, zone, calendar, liveMode, dataStatus, nowMs,
             Three things then hold a score down: no clear direction, too thin to trade, or price has
             already run too far. Any one of them caps it. This is built to say <b style={{color:V.text2}}>no</b> more
             often than it says yes.
+          </div>
+          <div style={{ fontSize:13, color:V.text3, marginTop:12, lineHeight:1.7 }}>
+            <b style={{color:V.text2}}>About the money numbers.</b> The "you would be out about"
+            figure uses a sell point one and a half times the stock's normal daily swing below your
+            buy price. That is a rule of thumb, not a promise — if the price jumps straight past it
+            overnight you lose more. It sizes <b style={{color:V.text2}}>shares only</b>, never
+            options contracts, because naming a contract needs live option prices this app does not have.
           </div>
           <div style={{ fontSize:13, color:V.text4, marginTop:12 }}>
             The same six checks are also written out as ThinkorSwim columns in the FINAL_V4 folder of
@@ -4618,6 +4712,13 @@ function App() {
   });
   // "system" until the reader picks a side, so we follow the OS by default and
   // never override an explicit choice.
+  // Stays on the device. This is someone's account size — it has no business
+  // leaving the browser, and there is no server to send it to anyway.
+  const [moneyPrefs, setMoneyState] = useState(() => {
+    try { const v = JSON.parse(localStorage.getItem(MONEY_KEY) || "{}");
+          return { budget: Number(v.budget) || 0, riskPct: [1,2,5].includes(v.riskPct) ? v.riskPct : 2 }; }
+    catch(_) { return { budget: 0, riskPct: 2 }; }
+  });
   const [theme,     setTheme]     = useState(() => {
     let t = "system";
     try { const v = localStorage.getItem(THEME_KEY); if (v === "light" || v === "dark") t = v; } catch(_){}
@@ -4868,6 +4969,12 @@ function App() {
 
   // Toggling from "system" commits to whichever side is the opposite of what the
   // reader is currently looking at, which is what they meant by pressing it.
+  const setMoneyPrefs = (budget, riskPct) => {
+    const next = { budget: Number(budget) || 0, riskPct: [1,2,5].includes(riskPct) ? riskPct : 2 };
+    setMoneyState(next);
+    try { localStorage.setItem(MONEY_KEY, JSON.stringify(next)); } catch(_){}
+  };
+
   const flipTheme = () => {
     const showingLight = theme === "light"
       || (theme === "system" && window.matchMedia?.("(prefers-color-scheme: light)").matches);
@@ -4985,6 +5092,7 @@ function App() {
         liveMode={liveMode} dataStatus={barStatus} nowMs={nowMs} feed={scanFeed}
         mode={tradeMode} onMode={setTradeMode}
         theme={theme} onTheme={flipTheme}
+        budget={moneyPrefs.budget} riskPct={moneyPrefs.riskPct} onMoney={setMoneyPrefs}
         onExpert={()=>setUi("expert")}
         onOpen={k => { if (k==="v4") setShowV4(true); else if (k==="income") setShowIncome(true);
                        else if (k==="intel") setShowIntel(true); else if (k==="poly") setShowPoly(true); }}/>

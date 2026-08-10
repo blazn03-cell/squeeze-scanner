@@ -50,3 +50,31 @@ If this returns zero, the correct result is **skip**. Short/naked options and un
 - The alert is evaluated from a completed bar; audible delivery may be later and actual receipt time must be logged.
 
 An alert is a rules match, not confirmation that the trade is “right.” Forward outcomes, costs and adverse excursion must be measured after every eligible signal.
+
+## Position sizing in the app
+
+The simple view asks how much money the reader is using and how much they are
+willing to lose on one trade, then sizes each candidate against that.
+
+It sizes **shares of the underlying only.** It never names an option contract,
+because Gate B above cannot be satisfied without a live contract quote source,
+and none is connected. The scope note is shown to the reader in the app, not just
+recorded here.
+
+Rules the implementation follows:
+
+- **A zero result is never rounded up to one.** If the budget does not cover a
+  single share, the answer is zero and the screen says why.
+- **Two independent limits**, and the smaller wins: what the budget can buy, and
+  what the stated risk-per-trade allows.
+- **The stop distance is 1.5 × ATR** — a stated convention meaning "further than
+  this stock's normal daily swing", not a prediction. The app says so in plain
+  words, and says that a gap through the stop loses more than the figure shown.
+- **No ATR, no risk figure.** If volatility is unavailable the app sizes on the
+  budget alone and reports no dollars-at-risk rather than inventing one.
+- **The amount never leaves the device.** It is kept in localStorage; there is no
+  server to send it to.
+
+Ranking follows from this: a high-scoring setup the reader cannot afford is not
+the best option *for them*, so affordable candidates are listed first and the
+rest carry the reason they were excluded.
