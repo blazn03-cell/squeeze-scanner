@@ -78,3 +78,31 @@ Rules the implementation follows:
 Ranking follows from this: a high-scoring setup the reader cannot afford is not
 the best option *for them*, so affordable candidates are listed first and the
 rest carry the reason they were excluded.
+
+## 0DTE and 1DTE
+
+Both terms are explained in the app. Neither is offered as a pick.
+
+**The horizon argument.** The engine reads one bar per day and
+`FINAL_V4/DOCUMENTATION/V4_PARAMETER_STANDARD.md` states the intended holding
+period as **1-3 days**. A 0DTE contract resolves inside a single bar the model
+cannot see, so the score carries no information about its outcome. The app says
+this in those words and marks 0DTE `OUTSIDE`.
+
+1DTE is marked `EDGE`: it is the shortest expiry that overlaps the 1-3 day window
+at all, and only just. Where the two are compared, the app says 1DTE is "the less
+wrong one — not because it wins more", because no win-rate claim is supported.
+
+**Expiry-day calendar.** The app checks whether the expiry day carries a
+rule-derived event — Jobless Claims, Nonfarm Payrolls, monthly opex, triple
+witching — and warns if so.
+
+It cannot check FOMC or CPI. Those come from `MACRO_SEED`, which ships empty
+because the dates are published rather than derivable. `expiryRisk()` therefore
+returns `blind: true` unconditionally, and the app states that a quiet calendar
+is **not** an all-clear and points the reader at the official schedule. Removing
+that disclosure would turn a known gap into an implied safety claim.
+
+**Contract sizing** uses the fail-closed formula above on a debit the reader
+types in from their own broker screen. The app sources no quote, names no
+contract, and returns **skip** at zero rather than rounding up.

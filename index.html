@@ -4334,6 +4334,72 @@ function sizeFor(v4, budget, riskPct) {
 
 const usd = n => "$" + Number(n).toLocaleString("en-US", { maximumFractionDigits: 2 });
 
+// ── Expiry horizons ─────────────────────────────────────────────────────────
+// The engine is a DAILY-BAR model. FINAL_V4/DOCUMENTATION/V4_PARAMETER_STANDARD.md:
+// "Daily is the default and the ceiling ... the intended holding period is 1-3
+// days." A 0DTE contract resolves in hours, inside a single bar the model cannot
+// see. So the scanner's score carries no information about a 0DTE outcome, and
+// the app says exactly that rather than letting the number imply otherwise.
+const SIGNAL_HOLD_DAYS = [1, 3];
+
+const DTE_INFO = {
+  0: { label:"0DTE — expires today",
+       plain:"The contract dies at the closing bell today. Minutes matter, and it can go to zero while you are looking away.",
+       verdict:"OUTSIDE",
+       why:"This scanner reads one bar per day and is built for 1-3 day moves. It has nothing to say about what happens in the next few hours." },
+  1: { label:"1DTE — expires tomorrow",
+       plain:"The contract dies at tomorrow's closing bell. Still fast, but an overnight move can work in your favour.",
+       verdict:"EDGE",
+       why:"This is the shortest expiry that overlaps the 1-3 day window the signal is built for, and it only just overlaps." },
+};
+
+// Which scheduled events land on the day a short-dated contract expires. Only
+// rule-derived events are available here — jobless claims, NFP, opex, triple
+// witching. FOMC and CPI are NOT: they come from MACRO_SEED, which ships empty
+// because those dates are published, not derivable, and inventing them would be
+// worse than omitting them.
+//
+// So this returns `blind: true` alongside any hits. A quiet calendar must never
+// be presented as an all-clear — the absence of a warning here means "nothing
+// this app can derive", not "nothing is happening".
+function expiryRisk(scheduled, nowMs, dteDays) {
+  const target = new Date(nowMs + dteDays * 86400000);
+  const t = etParts(target);
+  const hits = (scheduled || []).filter(e => {
+    const p = etParts(new Date(e.ts));
+    return p.y === t.y && p.m === t.m && p.d === t.d;
+  }).filter(e => e.importance === "CRITICAL" || e.importance === "HIGH" || e.importance === "MEDIUM");
+  return {
+    day: `${t.y}-${String(t.m).padStart(2,"0")}-${String(t.d).padStart(2,"0")}`,
+    hits,
+    worst: hits.some(h => h.importance === "CRITICAL") ? "CRITICAL"
+         : hits.some(h => h.importance === "HIGH") ? "HIGH"
+         : hits.length ? "MEDIUM" : "NONE",
+    // Always true: the app cannot see central-bank or inflation dates.
+    blind: true,
+  };
+}
+
+// Contract sizing, implementing docs/OPTIONS_TRADING_SCOPE.md verbatim:
+//   contracts = floor(max_dollar_risk / (option_debit * 100 + estimated_costs))
+//   "If this returns zero, the correct result is skip."
+// The reader supplies the debit from their own broker screen. This function does
+// arithmetic on a quote it was given; it never sources, chooses or names a
+// contract, which Gate B forbids without a licensed options quote feed.
+function contractsFor(maxRisk, debitPerShare, costPerContract = 0) {
+  const risk = Number(maxRisk), debit = Number(debitPerShare), cost = Number(costPerContract) || 0;
+  if (!(risk > 0) || !(debit > 0)) return null;
+  const perContract = debit * 100 + cost;
+  const contracts = Math.floor(risk / perContract);
+  return {
+    perContract: +perContract.toFixed(2),
+    contracts,
+    // Max loss on a long option is the debit paid plus costs — the doc's wording.
+    maxLoss: +(contracts * perContract).toFixed(2),
+    skip: contracts === 0,
+  };
+}
+
 // Plain-English translations. Concrete and physical on purpose — a picture beats
 // a definition. Every one of these is a word that appears on screen, so a reader
 // never has to look anything up somewhere else.
@@ -4349,6 +4415,8 @@ const PLAIN = {
   trend:      "The direction the price has been walking for a while.",
   support:    "A price the stock keeps bouncing up off, like a floor.",
   resistance: "A price the stock keeps getting blocked at, like a ceiling.",
+  "0DTE":     "An options contract that expires today. Hours of life left.",
+  "1DTE":     "An options contract that expires tomorrow.",
 };
 
 // Everything that is not the answer to "what do I do right now" lives behind one
@@ -4430,6 +4498,8 @@ function applyTheme(mode) {
 
 function SimpleHome({ brain, zones, zone, calendar, liveMode, dataStatus, nowMs, feed, onExpert, onOpen, mode, onMode, theme, onTheme, budget, riskPct, onMoney }) {
   const [fold, setFold] = useState(null);
+  const [dte, setDte]     = useState(1);        // 1DTE first: it is the one that overlaps the signal
+  const [debit, setDebit] = useState("");       // the reader reads this off their own broker
   const flip = k => setFold(f => f === k ? null : k);
 
   // Re-read whenever the theme changes. applyTheme has already set the attribute
@@ -4635,6 +4705,112 @@ function SimpleHome({ brain, zones, zone, calendar, liveMode, dataStatus, nowMs,
             the project. That is a <b style={{color:V.text3}}>reference</b> copy for checking the logic —
             the app does not run it and does not need it.
           </div>
+        </Fold>
+
+        <Fold V={V} title="Trading these with options?  ⚠ HIGH RISK" open={fold==="dte"} onToggle={()=>flip("dte")}>
+          <div style={{ background:V.bad+"14", border:`1px solid ${V.bad}55`, borderRadius:8,
+                        padding:"12px 14px", marginBottom:14 }}>
+            <div style={{ color:V.bad, fontWeight:800, fontSize:14, letterSpacing:"0.04em", marginBottom:5 }}>
+              ⚠ HIGH RISK
+            </div>
+            <div style={{ fontSize:13.5, lineHeight:1.7, color:V.text2 }}>
+              Contracts expiring this week are the fastest way to lose everything you put in.
+              The whole amount can go to zero, and it can happen in one day. Nothing on this
+              screen changes that. Read all of this before you buy one.
+            </div>
+          </div>
+
+          {[0, 1].map(d => {
+            const info = DTE_INFO[d];
+            const outside = info.verdict === "OUTSIDE";
+            return (
+              <div key={d} style={{ marginBottom:12, paddingLeft:12,
+                                    borderLeft:`2px solid ${outside ? V.bad : V.warn}` }}>
+                <div style={{ color:V.text, fontWeight:700, fontSize:14 }}>{info.label}</div>
+                <div style={{ fontSize:13.5, marginBottom:4 }}>{info.plain}</div>
+                <div style={{ fontSize:13, color: outside ? V.bad : V.warnText }}>
+                  {outside ? "✕ This scanner cannot help you here. " : "△ Tightest expiry this signal reaches. "}
+                  {info.why}
+                </div>
+                {(() => {
+                  const risk = expiryRisk(calendar, nowMs, d);
+                  if (!risk.hits.length) return null;
+                  return (
+                    <div style={{ fontSize:13, color:V.bad, marginTop:5, lineHeight:1.6 }}>
+                      📅 <b>Bad day to expire:</b> {risk.hits.map(h => h.name).join(", ")}. Scheduled news
+                      moves prices in a way no chart predicts, and a contract dying that day has no time to recover.
+                    </div>
+                  );
+                })()}
+              </div>
+            );
+          })}
+
+          <div style={{ background:V.raised, border:`1px solid ${V.line}`, borderRadius:8,
+                        padding:"12px 14px", margin:"14px 0", fontSize:13.5, lineHeight:1.7 }}>
+            <b style={{ color:V.text }}>So between the two, 1DTE is the less wrong one</b> — not because
+            it wins more, but because it is the only one that overlaps the {SIGNAL_HOLD_DAYS[0]}–{SIGNAL_HOLD_DAYS[1]} day
+            window these scores are built for. A same-day contract is a bet on the next few hours, and
+            nothing on this screen measures the next few hours.
+          </div>
+
+          <div style={{ fontSize:13, color:V.warnText, background:V.warnBg, border:`1px solid ${V.warnLine}`,
+                        borderRadius:8, padding:"12px 14px", marginBottom:14, lineHeight:1.7 }}>
+            📅 <b>Days this app cannot see.</b> It works out Jobless Claims, the jobs report,
+            and options expiration days by the calendar rules, and it will warn you above if your
+            expiry lands on one. It does <b>not</b> know Fed announcement days or inflation report
+            days — those are published dates, not something that can be worked out, and no list has
+            been loaded. <b>A quiet calendar here does not mean it is safe.</b> Check the official
+            schedule yourself before buying anything that expires this week.
+          </div>
+
+          <div style={{ fontSize:13, color:V.warnText, background:V.warnBg, border:`1px solid ${V.warnLine}`,
+                        borderRadius:8, padding:"12px 14px", marginBottom:14, lineHeight:1.7 }}>
+            ⚠ <b>Check your own broker's expiry-day rules before you hold one.</b> Brokers commonly
+            close in-the-money contracts for you near the closing bell if your account could not cover
+            being assigned the shares — and the price you get is whatever is there at that moment, not
+            one you chose. That risk is at its worst on the last day, which is another reason a
+            same-day contract is the hardest one to hold. Rules differ by broker and change, so read
+            yours rather than trusting a summary.
+          </div>
+
+          <div style={{ color:V.text, fontWeight:700, fontSize:14, marginBottom:6 }}>How many could you buy?</div>
+          <div style={{ fontSize:13, marginBottom:10 }}>
+            Look up the contract in your broker and type what it costs per share. This app cannot look
+            it up for you — it has no options price feed, so it will not name a contract.
+          </div>
+          <div style={{ display:"flex", alignItems:"center", gap:8, flexWrap:"wrap", marginBottom:10 }}>
+            <select value={dte} onChange={e=>setDte(+e.target.value)}
+              style={{ background:V.surface, border:`1px solid ${V.line}`, color:V.text, padding:"7px 8px", fontSize:13.5, borderRadius:6, cursor:"pointer" }}>
+              <option value={1}>1DTE</option>
+              <option value={0}>0DTE</option>
+            </select>
+            <span style={{ fontSize:13.5 }}>costs</span>
+            <span style={{ fontSize:14, color:V.text3 }}>$</span>
+            <input inputMode="decimal" value={debit} placeholder="2.50"
+              onChange={e=>setDebit(e.target.value.replace(/[^0-9.]/g,"").slice(0,8))}
+              style={{ width:80, background:V.surface, border:`1px solid ${V.line}`, color:V.text,
+                       padding:"7px 10px", fontSize:14, fontWeight:700, borderRadius:6, outline:"none" }}/>
+            <span style={{ fontSize:13.5 }}>a share</span>
+          </div>
+          {(() => {
+            const cap = budget > 0 ? budget * (riskPct / 100) : 0;
+            if (!(cap > 0)) return <div style={{ fontSize:13, color:V.text4 }}>Enter your amount at the top first.</div>;
+            const c = contractsFor(cap, debit);
+            if (!c) return <div style={{ fontSize:13, color:V.text4 }}>Type the price above and this works out the rest.</div>;
+            return (
+              <div style={{ fontSize:13.5, lineHeight:1.75 }}>
+                One contract covers 100 shares, so it costs <b style={{color:V.text}}>{usd(c.perContract)}</b>.
+                {c.skip
+                  ? <> With {usd(cap)} to risk, that is <b style={{color:V.bad}}>zero contracts — skip it.</b> Buying one anyway
+                      would put {usd(c.perContract)} at risk, more than you said you were willing to lose.</>
+                  : <> With {usd(cap)} to risk you could buy <b style={{color:V.text}}>{c.contracts}</b>, and
+                      the most you could lose is <b style={{color:V.text}}>{usd(c.maxLoss)}</b> — the whole
+                      thing, if it expires worthless.</>}
+                {dte === 0 && <div style={{ color:V.bad, marginTop:6 }}>Reminder: the score above says nothing about a contract expiring today.</div>}
+              </div>
+            );
+          })()}
         </Fold>
 
         <Fold V={V} title="Other tools" open={fold==="tools"} onToggle={()=>flip("tools")}>
