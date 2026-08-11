@@ -1,0 +1,580 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>APEX V4 — Quantitative Scanner</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg:      #0d1117; --surface: #161b22; --surface2: #1c2128;
+      --border:  #21262d; --border2: #30363d;
+      --text:    #e6edf3; --muted:   #7d8590; --dim:     #484f58;
+      --green:   #3fb950; --red:     #f85149; --blue:    #58a6ff;
+      --yellow:  #d29922; --purple:  #bc8cff; --orange:  #f0883e;
+    }
+    html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 13px; line-height: 1.5; }
+    button { font-family: inherit; cursor: pointer; }
+    ::-webkit-scrollbar { width: 5px; height: 5px; }
+    ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+
+    /* ── FULL-PAGE LAYOUT ── */
+    #app { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+
+    /* ── TOP NAV ── */
+    #nav {
+      display: flex; align-items: stretch; height: 48px; flex-shrink: 0;
+      background: var(--surface); border-bottom: 1px solid var(--border);
+      padding: 0 16px; gap: 0;
+    }
+    #nav-brand {
+      display: flex; align-items: center; font-size: 15px; font-weight: 800;
+      letter-spacing: -.02em; color: var(--text); margin-right: 16px; flex-shrink: 0;
+    }
+    #nav-brand span { color: var(--blue); margin-left: 3px; }
+
+    /* Page tabs in nav */
+    .page-tab {
+      display: flex; align-items: center; padding: 0 14px; height: 100%;
+      background: transparent; border: none; border-bottom: 2px solid transparent;
+      color: var(--muted); font-size: 12px; font-weight: 500; cursor: pointer;
+      transition: color .12s; white-space: nowrap; flex-shrink: 0;
+    }
+    .page-tab:hover { color: var(--text); }
+    .page-tab.active { border-color: var(--blue); color: var(--text); font-weight: 600; }
+
+    #nav-right {
+      margin-left: auto; display: flex; align-items: center; gap: 10px;
+      font-size: 11px; color: var(--muted); flex-shrink: 0;
+    }
+    .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--dim); flex-shrink: 0; }
+    .dot.live    { background: var(--green); box-shadow: 0 0 5px var(--green); }
+    .dot.loading { background: var(--yellow); animation: pulse 1s infinite; }
+
+    /* ── FILTER BAR ── */
+    #filter-bar {
+      display: flex; align-items: center; flex-shrink: 0;
+      background: var(--surface); border-bottom: 1px solid var(--border);
+      height: 40px;
+    }
+
+    /* Scrollable view-tab strip */
+    #view-tabs {
+      display: flex; align-items: stretch; overflow-x: auto; flex: 1; min-width: 0;
+      scrollbar-width: none; /* Firefox */
+    }
+    #view-tabs::-webkit-scrollbar { display: none; }
+
+    .view-tab {
+      display: flex; align-items: center; padding: 0 14px; height: 100%;
+      background: transparent; border: none; border-bottom: 2px solid transparent;
+      color: var(--muted); font-size: 11px; font-weight: 600; letter-spacing: .04em;
+      cursor: pointer; white-space: nowrap; flex-shrink: 0; transition: color .12s;
+    }
+    .view-tab:hover { color: var(--text); background: rgba(255,255,255,.03); }
+    .view-tab.active { border-color: var(--blue); color: var(--blue); }
+
+    /* Right side of filter bar */
+    #filter-right {
+      display: flex; align-items: center; gap: 8px; padding: 0 12px;
+      border-left: 1px solid var(--border); flex-shrink: 0;
+    }
+    #search {
+      padding: 4px 9px; border: 1px solid var(--border); border-radius: 5px;
+      background: var(--surface2); color: var(--text); font-size: 12px;
+      width: 110px; outline: none; font-family: inherit;
+    }
+    #search:focus { border-color: var(--blue); }
+    #scan-btn {
+      padding: 5px 14px; border-radius: 5px; border: 1px solid var(--green);
+      background: rgba(63,185,80,.12); color: var(--green); font-size: 11px;
+      font-weight: 700; cursor: pointer; white-space: nowrap;
+    }
+    #scan-btn:hover { background: rgba(63,185,80,.22); }
+    #scan-btn:disabled { opacity: .5; cursor: not-allowed; }
+    #scan-status { font-size: 10px; color: var(--muted); white-space: nowrap; max-width: 160px; overflow: hidden; text-overflow: ellipsis; }
+
+    /* ── ERROR BAR ── */
+    #error-bar {
+      padding: 7px 16px; background: rgba(248,81,73,.1); border-bottom: 1px solid rgba(248,81,73,.3);
+      color: var(--red); font-size: 12px; display: none; flex-shrink: 0;
+    }
+
+    /* ── CONTENT AREA ── */
+    #content { flex: 1; display: flex; overflow: hidden; min-height: 0; }
+
+    /* ── SCANNER PAGE ── */
+    #scanner-page { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-height: 0; }
+    #table-wrap { flex: 1; overflow: auto; min-height: 0; }
+
+    table { width: 100%; border-collapse: collapse; min-width: 860px; }
+    thead th {
+      position: sticky; top: 0; z-index: 2;
+      background: var(--surface); padding: 8px 10px;
+      text-align: left; font-size: 10px; font-weight: 700; color: var(--muted);
+      letter-spacing: .08em; text-transform: uppercase;
+      border-bottom: 1px solid var(--border); white-space: nowrap;
+      cursor: pointer; user-select: none;
+    }
+    thead th:hover { color: var(--text); }
+    thead th.sorted { color: var(--blue); }
+    thead th .arr { margin-left: 3px; opacity: .5; }
+    tbody tr { border-bottom: 1px solid var(--border); cursor: pointer; transition: background .08s; }
+    tbody tr:hover { background: var(--surface2); }
+    tbody tr.expanded { background: var(--surface2); }
+    td { padding: 8px 10px; font-size: 12px; vertical-align: middle; }
+    td.sym { font-size: 13px; font-weight: 700; font-family: monospace; }
+
+    .pill {
+      display: inline-flex; align-items: center; padding: 2px 6px; border-radius: 4px;
+      font-size: 10px; font-weight: 700; letter-spacing: .03em; white-space: nowrap;
+    }
+    .num { font-family: monospace; font-weight: 600; }
+
+    /* ── EXPAND DRAWER ── */
+    .detail-row td { padding: 0; }
+    .detail-inner {
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(160px,1fr));
+      gap: 1px; background: var(--border); border-top: 1px solid var(--border);
+    }
+    .dc { background: var(--surface2); padding: 10px 14px; }
+    .dc-label { font-size: 9px; color: var(--muted); font-weight: 700; letter-spacing: .1em; text-transform: uppercase; margin-bottom: 4px; }
+    .dc-val   { font-size: 14px; font-weight: 700; }
+    .dc-sub   { font-size: 10px; color: var(--muted); margin-top: 2px; }
+
+    /* ── EMPTY STATE ── */
+    #empty {
+      flex: 1; display: flex; flex-direction: column; align-items: center;
+      justify-content: center; gap: 12px; color: var(--muted); padding: 40px;
+    }
+    #empty h2 { font-size: 16px; color: var(--text); }
+
+    /* ── DETAIL PAGE (symbol lookup) ── */
+    #detail-page {
+      flex: 1; display: none; flex-direction: column; overflow: hidden;
+      padding: 0;
+    }
+    #detail-page.active { display: flex; }
+
+    #dp-search-bar {
+      display: flex; align-items: center; gap: 10px; padding: 12px 20px;
+      border-bottom: 1px solid var(--border); flex-shrink: 0;
+    }
+    #dp-ticker-input {
+      padding: 7px 12px; border: 1px solid var(--border2); border-radius: 6px;
+      background: var(--surface2); color: var(--text); font-size: 13px;
+      outline: none; font-family: monospace; width: 160px; text-transform: uppercase;
+    }
+    #dp-ticker-input:focus { border-color: var(--blue); }
+    #dp-lookup-btn {
+      padding: 7px 14px; border-radius: 6px; border: 1px solid var(--blue);
+      background: rgba(88,166,255,.1); color: var(--blue); font-size: 12px;
+      font-weight: 700; cursor: pointer;
+    }
+    #dp-lookup-btn:hover { background: rgba(88,166,255,.2); }
+
+    #dp-body-wrap { flex: 1; overflow: auto; padding: 20px; }
+    #dp-content { max-width: 700px; }
+    #dp-header { margin-bottom: 20px; }
+    #dp-header h2 { font-size: 22px; font-weight: 800; display: inline; }
+    #dp-header .dp-price { font-size: 16px; color: var(--muted); margin-left: 10px; }
+
+    .dp-section { margin-bottom: 20px; }
+    .dp-section h3 {
+      font-size: 9px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase;
+      color: var(--muted); margin-bottom: 8px; padding-bottom: 6px; border-bottom: 1px solid var(--border);
+    }
+    .dp-row {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 6px 0; border-bottom: 1px solid var(--border);
+    }
+    .dp-label { font-size: 12px; color: var(--muted); }
+    .dp-value { font-size: 12px; font-weight: 700; }
+
+    #dp-placeholder { color: var(--muted); padding: 40px 0; }
+  </style>
+</head>
+<body>
+<div id="app">
+
+  <!-- TOP NAV -->
+  <nav id="nav">
+    <div id="nav-brand">APEX<span>V4</span></div>
+    <button class="page-tab active" data-page="scanner">Scanner</button>
+    <button class="page-tab" data-page="detail">Symbol Detail</button>
+    <div id="nav-right">
+      <div class="dot" id="dot"></div>
+      <span id="status-text">Idle</span>
+      <span id="credits-text" style="color:var(--dim)"></span>
+    </div>
+  </nav>
+
+  <!-- FILTER BAR (scanner only) -->
+  <div id="filter-bar">
+    <div id="view-tabs">
+      <button class="view-tab active" data-view="">ALL</button>
+      <button class="view-tab" data-view="master">MASTER</button>
+      <button class="view-tab" data-view="apex_long">APEX LONG</button>
+      <button class="view-tab" data-view="apex_short">APEX SHORT</button>
+      <button class="view-tab" data-view="breakout">BREAKOUT</button>
+      <button class="view-tab" data-view="squeeze_fire">SQZ FIRE</button>
+      <button class="view-tab" data-view="high_rvol">HIGH RVOL</button>
+      <button class="view-tab" data-view="early_entry">EARLY</button>
+      <button class="view-tab" data-view="momentum">MOMENTUM</button>
+      <button class="view-tab" data-view="reversal">REVERSAL</button>
+    </div>
+    <div id="filter-right">
+      <input id="search" placeholder="Filter…" autocomplete="off"/>
+      <button id="scan-btn">&#9654; Run Scan</button>
+      <span id="scan-status"></span>
+    </div>
+  </div>
+
+  <!-- ERROR BAR -->
+  <div id="error-bar"></div>
+
+  <!-- CONTENT -->
+  <div id="content">
+
+    <!-- SCANNER PAGE -->
+    <div id="scanner-page">
+      <div id="table-wrap">
+        <table id="results-table">
+          <thead>
+            <tr>
+              <th data-col="symbol">SYMBOL<span class="arr">↕</span></th>
+              <th data-col="price">LAST<span class="arr">↕</span></th>
+              <th data-col="apexScore">APEX<span class="arr">↕</span></th>
+              <th data-col="direction">DIR<span class="arr">↕</span></th>
+              <th data-col="confidence">CONF<span class="arr">↕</span></th>
+              <th data-col="stable">STABLE<span class="arr">↕</span></th>
+              <th data-col="atrPct">ATR%<span class="arr">↕</span></th>
+              <th data-col="relVol">RVOL<span class="arr">↕</span></th>
+              <th data-col="darvasState">DARVAS<span class="arr">↕</span></th>
+              <th data-col="sqzState">SQZ<span class="arr">↕</span></th>
+              <th data-col="flow">FLOW<span class="arr">↕</span></th>
+              <th data-col="spreadPct">SPREAD<span class="arr">↕</span></th>
+              <th data-col="earningsRisk">ERN<span class="arr">↕</span></th>
+            </tr>
+          </thead>
+          <tbody id="tbody"></tbody>
+        </table>
+        <div id="empty" style="display:none">
+          <div style="font-size:40px">&#128225;</div>
+          <h2>No data yet</h2>
+          <p>Click <strong>&#9654; Run Scan</strong> to score your universe.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- DETAIL PAGE -->
+    <div id="detail-page">
+      <div id="dp-search-bar">
+        <input id="dp-ticker-input" placeholder="AAPL" autocomplete="off" spellcheck="false"/>
+        <button id="dp-lookup-btn">Look Up</button>
+      </div>
+      <div id="dp-body-wrap">
+        <div id="dp-content">
+          <div id="dp-placeholder">Enter a ticker above and press Look Up or Enter.</div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /content -->
+</div><!-- /app -->
+
+<script>
+// ─── STATE ─────────────────────────────────────────────────────────────────────────────
+let allResults = [];
+let sortCol = 'apexScore';
+let sortAsc  = false;
+let activeView = '';
+let searchQ    = '';
+let expandedId = null;
+
+// ─── UTILS ──────────────────────────────────────────────────────────────────────────────
+const $  = id  => document.getElementById(id);
+const fN = v   => v == null ? '—' : typeof v === 'number' ? v.toFixed(2) : v;
+const fP = v   => v == null ? '—' : (+v).toFixed(1) + '%';
+const fI = v   => v == null ? '—' : Math.round(v);
+
+function apiFetch(url, opts) {
+  return fetch(url, opts).then(r => {
+    if (!r.ok) return r.json().then(e => { throw new Error(e.error || 'HTTP ' + r.status); });
+    return r.json();
+  });
+}
+function showError(msg) {
+  const b = $('error-bar'); b.textContent = '⚠ ' + msg; b.style.display = 'block';
+  setTimeout(() => b.style.display = 'none', 8000);
+}
+function setStatus(state, text) {
+  $('dot').className = 'dot' + (state === 'live' ? ' live' : state === 'loading' ? ' loading' : '');
+  $('status-text').textContent = text;
+}
+
+// ─── COLORS / LABELS ───────────────────────────────────────────────────────────────────────
+function scoreColor(v, hi=80, mid=55) {
+  return v >= hi ? 'var(--green)' : v >= mid ? 'var(--yellow)' : 'var(--muted)';
+}
+function dirLabel(d) {
+  if (d ==  2) return ['▲▲ STRONG', 'var(--green)'];
+  if (d ==  1) return ['▲ BULL',    'var(--green)'];
+  if (d ==  0) return ['— NEUT',    'var(--dim)'];
+  if (d == -1) return ['▼ BEAR',    'var(--red)'];
+  if (d == -2) return ['▼▼ STRONG', 'var(--red)'];
+  return ['—', 'var(--dim)'];
+}
+function sqzColor(s) {
+  return s === 'FIRING' ? 'var(--yellow)' : s === 'ACTIVE' ? 'var(--blue)' : 'var(--dim)';
+}
+function regimeColor(r) {
+  return {BREAKOUT:'var(--yellow)',SQUEEZE:'var(--blue)',TREND:'var(--green)',
+          HIGH_VOL:'var(--orange)',REVERSAL:'var(--purple)',CHOP:'var(--dim)',
+          LOW_VOL:'var(--dim)'}[r] || 'var(--muted)';
+}
+function pill(text, color) {
+  return `<span class="pill" style="color:${color};background:${color}1a;border:1px solid ${color}44">${text}</span>`;
+}
+function earnBadge(risk) {
+  if (!risk) return '<span style="color:var(--dim)">—</span>';
+  const c = risk===3 ? 'var(--red)' : risk===2 ? 'var(--orange)' : 'var(--yellow)';
+  const l = risk===3 ? '🔴 DANGER'  : risk===2 ? '⚠ CAUTION'    : '👁 WATCH';
+  return `<span class="pill" style="color:${c};background:${c}1a;border:1px solid ${c}44">${l}</span>`;
+}
+
+// ─── TABLE RENDER ───────────────────────────────────────────────────────────────────────
+function renderTable() {
+  if (activeView) {
+    apiFetch('/api/view/' + activeView)
+      .then(d => _renderRows(searchQ ? (d.results||[]).filter(r => r.symbol.includes(searchQ.toUpperCase())) : (d.results||[])))
+      .catch(e => showError('View error: ' + e.message));
+    return;
+  }
+  let rows = [...allResults];
+  if (searchQ) rows = rows.filter(r => r.symbol.includes(searchQ.toUpperCase()));
+  rows.sort((a, b) => {
+    let av = a[sortCol], bv = b[sortCol];
+    if (av == null) av = sortAsc ? Infinity : -Infinity;
+    if (bv == null) bv = sortAsc ? Infinity : -Infinity;
+    if (typeof av === 'string') return sortAsc ? av.localeCompare(bv) : bv.localeCompare(av);
+    return sortAsc ? av - bv : bv - av;
+  });
+  _renderRows(rows);
+}
+
+function _renderRows(rows) {
+  const tbody = $('tbody'), empty = $('empty');
+  if (!rows.length) { tbody.innerHTML = ''; empty.style.display = 'flex'; return; }
+  empty.style.display = 'none';
+
+  tbody.innerHTML = rows.map(r => {
+    const [dirTxt, dirC] = dirLabel(r.direction);
+    const apc  = scoreColor(r.apexScore, 75, 50);
+    const stc  = scoreColor(r.stable, 75, 50);
+    const cfc  = scoreColor(r.confidence, 75, 50);
+    const sqzC = sqzColor(r.sqzState);
+    const flC  = (r.flow??0) > 25 ? 'var(--green)' : (r.flow??0) < -25 ? 'var(--red)' : 'var(--muted)';
+    const spC  = (r.spreadPct??0) > 1 ? 'var(--red)' : (r.spreadPct??0) > 0.5 ? 'var(--orange)' : 'var(--muted)';
+    const id   = r.symbol;
+    return `<tr data-id="${id}" onclick="toggleRow('${id}')">
+      <td class="sym">${r.symbol}</td>
+      <td><span class="num">$${fN(r.price)}</span></td>
+      <td><span class="num" style="color:${apc};font-size:14px;font-weight:800">${fI(r.apexScore)}</span></td>
+      <td><span style="color:${dirC};font-size:11px;font-weight:700">${dirTxt}</span></td>
+      <td><span class="num" style="color:${cfc}">${fI(r.confidence)}%</span></td>
+      <td><span class="num" style="color:${stc}">${fI(r.stable)}</span>${r.stableBand ? `<span style="font-size:9px;color:var(--dim);margin-left:3px">${r.stableBand}</span>` : ''}</td>
+      <td><span class="num" style="color:${scoreColor(r.atrPct,2,1)}">${fP(r.atrPct)}</span></td>
+      <td><span class="num" style="color:${scoreColor((r.relVol||0)*50,100,75)}">${fN(r.relVol)}x</span></td>
+      <td>${r.darvasState ? pill(r.darvasState, r.darvasState==='BREAKOUT' ? 'var(--yellow)' : 'var(--muted)') : '<span style="color:var(--dim)">—</span>'}</td>
+      <td>${r.sqzState ? pill(r.sqzState, sqzC) : '<span style="color:var(--dim)">—</span>'}</td>
+      <td><span class="num" style="color:${flC}">${r.flow??'—'}</span></td>
+      <td><span style="color:${spC}">${r.spreadPct!=null ? r.spreadPct.toFixed(2)+'%' : '—'}</span></td>
+      <td>${earnBadge(r.earningsRisk)}</td>
+    </tr>
+    <tr id="dr-${id}" style="display:none"><td colspan="13"><div class="detail-inner" id="di-${id}"></div></td></tr>`;
+  }).join('');
+}
+
+function toggleRow(id) {
+  const isOpen = expandedId === id;
+  if (expandedId) {
+    const prev = document.getElementById('dr-' + expandedId);
+    if (prev) prev.style.display = 'none';
+    document.querySelector(`tr[data-id="${expandedId}"]`)?.classList.remove('expanded');
+  }
+  if (isOpen) { expandedId = null; return; }
+  expandedId = id;
+  document.querySelector(`tr[data-id="${id}"]`)?.classList.add('expanded');
+  const row = document.getElementById('dr-' + id);
+  row.style.display = '';
+  const inner = document.getElementById('di-' + id);
+  const r = allResults.find(x => x.symbol === id);
+  if (!r) { inner.innerHTML = '<div class="dc" style="color:var(--muted)">No data</div>'; return; }
+
+  const cells = [
+    ['REGIME',       r.regimeLabel || r.regime || '—',        regimeColor(r.regime),   ''],
+    ['EARLY ENTRY',  (r.earlyEntry??'—') + '',                scoreColor(r.earlyEntry,70,40), r.earlyBand||''],
+    ['RSI 14',       r.rsi14??'—',                            r.rsi14>70?'var(--red)':r.rsi14<30?'var(--green)':'var(--text)', r.rsi14>70?'overbought':r.rsi14<30?'oversold':'neutral'],
+    ['ADX 14',       r.adx14??'—',                            (r.adx14||0)>30?'var(--green)':(r.adx14||0)>20?'var(--yellow)':'var(--muted)', (r.adx14||0)>30?'strong trend':(r.adx14||0)>20?'trending':'chop'],
+    ['EMA 9/20/50',  `${r.ema9??'—'} / ${r.ema20??'—'} / ${r.ema50??'—'}`, 'var(--text)', ''],
+    ['VWAP',         r.vwap != null ? '$'+r.vwap : '—',      'var(--blue)', ''],
+    ['DARVAS BIAS',  r.darvasBias||'—',                       r.darvasBias==='UP'?'var(--green)':r.darvasBias==='DOWN'?'var(--red)':'var(--muted)', ''],
+    ['SQZ STATE',    r.sqzState ? r.sqzState + (r.sqzPct ? ' '+r.sqzPct+'%' : '') : '—', sqzColor(r.sqzState), ''],
+    ['FLOW BAND',    r.flowBand||'—',                         r.flowBand?.includes('BUY')?'var(--green)':r.flowBand?.includes('SELL')?'var(--red)':'var(--muted)', 'proxy'],
+    ['EARNINGS',     r.earningsDate||(r.earningsRisk===0?'CLEAR':'—'), r.earningsRisk===3?'var(--red)':r.earningsRisk>=1?'var(--yellow)':'var(--green)', r.earningsDays!=null?'in '+r.earningsDays+'d':''],
+    ['EARLY SIGNALS',r.earlySignals?.length?r.earlySignals.join(', '):'none', 'var(--muted)', ''],
+    ['SCANNED',      r.scannedAt?r.scannedAt.slice(11,19)+' UTC':'—', 'var(--dim)', ''],
+  ];
+  inner.innerHTML = cells.map(([label,value,color,sub]) =>
+    `<div class="dc"><div class="dc-label">${label}</div><div class="dc-val" style="color:${color}">${value}</div>${sub?`<div class="dc-sub">${sub}</div>`:''}</div>`
+  ).join('');
+}
+
+// ─── SCAN ───────────────────────────────────────────────────────────────────────────────
+async function runScan() {
+  const btn = $('scan-btn');
+  btn.disabled = true; btn.textContent = '⟳ Scanning…';
+  setStatus('loading', 'Scanning…');
+  $('scan-status').textContent = '';
+  try {
+    const data = await apiFetch('/api/scan', { method:'POST', headers:{'Content-Type':'application/json'} });
+    $('scan-status').textContent = `${data.symbols} symbols · ${data.estimate?.total??'?'} credits`;
+    let polls = 0;
+    const poll = setInterval(async () => {
+      if (++polls > 120) { clearInterval(poll); setStatus('', 'Timed out'); btn.disabled=false; btn.textContent='▶ Run Scan'; return; }
+      try {
+        const res = await apiFetch('/api/scan');
+        if (res.results?.length > 0) {
+          clearInterval(poll);
+          allResults = res.results;
+          renderTable();
+          setStatus('live', res.results.length + ' results');
+          $('scan-status').textContent = `${res.meta?.scanned}→${res.meta?.returned} in ${((res.meta?.durationMs||0)/1000).toFixed(1)}s`;
+          updateCredits();
+          btn.disabled=false; btn.textContent='▶ Run Scan';
+        }
+      } catch(_){}
+    }, 2000);
+  } catch(e) {
+    showError(e.message); setStatus('', 'Error');
+    btn.disabled=false; btn.textContent='▶ Run Scan';
+  }
+}
+
+async function updateCredits() {
+  try { const c = await apiFetch('/api/credits'); $('credits-text').textContent = c.spent+' cr'; } catch(_){}
+}
+
+// ─── SYMBOL DETAIL PAGE ──────────────────────────────────────────────────────────────────────
+async function lookupSymbol() {
+  const sym = $('dp-ticker-input').value.trim().toUpperCase();
+  if (!sym) return;
+  const content = $('dp-content');
+  content.innerHTML = '<div style="color:var(--muted);padding:20px 0">Fetching ' + sym + '…</div>';
+  try {
+    const r = await apiFetch('/api/symbol/' + sym);
+    const [dirTxt, dirC] = dirLabel(r.direction);
+    const sections = [
+      { title:'Scores', rows:[
+        ['APEX Score',   fI(r.apexScore),                          scoreColor(r.apexScore,75,50)],
+        ['Direction',    dirTxt,                                    dirC],
+        ['Confidence',   fI(r.confidence)+'%',                     scoreColor(r.confidence,75,50)],
+        ['StableScore',  fI(r.stable)+' '+( r.stableBand||''),     scoreColor(r.stable,75,50)],
+        ['Early Entry',  fI(r.earlyEntry)+' — '+(r.earlyBand||''), scoreColor(r.earlyEntry,70,40)],
+        ['Regime',       r.regimeLabel||r.regime||'—',             regimeColor(r.regime)],
+      ]},
+      { title:'Indicators', rows:[
+        ['RSI 14',    r.rsi14??'—',   r.rsi14>70?'var(--red)':r.rsi14<30?'var(--green)':'var(--text)'],
+        ['ADX 14',    r.adx14??'—',   (r.adx14||0)>25?'var(--green)':'var(--muted)'],
+        ['ATR%',      fP(r.atrPct)+' '+(r.atrBand||''),            scoreColor(r.atrPct,2.5,1.5)],
+        ['RelVol',    fN(r.relVol)+'x '+(r.relVolBand||''),        scoreColor((r.relVol||0)*50,100,75)],
+        ['SmartFlow', (r.flow??'—')+' — '+(r.flowBand||''),        r.flow>30?'var(--green)':r.flow<-30?'var(--red)':'var(--muted)'],
+      ]},
+      { title:'Structure', rows:[
+        ['Darvas',     (r.darvasState||'—')+' / '+(r.darvasBias||'—'), r.darvasState==='BREAKOUT'?'var(--yellow)':'var(--muted)'],
+        ['Squeeze',    (r.sqzState||'—')+(r.sqzPct?' '+r.sqzPct+'%':''), sqzColor(r.sqzState)],
+        ['EMA 9/20/50','$'+(r.ema9??'—')+' / $'+(r.ema20??'—')+' / $'+(r.ema50??'—'), 'var(--text)'],
+        ['VWAP',       r.vwap?'$'+r.vwap:'—', 'var(--blue)'],
+      ]},
+      { title:'Risk', rows:[
+        ['Spread',        r.spreadPct!=null?r.spreadPct+'%':'—',   r.spreadPct>1?'var(--red)':'var(--green)'],
+        ['Earnings Date', r.earningsDate||'CLEAR',                  r.earningsRisk===3?'var(--red)':r.earningsRisk>=1?'var(--yellow)':'var(--green)'],
+        ['Earn Risk',     ['CLEAR','WATCH','CAUTION','DANGER'][r.earningsRisk??0], r.earningsRisk===3?'var(--red)':r.earningsRisk>=1?'var(--yellow)':'var(--green)'],
+        ['Early Signals', r.earlySignals?.join(', ')||'none',       'var(--muted)'],
+      ]},
+    ];
+    content.innerHTML = `
+      <div id="dp-header">
+        <h2>${sym}</h2>
+        ${r.price ? `<span class="dp-price">$${r.price}</span>` : ''}
+      </div>
+      ${sections.map(s => `
+        <div class="dp-section">
+          <h3>${s.title}</h3>
+          ${s.rows.map(([l,v,c]) => `
+            <div class="dp-row">
+              <span class="dp-label">${l}</span>
+              <span class="dp-value" style="color:${c}">${v}</span>
+            </div>`).join('')}
+        </div>`).join('')}`;
+  } catch(e) {
+    content.innerHTML = `<div style="color:var(--red);padding:20px 0">Error: ${e.message}</div>`;
+  }
+}
+
+// ─── PAGE SWITCHING ──────────────────────────────────────────────────────────────────────────
+function switchPage(page) {
+  document.querySelectorAll('.page-tab').forEach(b => b.classList.toggle('active', b.dataset.page === page));
+  const isScanner = page === 'scanner';
+  $('filter-bar').style.display   = isScanner ? 'flex' : 'none';
+  $('scanner-page').style.display = isScanner ? 'flex' : 'none';
+  $('detail-page').classList.toggle('active', !isScanner);
+  if (!isScanner) $('dp-ticker-input').focus();
+}
+
+// ─── BOOT ───────────────────────────────────────────────────────────────────────────────
+document.querySelectorAll('.page-tab').forEach(b => b.onclick = () => switchPage(b.dataset.page));
+
+document.querySelectorAll('.view-tab').forEach(b => b.onclick = () => {
+  document.querySelectorAll('.view-tab').forEach(x => x.classList.remove('active'));
+  b.classList.add('active');
+  activeView = b.dataset.view;
+  renderTable();
+});
+
+document.querySelectorAll('thead th[data-col]').forEach(th => {
+  th.onclick = () => {
+    const col = th.dataset.col;
+    if (sortCol === col) sortAsc = !sortAsc;
+    else { sortCol = col; sortAsc = col === 'symbol'; }
+    document.querySelectorAll('thead th').forEach(x => x.classList.remove('sorted'));
+    th.classList.add('sorted');
+    th.querySelector('.arr').textContent = sortAsc ? '↑' : '↓';
+    renderTable();
+  };
+});
+
+$('scan-btn').onclick = runScan;
+$('search').oninput = e => { searchQ = e.target.value.trim(); renderTable(); };
+$('dp-lookup-btn').onclick = lookupSymbol;
+$('dp-ticker-input').onkeydown = e => { if (e.key === 'Enter') lookupSymbol(); };
+
+// Initial load
+renderTable();
+apiFetch('/api/scan').then(data => {
+  if (data.results?.length) {
+    allResults = data.results;
+    renderTable();
+    setStatus('live', data.results.length + ' results (cached)');
+    updateCredits();
+  } else {
+    $('empty').style.display = 'flex';
+  }
+}).catch(() => { $('empty').style.display = 'flex'; });
+</script>
+</body>
+</html>

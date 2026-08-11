@@ -7,6 +7,7 @@
   "scripts": {
     "scan": "node index.js",
     "setup": "node setup-sheet.js",
+    "improve": "node improve-agent.js",
     "test": "node --test",
     "check:release": "node scripts/check-release.mjs"
   },
