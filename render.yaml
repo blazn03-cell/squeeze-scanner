@@ -1,8 +1,9 @@
 services:
   - type: web
-    name: wallstreethustler
+    name: squeeze-scanner-apex-v4
     runtime: node
     plan: free
+    rootDir: apex-v4
     buildCommand: npm ci
     startCommand: npm start
     healthCheckPath: /api/health
@@ -11,3 +12,7 @@ services:
         value: 20.18.0
       - key: TWELVEDATA_API_KEY
         sync: false
+      - key: CREDITS_PER_MINUTE
+        value: 8
+      - key: DECISION_LOG
+        value: false

@@ -22,9 +22,10 @@ variables and provider choices are explained in `.env.example` and `docs/DATA_SE
 
 ## Deploy on Render
 
-Use the included `render.yaml` Blueprint. The correct repository root is the project
-root, not `apex-v4`, and Render supplies `PORT` automatically. Follow the beginner
-walkthrough in [docs/RENDER_DEPLOY.md](docs/RENDER_DEPLOY.md).
+Use the included root `render.yaml` Blueprint; it points Render at `apex-v4`
+automatically. For a manually created Web Service, set **Root Directory** to
+`apex-v4`. Render supplies `PORT` automatically. Follow the beginner walkthrough
+in [docs/RENDER_DEPLOY.md](docs/RENDER_DEPLOY.md).
 
 ## Important scope
 

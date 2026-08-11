@@ -4,6 +4,7 @@
 
 - Added a production Node server that serves the scanner, reuses the bars and quote APIs, exposes `/api/health`, reads Render's port, and logs non-fatal provider warnings.
 - Added the matching Vercel serverless `/api/health` function used by the current public domain.
+- Updated the Render Blueprint to deploy `apex-v4`, use a free-tier Twelve Data credit budget, and expose a health route before the provider key is configured.
 - Added `render.yaml` and a simple Render Blueprint walkthrough that corrects the invalid `apex-v4` root-directory instruction.
 - Added expandable daily candlestick charts with volume, support, resistance, study zones, invalidation lines, and seven plain-language pattern lessons.
 - Added safety language that avoids promising entries, marks downside setups as learn-only, and explains that patterns can fail.
@@ -20,6 +21,7 @@
 - Node syntax checks: passed.
 - JSX parse: passed.
 - Local smoke test: home page returned 200 and `/api/health` returned `ok: true`.
+- APEX Render smoke test: `npm ci` passed; `/api/health` returned `ok: true` without a key and `/api/scan` returned `NO_PROVIDER_CONFIGURED` without crashing.
 - Missing-key smoke test: `/api/bars` returned the expected visible `NO_PROVIDER_CONFIGURED` state without crashing the server.
 - `git diff --check`: passed; Git only reported existing line-ending notices.
 

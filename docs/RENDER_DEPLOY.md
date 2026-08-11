@@ -1,50 +1,77 @@
-# Put WallstreetHustler on Render
+# Put APEX V4 on Render
 
-This project includes `render.yaml`, so Render can fill in the server settings for you.
+The existing `wallstreethustler.com` site is live on Vercel. Keep it there while the new Render service is tested. Buying or registering a domain through Vercel does not lock the domain to Vercel hosting; DNS can point to Render later.
 
-## Easiest setup
+## Easiest setup: Blueprint
 
-1. Push this repository to GitHub.
-2. Open [Render](https://dashboard.render.com/).
-3. Click **New +**, then **Blueprint**.
-4. Connect the GitHub repository.
-5. Leave **Root Directory** blank. There is no `apex-v4` folder in this repository.
-6. When Render asks for `TWELVEDATA_API_KEY`, paste the key from your Twelve Data account.
-7. Click **Apply** and wait for the green **Live** label.
+1. Open [Render](https://dashboard.render.com/).
+2. Click **New +**, then **Blueprint**.
+3. Connect the GitHub `squeeze-scanner` repository.
+4. Select the root `render.yaml` file when prompted.
+5. Enter `TWELVEDATA_API_KEY` when Render asks for it.
+6. Click **Apply** and wait for the green **Live** label.
 
-Render reads these settings from `render.yaml`:
+The Blueprint already sets:
 
-- Build: `npm ci`
-- Start: `npm start`
+- Root directory: `apex-v4`
+- Build command: `npm ci`
+- Start command: `npm start`
 - Health check: `/api/health`
-- Node: 20
+- Instance: Free
+- Twelve Data free-tier budget: 8 credits per minute
 
-Do not add `PORT` on Render. Render supplies it automatically, and the server already reads it. Local development defaults to port `10000`.
+Do not add `PORT`. Render injects it automatically and `apex-v4/backend/server.js` reads it. Setting `PORT=10000` is harmless but unnecessary.
 
-## Check that it worked
+## Manual Web Service setup
 
-Replace `YOUR-APP` with the name Render gives you:
+If you choose **New + → Web Service** instead of Blueprint, use:
+
+| Field | Value |
+|---|---|
+| Root Directory | `apex-v4` |
+| Runtime | Node |
+| Build Command | `npm ci` |
+| Start Command | `npm start` |
+| Instance Type | Free |
+| Health Check Path | `/api/health` |
+
+Add these environment variables:
+
+```text
+TWELVEDATA_API_KEY=your private key
+CREDITS_PER_MINUTE=8
+DECISION_LOG=false
+```
+
+## Verify before moving the domain
+
+Open the Render URL first:
 
 ```text
 https://YOUR-APP.onrender.com/api/health
 ```
 
-You should see:
+Expected result after adding the key:
 
 ```json
-{"ok":true,"service":"wallstreethustler"}
+{"ok":true,"service":"apex-v4","dataConfigured":true}
 ```
 
-Then open the normal app URL. On Render's free service, the first visit after a quiet period can take longer while the service wakes up.
+Then open the normal Render URL and run a scan. A free Twelve Data key loads a limited number of symbols per minute, so a full scan takes longer.
 
-## What the data key does
+## Domain move without downtime
 
-`TWELVEDATA_API_KEY` supplies historical daily candles for scores, patterns, and charts. Twelve Data does not provide the two-sided stock bid/ask needed by this app's spread check. Without a separate quote provider, the app correctly says the spread still needs verification instead of guessing.
+1. Keep `wallstreethustler.com` on Vercel while testing Render.
+2. In Render, add `apex.wallstreethustler.com` as a custom domain first.
+3. In the Vercel Domains DNS page, add the CNAME value Render displays.
+4. Test the scanner at the new `apex` address.
+5. Only after it works, add `wallstreethustler.com` in Render and change the root DNS records to the exact values Render displays.
+6. Wait for Render's TLS certificate and verify the site before removing the domain from the old Vercel project.
 
-For live bid/ask, add one supported quote provider from `docs/DATA_SETUP.md`. Alpaca is the simplest single provider for both bars and quotes.
+The domain can remain registered and billed through Vercel even when its DNS points to Render.
 
 ## Keep the key safe
 
 - Put keys only in Render's **Environment** page.
-- Never paste a key into `index.html`, GitHub, screenshots, or chat.
+- Never paste a key into GitHub, source code, screenshots, or chat.
 - If a key is exposed, revoke it and create a new one.
