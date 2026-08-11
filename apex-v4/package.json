@@ -1,0 +1,19 @@
+{
+  "name": "apex-v4",
+  "version": "4.0.0",
+  "description": "APEX V4 — Twelve Data quantitative stock scanner with multi-factor scoring",
+  "type": "module",
+  "main": "backend/server.js",
+  "scripts": {
+    "start": "node backend/server.js",
+    "dev": "node --watch backend/server.js"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "node-fetch": "^3.3.2"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
