@@ -10,7 +10,8 @@
 // below and this works; no code change is needed to switch provider later, and
 // nothing in the repo is bound to one vendor's pricing.
 //
-//   TWELVEDATA_API_KEY    twelvedata.com          800 req/day free   ← easiest start
+//   ALPACA_API_KEY_ID + ALPACA_API_SECRET_KEY     multi-symbol bars
+//   TWELVEDATA_API_KEY    twelvedata.com          800 credits/day free
 //   POLYGON_API_KEY       polygon.io              5 req/min free
 //   TIINGO_API_KEY        tiingo.com              1000 req/day free
 //   ALPHAVANTAGE_API_KEY  alphavantage.co         25 req/day free    ← too small for real use
@@ -57,10 +58,40 @@ function clean(rows) {
 }
 
 const ADAPTERS = {
+  alpaca: {
+    env: "ALPACA_API_KEY_ID",
+    secretEnv: "ALPACA_API_SECRET_KEY",
+    windowDefault: 200,
+    batch: 200,
+    async fetch(symbols, key, secret) {
+      const from = iso(Date.now() - DAYS * 864e5);
+      const feed = process.env.ALPACA_DATA_FEED || "iex";
+      const url = `https://data.alpaca.markets/v2/stocks/bars?symbols=${symbols.join(",")}`
+                + `&timeframe=1Day&start=${from}&limit=10000&adjustment=all&feed=${feed}`;
+      const r = await fetch(url, {
+        headers: {
+          "APCA-API-KEY-ID": key,
+          "APCA-API-SECRET-KEY": secret,
+        },
+      });
+      if (!r.ok) throw new Error(`alpaca http ${r.status}`);
+      const j = await r.json();
+      const out = {};
+      for (const s of symbols) {
+        const vals = j.bars?.[s];
+        if (!Array.isArray(vals)) continue;
+        out[s] = clean(vals.map(b => ({ t:b.t, o:b.o, h:b.h, l:b.l, c:b.c, v:b.v })));
+      }
+      return out;
+    },
+  },
+
   twelvedata: {
     env: "TWELVEDATA_API_KEY",
-    // Twelve Data accepts a comma-separated symbol list in one call, which is the
-    // difference between 35 credits and 1 credit per scan on the free tier.
+    windowEnv: "TWELVEDATA_CREDITS_PER_MINUTE",
+    windowDefault: 8,
+    // Twelve Data accepts a comma-separated symbol list in one call. Batching
+    // reduces network round trips, but provider credits are still counted per symbol.
     batch: 8,
     async fetch(symbols, key) {
       const url = `https://api.twelvedata.com/time_series?symbol=${symbols.join(",")}`
@@ -83,6 +114,8 @@ const ADAPTERS = {
 
   polygon: {
     env: "POLYGON_API_KEY",
+    windowEnv: "POLYGON_SYMBOLS_PER_MINUTE",
+    windowDefault: 5,
     batch: 1,
     async fetch(symbols, key) {
       const to = iso(Date.now()), from = iso(Date.now() - DAYS * 864e5);
@@ -101,6 +134,7 @@ const ADAPTERS = {
 
   tiingo: {
     env: "TIINGO_API_KEY",
+    windowDefault: 40,
     batch: 1,
     async fetch(symbols, key) {
       const from = iso(Date.now() - DAYS * 864e5);
@@ -118,6 +152,8 @@ const ADAPTERS = {
 
   alphavantage: {
     env: "ALPHAVANTAGE_API_KEY",
+    windowEnv: "ALPHAVANTAGE_SYMBOLS_PER_MINUTE",
+    windowDefault: 1,
     batch: 1,
     async fetch(symbols, key) {
       const out = {};
@@ -140,12 +176,41 @@ const ADAPTERS = {
 function activeProvider() {
   for (const [name, a] of Object.entries(ADAPTERS)) {
     const key = process.env[a.env];
-    if (key) return { name, adapter: a, key };
+    const secret = a.secretEnv ? process.env[a.secretEnv] : null;
+    if (key && (!a.secretEnv || secret)) return { name, adapter: a, key, secret };
   }
   return null;
 }
 
 const chunk = (arr, n) => { const o = []; for (let i = 0; i < arr.length; i += n) o.push(arr.slice(i, i + n)); return o; };
+const boundedInt = (raw, fallback, max, min = 1) => {
+  const value = Number.parseInt(raw, 10);
+  return Number.isFinite(value) ? Math.max(min, Math.min(max, value)) : fallback;
+};
+
+function selectProviderWindow(provider, symbols, rawCursor) {
+  const adapter = provider.adapter;
+  const windowSize = boundedInt(
+    adapter.windowEnv ? process.env[adapter.windowEnv] : null,
+    adapter.windowDefault || symbols.length,
+    MAX_SYMBOLS,
+  );
+  if (symbols.length <= windowSize) {
+    return { selected:symbols, deferred:[], cursor:0, nextCursor:null, windowSize };
+  }
+  const cursor = boundedInt(rawCursor, 0, symbols.length - 1, 0);
+  const safeCursor = rawCursor == null || rawCursor === "" ? 0 : cursor;
+  const selected = symbols.slice(safeCursor, safeCursor + windowSize);
+  const nextCursor = safeCursor + selected.length < symbols.length ? safeCursor + selected.length : null;
+  const selectedSet = new Set(selected);
+  return {
+    selected,
+    deferred: symbols.filter(symbol => !selectedSet.has(symbol)),
+    cursor: safeCursor,
+    nextCursor,
+    windowSize,
+  };
+}
 
 export default async function handler(req, res) {
   res.setHeader("Cache-Control", "public, s-maxage=900, stale-while-revalidate=3600");
@@ -159,8 +224,8 @@ export default async function handler(req, res) {
       ok: false,
       reason: "NO_PROVIDER_CONFIGURED",
       message: "No market-data key is set on the server. Set exactly one of these "
-             + "environment variables in the Vercel project and redeploy.",
-      accepts: Object.values(ADAPTERS).map(a => a.env),
+             + "environment variables in the hosting project and redeploy.",
+      accepts: Object.values(ADAPTERS).map(a => a.secretEnv ? `${a.env} + ${a.secretEnv}` : a.env),
       universe: DEFAULT_UNIVERSE,
     });
   }
@@ -174,9 +239,12 @@ export default async function handler(req, res) {
 
   if (!symbols.length) return res.status(400).json({ ok:false, reason:"NO_VALID_SYMBOLS" });
 
+  const providerWindow = selectProviderWindow(provider, symbols, req.query?.cursor);
+  const selectedSymbols = providerWindow.selected;
+
   const bars = {};
   const need = [];
-  for (const s of symbols) {
+  for (const s of selectedSymbols) {
     const c = fresh(`${provider.name}:${s}`);
     if (c) bars[s] = c; else need.push(s);
   }
@@ -185,7 +253,7 @@ export default async function handler(req, res) {
   if (need.length) {
     try {
       for (const group of chunk(need, provider.adapter.batch)) {
-        const got = await provider.adapter.fetch(group, provider.key);
+        const got = await provider.adapter.fetch(group, provider.key, provider.secret);
         for (const [s, rows] of Object.entries(got)) {
           if (!rows?.length) continue;
           bars[s] = rows;
@@ -198,7 +266,7 @@ export default async function handler(req, res) {
   }
 
   const returned = Object.keys(bars);
-  const failed = symbols.filter(s => !bars[s]);
+  const failed = selectedSymbols.filter(s => !bars[s]);
 
   // Nothing at all came back: report the failure rather than a successful-looking
   // empty payload the UI would render as "no setups today".
@@ -208,8 +276,14 @@ export default async function handler(req, res) {
       reason: providerError ? "PROVIDER_ERROR" : "NO_DATA",
       message: providerError || "The data provider returned no bars for any requested symbol.",
       provider: provider.name,
-      requested: symbols.length,   // same type as the success path — the UI reads it either way
-      symbols,
+      requested: symbols.length,
+      attempted: selectedSymbols.length,
+      symbols: selectedSymbols,
+      universe: symbols,
+      deferred: providerWindow.deferred,
+      cursor: providerWindow.cursor,
+      nextCursor: providerWindow.nextCursor,
+      windowSize: providerWindow.windowSize,
     });
   }
 
@@ -218,11 +292,18 @@ export default async function handler(req, res) {
     provider: provider.name,
     asOf: new Date().toISOString(),
     requested: symbols.length,
+    attempted: selectedSymbols.length,
     returned: returned.length,
     failed,                                  // named, so partial coverage is visible
+    universe: symbols,
+    deferred: providerWindow.deferred,
+    cursor: providerWindow.cursor,
+    nextCursor: providerWindow.nextCursor,
+    windowSize: providerWindow.windowSize,
+    coverageComplete: providerWindow.deferred.length === 0 && failed.length === 0,
     note: providerError ? `Partial: ${providerError}` : undefined,
     bars,
   });
 }
 
-export { DEFAULT_UNIVERSE, ADAPTERS, clean as _clean };
+export { DEFAULT_UNIVERSE, ADAPTERS, clean as _clean, selectProviderWindow as _selectProviderWindow };

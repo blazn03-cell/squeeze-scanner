@@ -1,87 +1,85 @@
 # Turning the scanner on
 
-The scoring engine needs daily candles. This is the one thing that has to be
-configured before the site shows setups, and it takes about five minutes.
+The scanner uses two separate data contracts:
 
-## Why there is a server at all
+1. `/api/bars` supplies daily OHLCV history for V4 scoring and the squeeze/flush replay audit.
+2. `/api/quotes` supplies current stock bid/ask for the execution-quality gate.
 
-A static page cannot hold an API key. Anything shipped to the browser is readable
-by anyone who opens View Source, so a key put in `index.html` is a key you have
-given away. `api/bars.js` exists so the key can live on the server, where the
-browser can use it without ever seeing it.
+Keys stay in server-side environment variables. They are never shipped in `index.html`.
 
-That is also the whole reason a visitor now needs no key of their own.
+## Recommended setup: Alpaca
 
-## Step 1 — get a market-data key
+Alpaca is the simplest path because one credential pair can cover multi-symbol daily bars and current quotes.
 
-Pick **one**. Any of them works; nothing in the code is bound to a vendor.
+Set these in Render or your hosting environment and redeploy:
 
-| Provider | Free tier | Notes |
-|---|---|---|
-| **twelvedata.com** | 800 requests/day, 8/min | **Start here.** It accepts several symbols in one request, so a full 34-symbol scan costs about 5 requests instead of 34. |
-| polygon.io | 5 requests/min | Good data. One symbol per request, so a full scan takes a few minutes to warm the cache. |
-| tiingo.com | 1000 requests/day | One symbol per request. |
-| alphavantage.co | 25 requests/day | Too small for a real scan. Fine for a smoke test. |
+```text
+ALPACA_API_KEY_ID=...
+ALPACA_API_SECRET_KEY=...
+ALPACA_DATA_FEED=iex
+```
 
-## Step 2 — put the key in Vercel
+The free `iex` feed is one exchange, not the consolidated NBBO. Use `sip` only when the account includes SIP data. The interface labels the feed so an IEX quote is never represented as NBBO.
 
-1. Go to the project → **Settings** → **Environment Variables**.
-2. Add one variable, named for the provider you chose:
+## Historical-bar alternatives
 
-   | Provider | Variable name |
-   |---|---|
-   | Twelve Data | `TWELVEDATA_API_KEY` |
-   | Polygon | `POLYGON_API_KEY` |
-   | Tiingo | `TIINGO_API_KEY` |
-   | Alpha Vantage | `ALPHAVANTAGE_API_KEY` |
+Configure one of these if Alpaca is not used:
 
-3. Paste the key as the value. Apply it to **Production**, **Preview** and **Development**.
-4. **Redeploy.** Environment variables are read at boot — an existing deployment
-   will not pick up a new variable on its own.
+| Provider | Environment variable | Default symbol window |
+|---|---|---:|
+| Twelve Data | `TWELVEDATA_API_KEY` | 8/minute |
+| Polygon | `POLYGON_API_KEY` | 5/minute |
+| Tiingo | `TIINGO_API_KEY` | 40/minute |
+| Alpha Vantage | `ALPHAVANTAGE_API_KEY` | 1/minute |
 
-Set only one. If several are present the first match in the table above wins.
+Twelve Data charges one API credit **per symbol**, including batch requests. Its free plan has eight credits per minute. The browser therefore loads eight symbols, waits 65 seconds, merges the next window, and retains the accumulated daily history locally. Override the window only when the plan supports it:
 
-## Step 3 — check it
+```text
+TWELVEDATA_CREDITS_PER_MINUTE=55
+```
 
-Open `https://your-domain/api/bars` directly.
+Polygon and Alpha Vantage have equivalent window overrides:
 
-- `{"ok":true,"provider":"twelvedata","returned":34,…}` — done. The site will show
-  scores on the next load.
-- `{"ok":false,"reason":"NO_PROVIDER_CONFIGURED"}` — the variable is not set, is
-  named differently, or the project was not redeployed after adding it.
-- `{"ok":false,"reason":"PROVIDER_ERROR","message":"…"}` — the key is set but the
-  provider rejected it. The provider's own message is passed through, so read it:
-  it is usually an invalid key or a rate limit.
+```text
+POLYGON_SYMBOLS_PER_MINUTE=5
+ALPHAVANTAGE_SYMBOLS_PER_MINUTE=1
+```
 
-The app shows the same states in words. It never invents rows to cover a failure —
-an empty setup list always means *nothing qualified* or *no data*, and it says
-which.
+## Quote alternatives
 
-## What it costs
+`/api/quotes` tries configured providers in this order:
 
-The default universe is 34 liquid symbols and the endpoint refreshes every 15
-minutes, with a cache in front of it.
+1. Alpaca (`ALPACA_API_KEY_ID` + `ALPACA_API_SECRET_KEY`)
+2. Massive/Polygon (`MASSIVE_API_KEY` or `POLYGON_API_KEY`) when the plan includes stock quotes
+3. Tiingo (`TIINGO_API_KEY`)
 
-On Twelve Data that is roughly **5 requests per refresh**, so about 480 a day
-against an 800/day free allowance — with the CDN cache absorbing repeat visitors,
-since every visitor shares one cached response rather than triggering their own
-fetch. In practice a small site stays inside the free tier. A busy one needs a
-paid plan, typically $10–50/month.
+Twelve Data's `/quote` response has latest price and volume but no two-sided stock bid/ask, so it cannot satisfy the spread gate.
 
-To use less: pass a shorter list, e.g. `/api/bars?symbols=SPY,QQQ,AAPL,NVDA`.
+## Verify production
 
-## Changing which symbols are scanned
+Open these routes directly:
 
-`DEFAULT_UNIVERSE` at the top of `api/bars.js`. Keep them liquid — the liquidity
-gate blocks thin names anyway, so adding microcaps mostly spends your rate limit
-on rows that will be rejected.
+```text
+https://wallstreethustler.com/api/bars?cursor=0
+https://wallstreethustler.com/api/quotes?symbols=AAPL,MSFT,NVDA
+```
 
-The cap is 40 symbols per request, and symbols are validated against
-`^[A-Z][A-Z.\-]{0,6}$` before anything is sent to the provider.
+Expected bar fields include `attempted`, `returned`, `deferred`, and `nextCursor`. A rate-limited provider may return only one window; that is expected and is shown as partial coverage until subsequent windows merge.
 
-## What this does not do
+Expected quote rows include `bid`, `ask`, `spreadPct`, `asOf`, `feed`, and `nbbo`. The V4 quality labels mean:
 
-- No intraday data. Daily bars only, which is what the model is tuned for.
-- No options flow. That is still the separate, optional Unusual Whales connection.
-- No storage. Bars are fetched, scored in the browser, and forgotten. There is no
-  database and no user data.
+- `TIGHT`: price and dollar-volume gates pass, a two-sided quote exists, and spread is at most 0.25%.
+- `CHECK`: price and dollar-volume gates pass, but no usable stock quote reached the site. Verify in thinkorswim.
+- `BLOCK`: price below $10, average dollar volume below $25M, liquidity score below 50, stale market-hours quote, or spread above 0.25%.
+
+## Historical audit
+
+The V4 panel scans retained daily bars for objective moves:
+
+- squeeze proxy: at least +12% within three sessions;
+- flush proxy: at least -12% within three sessions;
+- event volume: at least 1.5 times the prior 20-session average;
+- prior price: at least $10;
+- prior average dollar volume: at least $25M.
+
+It then replays V4 using only bars available before the move and reports captured versus missed events. This is an outcome audit, not evidence that short covering caused a move. The current universe also creates survivorship bias; point-in-time universe and historical quote data are still required before profitability claims.

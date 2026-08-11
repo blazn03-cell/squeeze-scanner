@@ -6,6 +6,8 @@ The free daily-bar path evaluates the underlying security using price, volume, v
 
 The optional options-flow path may add reported contract activity when a licensed feed is connected. Flow is context, not proof of future direction.
 
+The free path may label an objective price/volume flush proxy, but it must never call that a gamma flush. In this implementation, a gamma-flush evidence label requires all three of these inputs: recent ask-side put flow, short-gamma GEX, and falling underlying price. Short gamma can amplify both rising and falling moves because dealer hedging follows the move; long gamma generally dampens moves by selling rallies and buying dips.
+
 ## Two gates, not one
 
 ### Gate A — underlying setup
@@ -40,7 +42,7 @@ For the public beta, contract sizing is deliberately manual and fail-closed:
 contracts = floor(max_dollar_risk / (option_debit * 100 + estimated_costs))
 ```
 
-If this returns zero, the correct result is **skip**. Short/naked options and undefined-risk combinations are outside the current system.
+If this returns zero, the correct result is **skip**. Actionable short/naked options and undefined-risk combinations are outside the current system. The beginner screen may explain cash-secured puts and bull put spreads, but it does not validate or submit either strategy.
 
 ## Alert timing (America/Chicago)
 
@@ -56,9 +58,11 @@ An alert is a rules match, not confirmation that the trade is “right.” Forwa
 The simple view asks how much money the reader is using and how much they are
 willing to lose on one trade, then sizes each candidate against that.
 
-It sizes **shares of the underlying only.** It never names an option contract,
-because Gate B above cannot be satisfied without a live contract quote source,
-and none is connected. The scope note is shown to the reader in the app, not just
+It sizes **shares of the underlying only.** If licensed flow reports recent
+ask-side call buying, the screen may repeat the observed strike and expiry as a
+research reference. It does not choose a different contract or mark the observed
+contract actionable, because Gate B above cannot be satisfied without a live
+contract quote source. The scope note is shown to the reader in the app, not just
 recorded here.
 
 Rules the implementation follows:
@@ -104,5 +108,6 @@ is **not** an all-clear and points the reader at the official schedule. Removing
 that disclosure would turn a known gap into an implied safety claim.
 
 **Contract sizing** uses the fail-closed formula above on a debit the reader
-types in from their own broker screen. The app sources no quote, names no
-contract, and returns **skip** at zero rather than rounding up.
+types in from their own broker screen. The app sources no quote, may only repeat
+an observed flow contract as an unvalidated reference, and returns **skip** at
+zero rather than rounding up.

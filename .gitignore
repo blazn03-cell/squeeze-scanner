@@ -1,5 +1,17 @@
 .vercel
 .env*
+!.env.example
 
 node_modules/
+dist/
+build/
+.cache/
+coverage/
+*.log
+*.tmp
+
+data/
+*.sqlite
+*.sqlite3
+reports/hourly/
 

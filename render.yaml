@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: wallstreethustler
+    runtime: node
+    plan: free
+    buildCommand: npm ci
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: 20.18.0
+      - key: TWELVEDATA_API_KEY
+        sync: false

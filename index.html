@@ -134,12 +134,12 @@ const PROF = {
 
 // ── STRATEGIES ───────────────────────────────────────────────────────────────
 const STRATS = {
-  naked_call:  { name:"Naked Call (OTM)",   emoji:"🎯", color:"#00ff88", risk:"HIGH",    ivNeed:"low",  best:["short_squeeze","delta_squeeze","staircase"],        how:"Buy 1 OTM call 1–2 strikes above price. DTE = profile. Max 2% account.",          exit:"Sell 50–100% gain or when sweeps stop. Never past max hold day.", stop:"Down 50% OR put sweeps appear on same ticker.", pros:"Unlimited upside. Simple.", cons:"Full premium at risk. IV crush on high-IV tickers." },
+  naked_call:  { name:"Long Call (OTM)",    emoji:"🎯", color:"#00ff88", risk:"HIGH",    ivNeed:"low",  best:["short_squeeze","delta_squeeze","staircase"],        how:"Study an OTM call near the observed call-flow strike. The full premium can be lost.", exit:"Use a written exit plan before entry.", stop:"Reassess if the stock loses support or bullish flow reverses.", pros:"Defined premium at risk.", cons:"Can expire worthless. IV and theta can overwhelm the stock move." },
   call_spread: { name:"Call Debit Spread",  emoji:"📐", color:"#ffe033", risk:"DEFINED", ivNeed:"high", best:["short_squeeze","gamma_squeeze","cap_flush","staircase"], how:"Buy ATM call + sell OTM call same expiry. Cuts cost and IV risk ~50%.",              exit:"Close at 50–75% max profit.",              stop:"Down 50% on spread.",          pros:"Defined risk. Cheaper. IV crush halved.", cons:"Caps upside at short strike." },
   atm_call:    { name:"ATM Call",           emoji:"⚡", color:"#44ffdd", risk:"MED",     ivNeed:"any",  best:["gamma_squeeze","delta_squeeze"],                     how:"Buy ATM call 3–10 DTE. Max delta sensitivity for fast moves.",                    exit:"50–80% and leave. Gamma reverses fast.",   stop:"Price stalls at GEX wall.",    pros:"Max delta. Best for explosive moves.", cons:"Expensive. Theta kills on stall." },
   itm_call:    { name:"Deep ITM Call",      emoji:"🐋", color:"#44ffbb", risk:"LOWER",   ivNeed:"any",  best:["liquidity_sq","ftd_squeeze","staircase"],            how:"Buy 0.80+ delta call. Moves 1:1 with stock. Minimal theta.",                       exit:"Sell when volume dries or hits resistance.", stop:"Break below staircase zone.",  pros:"Minimal decay. High delta.", cons:"More capital. Less leverage." },
   leaps:       { name:"LEAPS (45–90 DTE)",  emoji:"⏳", color:"#ff9900", risk:"MEDIUM",  ivNeed:"any",  best:["ftd_squeeze","staircase"],                          how:"Buy call 45–90 DTE, delta 0.50–0.70. Time for T+35 buy-in cycles.",               exit:"Close when SI drops sharply.",             stop:"FTDs normalize 5+ days.",      pros:"Survives false starts. Low daily theta.", cons:"Slower move. More premium at risk." },
-  naked_put:   { name:"Naked Put (OTM)",    emoji:"🩸", color:"#ff3355", risk:"HIGH",    ivNeed:"low",  best:["cap_flush","margin_flush"],                         how:"Buy OTM put 1–2 strikes below price. 7–14 DTE.",                                 exit:"50–100% gain. Exit by Day 5.",             stop:"Call sweeps appear.",          pros:"Max downside profit.", cons:"Full premium at risk." },
+  naked_put:   { name:"Long Put (OTM)",     emoji:"🩸", color:"#ff3355", risk:"HIGH",    ivNeed:"low",  best:["cap_flush","margin_flush"],                         how:"Study an OTM put near observed bearish flow. The full premium can be lost.",       exit:"Use a written exit plan before entry.",    stop:"Reassess if price reclaims resistance or bearish flow reverses.", pros:"Defined premium at risk.", cons:"Can expire worthless. IV and theta can overwhelm the stock move." },
   put_spread:  { name:"Put Debit Spread",   emoji:"📉", color:"#ff7755", risk:"DEFINED", ivNeed:"high", best:["cap_flush","gamma_flush","liq_flush"],               how:"Buy ATM put + sell OTM put same expiry.",                                         exit:"50–75% max profit.",                       stop:"DP buy prints at lows.",       pros:"Cheaper. Defined risk.", cons:"Caps downside capture." },
   fast_put:    { name:"0–3 DTE ATM Put",    emoji:"🎯", color:"#ff9955", risk:"V.HIGH",  ivNeed:"any",  best:["stop_hunt"],                                        how:"ATM put 0–3 DTE. Enter on support break. Day trade only.",                        exit:"Same session or next morning. Never overnight.", stop:"Price reclaims support.",  pros:"Cheap. Max leverage intraday.", cons:"Theta destroys overnight." },
   uvxy_call:   { name:"UVXY Calls",         emoji:"🌋", color:"#cc44ff", risk:"V.HIGH",  ivNeed:"any",  best:["vix_flush","vol_squeeze"],                          how:"UVXY calls ATM 2–3 weeks out. Vol spikes fast and brutal.",                       exit:"Sell INTO the spike. 2–4 days max.",       stop:"VIX starts dropping.",         pros:"Designed for vol spikes. 3–5x potential.", cons:"UVXY decays hard." },
@@ -182,7 +182,7 @@ function calcWinProb(p) {
   }
   // GEX bias (0-8)
   if (p.gex?.bias === "short_gamma" && p.cat === "squeeze") pts += 8;
-  if (p.gex?.bias === "long_gamma"  && p.cat === "flush")   pts += 8;
+  if (p.gex?.bias === "short_gamma" && p.cat === "flush")   pts += 8;
   // Net premium momentum (0-8)
   if (p.cat === "squeeze" && p.net_prem?.trending === "up")   pts += 8;
   if (p.cat === "flush"   && p.net_prem?.trending === "down") pts += 8;
@@ -275,8 +275,8 @@ function getTechnicalRead(p, macroBias) {
 
   // SUGGESTED STRATEGY based on tech direction + IV regime
   const suggestedStrategy = (() => {
-    if (techBias === "BULLISH") return ivHigh ? "Call Debit Spread (IV hedge)" : "Naked Call OTM";
-    if (techBias === "BEARISH") return ivHigh ? "Put Debit Spread (IV hedge)" : "Naked Put OTM";
+    if (techBias === "BULLISH") return ivHigh ? "Call Debit Spread (IV hedge)" : "Long Call OTM";
+    if (techBias === "BEARISH") return ivHigh ? "Put Debit Spread (IV hedge)" : "Long Put OTM";
     if (techBias === "NEUTRAL") return "Iron Condor or Stay Out";
     return "Wait for Ichimoku read";
   })();
@@ -345,7 +345,7 @@ FETCH IN ORDER (KEEP IT TIGHT — at most 5 MCP calls total to avoid timeouts):
 Do NOT call any other tools this scan. Set the following enrichment fields to null and they will be filled in by a future enrichment pass: short, options_vol, net_prem, earnings, iv, levels, congress, insider, news, fda, predict.
 
 CLASSIFY sqType:
-staircase (3+ DP days, no call sweep yet), short_squeeze (call sweep si>10%), gamma_squeeze (short_gamma + calls), delta_squeeze (size/OI>3 call), liquidity_sq (float<20M), ftd_squeeze (ftds elevated), vol_squeeze (UVXY/VIX sweep), cap_flush (put sweep+dp sell), gamma_flush (long_gamma+puts), stop_hunt (near support), margin_flush (large dp sell no news), vix_flush (broad VIX spike), liq_flush (put only thin bids)
+staircase (3+ DP days, no call sweep yet), short_squeeze (call sweep si>10%), gamma_squeeze (short_gamma + calls), delta_squeeze (size/OI>3 call), liquidity_sq (float<20M), ftd_squeeze (ftds elevated), vol_squeeze (UVXY/VIX sweep), cap_flush (put sweep+dp sell), gamma_flush (short_gamma+puts+falling price), stop_hunt (near support), margin_flush (large dp sell no news), vix_flush (broad VIX spike), liq_flush (put only thin bids)
 
 sig: cs_dp | call_sweep | dp_buy | ps_dp | put_sweep | dp_sell | macro_bull | macro_bear
 cat: squeeze | flush | macro
@@ -362,7 +362,7 @@ Use null for unavailable fields. Return [] if all fetches fail. Aim for full tic
 const buildSystemDirect = () => `You will receive pre-fetched UW data. Classify into the trader's signal schema. Return ONE raw JSON array ONLY. First char [, last char ]. No prose.
 
 CLASSIFY sqType:
-staircase (3+ DP days same zone, no call sweep yet), short_squeeze (call sweep + si>10%), gamma_squeeze (short_gamma + calls), delta_squeeze (size/OI>3 call), liquidity_sq (float<20M), ftd_squeeze (ftds elevated), vol_squeeze (UVXY/VIX sweep), cap_flush (put sweep+dp sell), gamma_flush (long_gamma+puts), stop_hunt (near support), margin_flush (large dp sell no news), vix_flush (broad VIX spike), liq_flush (put only thin bids).
+staircase (3+ DP days same zone, no call sweep yet), short_squeeze (call sweep + si>10%), gamma_squeeze (short_gamma + calls), delta_squeeze (size/OI>3 call), liquidity_sq (float<20M), ftd_squeeze (ftds elevated), vol_squeeze (UVXY/VIX sweep), cap_flush (put sweep+dp sell), gamma_flush (short_gamma+puts+falling price), stop_hunt (near support), margin_flush (large dp sell no news), vix_flush (broad VIX spike), liq_flush (put only thin bids).
 
 sig: cs_dp | call_sweep | dp_buy | ps_dp | put_sweep | dp_sell | macro_bull | macro_bear
 cat: squeeze | flush | macro
@@ -477,12 +477,10 @@ function computeIchimoku(barsRaw) {
 // and ThinkorSwim disagree on a ticker, one of them is wrong, and you need to be
 // able to tell which. Runs on the same 5m OHLC bars the Ichimoku engine uses.
 //
-// Two deliberate deviations from the ThinkScript, both because the input is 5m
-// bars rather than a daily column:
-//   1. dollarVol is scaled by BARS_PER_DAY to approximate average DAILY dollar
-//      volume, so the $2M liquidity floor means the same thing in both places.
-//   2. VWAP is a real session VWAP rebuilt from the bars, not TOS's `vwap`.
-const V4_BARS_PER_DAY = 78;   // 5m regular-hours bars
+// The engine accepts both daily bars from /api/bars and 5m bars from the optional
+// flow enrichment. It detects the spacing before annualising volume. Treating a
+// daily candle as one of 78 intraday candles inflates dollar liquidity by 78x.
+const V4_INTRADAY_BARS_PER_DAY = 78;
 
 function v4Series(arr, len, fn) { return arr.map((_, i) => fn(i, len)); }
 
@@ -541,6 +539,16 @@ function computeV4(barsRaw) {
   if (norm.length < 60) return null;
   const s = [...norm].sort((a, b) => (!a.t || !b.t) ? 0 : new Date(a.t) - new Date(b.t));
 
+  const deltas = [];
+  for (let x = 1; x < s.length; x++) {
+    const previous = Date.parse(s[x - 1].t), current = Date.parse(s[x].t);
+    if (Number.isFinite(previous) && Number.isFinite(current) && current > previous) deltas.push(current - previous);
+  }
+  deltas.sort((a, b) => a - b);
+  const medianDelta = deltas.length ? deltas[Math.floor(deltas.length / 2)] : 0;
+  const isDaily = medianDelta >= 12 * 60 * 60 * 1000;
+  const barsPerDay = isDaily ? 1 : V4_INTRADAY_BARS_PER_DAY;
+
   const n = s.length, i = n - 1;
   const C = s.map(b => b.c), H = s.map(b => b.h), L = s.map(b => b.l), O = s.map(b => b.o), V = s.map(b => b.v);
 
@@ -592,7 +600,7 @@ function computeV4(barsRaw) {
   const rvolSafe = isFinite(rvol) ? rvol : 0;
   const volFast = v4Sma(V, 5, i), volSlow = v4Sma(V, 50, i);
   const volTrend = (!isFinite(volSlow) || volSlow <= 0) ? 1 : volFast / volSlow;
-  const dollarVol = C[i] * (isFinite(avgVol) ? avgVol : 0) * V4_BARS_PER_DAY;
+  const dollarVol = C[i] * (isFinite(avgVol) ? avgVol : 0) * barsPerDay;
   const minDollarVol = 2000000;
 
   // ── money flow ─────────────────────────────────────────────────────────────
@@ -613,7 +621,9 @@ function computeV4(barsRaw) {
     num += ((H[x] + L[x] + C[x]) / 3) * V[x]; den += V[x];
     VW[x] = den > 0 ? num / den : NaN;
   }
-  const vw = VW[i], vwapOK = isFinite(vw) && vw > 0;
+  // A daily candle has no session path, so its typical price is not VWAP. Disable
+  // this lens on daily input instead of manufacturing confirmation from OHLC.
+  const vw = VW[i], vwapOK = !isDaily && isFinite(vw) && vw > 0;
   const vwapEdge = (vwapOK && atrOK) ? v4Clamp((C[i] - vw) / (1.5 * atr), -1, 1) : 0;
   const vwapSide = !vwapOK ? 0 : C[i] > vw ? 1 : C[i] < vw ? -1 : 0;
 
@@ -848,11 +858,351 @@ function computeV4(barsRaw) {
     timing: v4Timing, extension: isFinite(extensionATR) ? +extensionATR.toFixed(2) : null,
     liquidityScore,
     liquidity: Math.round(dollarVol), adx: +adx.toFixed(1), rsi: +rsi.toFixed(1),
-    bars: n,
+    bars: n, timeframe: isDaily ? "1d" : "intraday",
+  };
+}
+
+// ── STOCK QUALITY GATE ──────────────────────────────────────────────────────
+// These are entry requirements, not score bonuses. A thin stock cannot earn its
+// way back onto the list with momentum or an options-flow print.
+const STOCK_QUALITY = Object.freeze({
+  minPrice: 10,
+  minDollarVolume: 25_000_000,
+  minLiquidityScore: 50,
+  maxSpreadPct: 0.25,
+  maxQuoteAgeMs: 90_000,
+});
+
+function stockQuality(v4, quote, marketOpen) {
+  const reasons = [];
+  if (!v4 || !Number.isFinite(v4.last) || v4.last < STOCK_QUALITY.minPrice) {
+    reasons.push(`price below $${STOCK_QUALITY.minPrice}`);
+  }
+  if (!v4 || !Number.isFinite(v4.liquidity) || v4.liquidity < STOCK_QUALITY.minDollarVolume) {
+    reasons.push("average dollar volume below $25M");
+  }
+  if (!v4 || (v4.liquidityScore ?? 0) < STOCK_QUALITY.minLiquidityScore) {
+    reasons.push(`liquidity score below ${STOCK_QUALITY.minLiquidityScore}`);
+  }
+  const basePass = reasons.length === 0;
+  const twoSided = quote && Number.isFinite(quote.bid) && Number.isFinite(quote.ask)
+    && quote.bid > 0 && quote.ask >= quote.bid && Number.isFinite(quote.spreadPct);
+  const spreadPass = Boolean(twoSided && quote.spreadPct <= STOCK_QUALITY.maxSpreadPct);
+  const quoteAgeMs = quote?.asOf ? Math.max(0, Date.now() - Date.parse(quote.asOf)) : quote?.ageMs;
+  const fresh = Boolean(twoSided && (!marketOpen || (Number.isFinite(quoteAgeMs) && quoteAgeMs <= STOCK_QUALITY.maxQuoteAgeMs)));
+  if (twoSided && !spreadPass) reasons.push(`stock spread ${quote.spreadPct.toFixed(3)}% > ${STOCK_QUALITY.maxSpreadPct}%`);
+  if (marketOpen && twoSided && !fresh) reasons.push("stock quote is stale");
+
+  return {
+    basePass,
+    spreadPass,
+    fresh,
+    verified: Boolean(twoSided),
+    nbbo: Boolean(quote?.nbbo),
+    eligible: basePass && (!twoSided || (spreadPass && fresh)),
+    actionable: basePass && spreadPass && fresh && Boolean(marketOpen),
+    quoteAgeMs,
+    reasons,
+  };
+}
+
+// ── HISTORICAL MOVE AUDIT ───────────────────────────────────────────────────
+// Objective event labels first, V4 replay second. This avoids deciding that a
+// move was a "squeeze" merely because the scanner happened to like it.
+function historicalMoveAudit(barsByTicker) {
+  const events = [];
+  let coveredSymbols = 0;
+  for (const [ticker, raw] of Object.entries(barsByTicker || {})) {
+    const bars = (Array.isArray(raw) ? raw : []).map(bar => ({
+      t:bar.t, o:+bar.o, h:+bar.h, l:+bar.l, c:+bar.c, v:+bar.v,
+    })).filter(bar => bar.h > 0 && bar.l > 0 && bar.c > 0)
+      .sort((a, b) => Date.parse(a.t) - Date.parse(b.t));
+    if (bars.length < 85) continue;
+    coveredSymbols++;
+    let lastEventIndex = -10;
+    for (let index = 60; index < bars.length - 3; index++) {
+      if (index - lastEventIndex < 5) continue;
+      const priorClose = bars[index - 1].c;
+      if (priorClose < STOCK_QUALITY.minPrice) continue;
+      const prior = bars.slice(index - 20, index);
+      const averageVolume = prior.reduce((sum, bar) => sum + bar.v, 0) / prior.length;
+      const priorDollarVolume = averageVolume * priorClose;
+      if (priorDollarVolume < STOCK_QUALITY.minDollarVolume) continue;
+      const forward = bars.slice(index, index + 3);
+      const highest = Math.max(...forward.map(bar => bar.h));
+      const lowest = Math.min(...forward.map(bar => bar.l));
+      const eventVolume = Math.max(...forward.map(bar => bar.v));
+      const volumeRatio = averageVolume > 0 ? eventVolume / averageVolume : 0;
+      const upMove = 100 * (highest / priorClose - 1);
+      const downMove = 100 * (lowest / priorClose - 1);
+      if (volumeRatio < 1.5 || (upMove < 12 && downMove > -12)) continue;
+
+      const type = Math.abs(upMove) >= Math.abs(downMove) ? "squeeze" : "flush";
+      const movePct = type === "squeeze" ? upMove : downMove;
+      const pre = computeV4(bars.slice(0, index));
+      if (!pre) continue;
+      const directionMatches = type === "squeeze" ? pre.direction > 0 : pre.direction < 0;
+      const signalReady = pre.score >= 65 || pre.early >= 60;
+      const captured = directionMatches && signalReady;
+      const missReasons = [];
+      if (!directionMatches) missReasons.push(pre.direction === 0 ? "no direction" : "wrong direction");
+      if (pre.score < 65) missReasons.push(`score ${pre.score}`);
+      if (pre.early < 60) missReasons.push(`early ${pre.early}`);
+      if (pre.timing < 0) missReasons.push("already extended");
+      if (pre.liquidity < STOCK_QUALITY.minDollarVolume) missReasons.push("thin before move");
+      events.push({
+        ticker, type, date:String(bars[index].t).slice(0, 10),
+        priorClose, movePct, volumeRatio, captured, missReasons,
+        score:pre.score, early:pre.early, direction:pre.direction,
+      });
+      lastEventIndex = index;
+    }
+  }
+  events.sort((a, b) => Date.parse(b.date) - Date.parse(a.date));
+  const summarize = type => {
+    const rows = events.filter(event => event.type === type);
+    const captured = rows.filter(event => event.captured).length;
+    return {
+      total:rows.length,
+      captured,
+      capturePct:rows.length ? Math.round(100 * captured / rows.length) : null,
+      averageMove:rows.length ? rows.reduce((sum, event) => sum + event.movePct, 0) / rows.length : null,
+    };
+  };
+  return {
+    coveredSymbols,
+    total:events.length,
+    squeeze:summarize("squeeze"),
+    flush:summarize("flush"),
+    events,
+    misses:events.filter(event => !event.captured).slice(0, 8),
+  };
+}
+
+const BAR_CACHE_KEY = "wsh_daily_bars_v2";
+const BAR_CACHE_MAX_AGE_MS = 36 * 60 * 60 * 1000;
+
+function loadBarDataCache() {
+  try {
+    const cached = JSON.parse(localStorage.getItem(BAR_CACHE_KEY) || "null");
+    if (!cached?.bars || !cached.savedAt || Date.now() - cached.savedAt > BAR_CACHE_MAX_AGE_MS) return {};
+    return cached.bars;
+  } catch (_) { return {}; }
+}
+
+function saveBarDataCache(bars) {
+  try { localStorage.setItem(BAR_CACHE_KEY, JSON.stringify({ savedAt:Date.now(), bars })); } catch (_) {}
+}
+
+function scoreBarData(barsByTicker) {
+  const rows = [];
+  for (const [ticker, bars] of Object.entries(barsByTicker || {})) {
+    try {
+      const v4 = computeV4(bars);
+      if (v4) rows.push({ ticker, v4 });
+    } catch (_) {}
+  }
+  return rows.sort((a, b) => b.v4.score - a.v4.score);
+}
+
+const CHART_PATTERN_LESSONS = [
+  { key:"uptrend", name:"Stairs up", icon:"/\\/", plain:"Higher floors and higher ceilings. Buyers keep stepping up." },
+  { key:"downtrend", name:"Stairs down", icon:"\\/\\", plain:"Lower floors and lower ceilings. Sellers keep pushing down." },
+  { key:"range", name:"In a room", icon:"[--]", plain:"Price bounces between a floor and ceiling. Wait for a real exit." },
+  { key:"squeeze", name:"Spring", icon:"><", plain:"The room gets smaller. Energy is building, but direction is not promised." },
+  { key:"breakout", name:"Roof break", icon:"--^", plain:"Price gets above the old ceiling with stronger volume. A retest is safer than chasing." },
+  { key:"breakdown", name:"Floor break", icon:"v--", plain:"Price falls below the old floor. Beginners should usually avoid trying to catch it." },
+  { key:"pullback", name:"Step back", icon:"/^", plain:"An uptrend comes back toward support. It must hold the floor before it is interesting." },
+];
+
+function chartAverage(values) {
+  return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : null;
+}
+
+function analyzeChartSetup(rawBars, v4 = {}) {
+  const bars = (Array.isArray(rawBars) ? rawBars : []).map(bar => ({
+    t:bar.t, o:+bar.o, h:+bar.h, l:+bar.l, c:+bar.c, v:+bar.v || 0,
+  })).filter(bar => Number.isFinite(bar.o) && Number.isFinite(bar.h) && Number.isFinite(bar.l)
+    && Number.isFinite(bar.c) && bar.h >= bar.l && bar.l > 0)
+    .sort((left, right) => Date.parse(left.t) - Date.parse(right.t));
+  if (bars.length < 25) return null;
+
+  const visibleBars = bars.slice(-60);
+  const lastBar = visibleBars[visibleBars.length - 1];
+  const priorBars = visibleBars.slice(-21, -1);
+  const recentBars = visibleBars.slice(-10);
+  const support = Math.min(...priorBars.map(bar => bar.l));
+  const resistance = Math.max(...priorBars.map(bar => bar.h));
+  const average20 = chartAverage(priorBars.map(bar => bar.c));
+  const average5 = chartAverage(visibleBars.slice(-5).map(bar => bar.c));
+  const averageVolume = chartAverage(priorBars.map(bar => bar.v)) || 0;
+  const trueRanges = visibleBars.slice(-15).map((bar, index, rows) => {
+    const previousClose = index ? rows[index - 1].c : bar.c;
+    return Math.max(bar.h - bar.l, Math.abs(bar.h - previousClose), Math.abs(bar.l - previousClose));
+  });
+  const atr = chartAverage(trueRanges) || Math.max(0.01, lastBar.c * 0.01);
+  const volumeRatio = averageVolume > 0 ? lastBar.v / averageVolume : 0;
+  const rangeInAtr = atr > 0 ? (resistance - support) / atr : 99;
+  const direction = Number(v4.direction) || 0;
+  const pulledBack = direction > 0 && Math.min(...recentBars.map(bar => bar.l)) <= average20 + atr * 0.35
+    && lastBar.c >= average20;
+
+  let patternKey = "range";
+  if (lastBar.c > resistance && volumeRatio >= 1.1) patternKey = "breakout";
+  else if (lastBar.c < support && volumeRatio >= 1.1) patternKey = "breakdown";
+  else if (pulledBack) patternKey = "pullback";
+  else if (rangeInAtr <= 3.2 || v4.regimeName === "SQUEEZE") patternKey = "squeeze";
+  else if (average5 > average20 && lastBar.c > average20) patternKey = "uptrend";
+  else if (average5 < average20 && lastBar.c < average20) patternKey = "downtrend";
+
+  const lesson = CHART_PATTERN_LESSONS.find(item => item.key === patternKey) || CHART_PATTERN_LESSONS[2];
+  const side = direction > 0 ? "up" : direction < 0 ? "down" : "none";
+  const anchor = side === "up"
+    ? (patternKey === "breakout" ? resistance : average20)
+    : side === "down"
+      ? (patternKey === "breakdown" ? support : average20)
+      : (support + resistance) / 2;
+  const zoneLow = Math.max(0.01, side === "up" ? Math.max(support, anchor - atr * 0.35) : anchor - atr * 0.35);
+  const zoneHigh = side === "down" ? Math.min(resistance, anchor + atr * 0.35) : anchor + atr * 0.35;
+  const confirmation = side === "up" ? resistance : side === "down" ? support : null;
+  const invalidation = side === "up" ? Math.max(0.01, support - atr * 0.25)
+    : side === "down" ? resistance + atr * 0.25 : null;
+  const inZone = lastBar.c >= zoneLow && lastBar.c <= zoneHigh;
+  const qualityBlocked = v4.quality?.eligible === false;
+  const chasing = Number(v4.timing) < 0
+    || (side === "up" && lastBar.c > zoneHigh + atr * 0.5)
+    || (side === "down" && lastBar.c < zoneLow - atr * 0.5);
+
+  let status = { key:"wait", label:"WAIT", color:"#ffaa44", plain:"Let price come to the marked area and prove the floor or ceiling holds." };
+  if (qualityBlocked) status = { key:"blocked", label:"SKIP", color:"#ff3355", plain:"Price, liquidity, quote freshness, or spread failed a safety gate." };
+  else if (side === "none") status = { key:"wait", label:"NO SIDE", color:"#7591a8", plain:"The checks do not agree on a direction yet." };
+  else if (side === "down") status = { key:"avoid", label:"LEARN ONLY", color:"#ff9955", plain:"The chart leans down. Beginners should avoid shorting and wait for a new base." };
+  else if (chasing) status = { key:"chase", label:"TOO FAR", color:"#ff9955", plain:"Price is away from the study zone. Chasing raises the distance to the safety line." };
+  else if (inZone) status = { key:"watch", label:"WATCH", color:"#00cc88", plain:"Price is in the study zone. Wait for a close that holds support and stronger volume." };
+
+  return {
+    bars:visibleBars, last:lastBar.c, support, resistance, average20, atr, volumeRatio,
+    patternKey, patternName:lesson.name, patternPlain:lesson.plain, side,
+    zoneLow:Math.min(zoneLow, zoneHigh), zoneHigh:Math.max(zoneLow, zoneHigh),
+    confirmation, invalidation, inZone, status,
   };
 }
 
 // ── V4 display helpers ───────────────────────────────────────────────────────
+const OPTION_FLOW_MAX_STRIKE_DISTANCE_PCT = 8;
+
+function parseObservedOptionContract(row) {
+  const raw = String(row?.strike || row?.latest_strike || "").trim();
+  const match = raw.match(/\$?\s*(\d+(?:\.\d+)?)\s*([cp])\b/i);
+  if (!match) return null;
+  const strike = Number(match[1]);
+  if (!(strike > 0)) return null;
+  const type = match[2].toLowerCase() === "c" ? "call" : "put";
+  return {
+    strike,
+    type,
+    label:`$${strike}${type === "call" ? "C" : "P"}`,
+    expiry:String(row?.expiry || row?.latest_expiry || "").trim(),
+    row,
+  };
+}
+
+function buildOptionStrikeStudy(v4 = {}, rawFlowRows = [], rawBars = []) {
+  const flowRows = (Array.isArray(rawFlowRows) ? rawFlowRows : []).filter(Boolean);
+  const contracts = flowRows.map(row => parseObservedOptionContract(row)).filter(Boolean);
+  const direction = Number(v4.direction) || 0;
+  const last = Number(v4.last) || null;
+  const chart = analyzeChartSetup(rawBars, v4);
+  const bearishPrice = direction < 0 || chart?.patternKey === "breakdown" || chart?.patternKey === "downtrend";
+  const recent = row => Math.max(1, Number(row.trade_day || row.day || 1)) <= 3;
+  const boughtAtAsk = row => Number.isFinite(Number(row.ask_pct)) && Number(row.ask_pct) >= 0.7;
+
+  const gammaFlushContract = contracts.find(contract =>
+    contract.type === "put"
+    && contract.row?.sqType === "gamma_flush"
+    && contract.row?.gex?.bias === "short_gamma"
+    && contract.row?.sweepOk === true
+    && boughtAtAsk(contract.row)
+    && recent(contract.row)
+  ) || null;
+  const gammaFlushConfirmed = Boolean(gammaFlushContract && bearishPrice);
+  const otherFlush = flowRows.find(row => row.cat === "flush" && recent(row)) || null;
+  const priceFlush = bearishPrice && (chart?.patternKey === "breakdown" || Number(v4.score) >= 55);
+
+  let flush = null;
+  if (gammaFlushConfirmed) {
+    flush = {
+      key:"gamma_flush",
+      label:"GAMMA FLUSH EVIDENCE",
+      color:"#ff3355",
+      plain:`Recent ask-side put buying at ${gammaFlushContract.label}${gammaFlushContract.expiry ? ` ${gammaFlushContract.expiry}` : ""}, short-gamma GEX, and falling price align. Short-gamma hedging can amplify the selloff.`,
+      optionsEvidence:true,
+    };
+  } else if (gammaFlushContract) {
+    flush = {
+      key:"gamma_flush_watch",
+      label:"GAMMA FLUSH WATCH",
+      color:"#ff9955",
+      plain:"Put flow and short-gamma GEX are present, but price has not confirmed a downside flush.",
+      optionsEvidence:true,
+    };
+  } else if (otherFlush) {
+    const gammaUnconfirmed = otherFlush.sqType === "gamma_flush";
+    const definition = gammaUnconfirmed || typeof FL === "undefined" ? null : FL[otherFlush.sqType];
+    flush = {
+      key:gammaUnconfirmed ? "gamma_unconfirmed" : otherFlush.sqType || "flow_flush",
+      label:gammaUnconfirmed ? "BEARISH FLOW — GAMMA UNCONFIRMED" : definition?.label || "BEARISH FLOW",
+      color:definition?.color || "#ff9955",
+      plain:"A licensed options-flow row is bearish, but it does not meet the stricter gamma-flush rule of recent ask-side put buying, short-gamma GEX, and falling price.",
+      optionsEvidence:true,
+    };
+  } else if (priceFlush) {
+    flush = {
+      key:"price_flush",
+      label:"PRICE/VOLUME FLUSH RISK",
+      color:"#ff9955",
+      plain:"Daily candles and volume lean down. This is not a gamma label because no qualifying options-positioning evidence is present.",
+      optionsEvidence:false,
+    };
+  }
+
+  const observedCall = contracts.filter(contract =>
+    contract.type === "call"
+    && contract.row?.sweepOk === true
+    && boughtAtAsk(contract.row)
+    && recent(contract.row)
+  ).sort((left, right) => {
+    const dayDifference = Number(left.row.trade_day || left.row.day || 1) - Number(right.row.trade_day || right.row.day || 1);
+    return dayDifference || Number(right.row.premium || 0) - Number(left.row.premium || 0);
+  })[0] || null;
+
+  const strikeDistancePct = observedCall && last
+    ? Math.abs(observedCall.strike - last) / last * 100
+    : null;
+  const callReferenceUsable = Boolean(
+    direction > 0
+    && !flush
+    && v4.quality?.eligible !== false
+    && observedCall
+    && strikeDistancePct <= OPTION_FLOW_MAX_STRIKE_DISTANCE_PCT
+  );
+  const support = Number(chart?.support) || null;
+  const putReference = direction > 0 && !flush && support ? support : null;
+
+  return {
+    stance:flush ? "avoid_bullish"
+      : direction > 0 ? (callReferenceUsable ? "research" : "wait_for_flow") : "wait",
+    flush,
+    observedCall,
+    strikeDistancePct,
+    callReferenceUsable,
+    support,
+    putReference,
+    estimatedCashSecuredCollateral:putReference ? Math.round(putReference * 100) : null,
+    hasOptionChain:false,
+  };
+}
+
 const v4Color = (val, band) => {
   for (const [threshold, color] of band) if (val >= threshold) return color;
   return "#3e5268";
@@ -1548,7 +1898,7 @@ function marketBrain({ feed, events, calendar, zones, nowMs }) {
     }
   }
 
-  const best = v4s.filter(v => v.score >= 55 && v.direction !== 0)
+  const best = v4s.filter(v => v.score >= 55 && v.direction !== 0 && v.quality?.eligible !== false)
                   .sort((a, b) => b.score - a.score).slice(0, 5);
 
   // Plain-language message, assembled from what is actually true right now.
@@ -1598,6 +1948,9 @@ function applyMode(rows, mode, ctx = {}) {
   for (const r of rows) {
     const v = r.v4 || r;
     const fails = [];
+    if ((v.last ?? 0) < STOCK_QUALITY.minPrice) fails.push(`PRICE ${v.last} < $${STOCK_QUALITY.minPrice}`);
+    if ((v.liquidity ?? 0) < STOCK_QUALITY.minDollarVolume) fails.push("DOLLAR VOL < $25M");
+    if (v.quality && !v.quality.eligible) fails.push(...v.quality.reasons);
     if ((v.score ?? 0) < g.minScore) fails.push(`SCORE ${v.score} < ${g.minScore}`);
     if ((v.confidence ?? 0) < g.minConfidence) fails.push(`CONF ${v.confidence} < ${g.minConfidence}`);
     if ((v.liquidityScore ?? 0) < g.minLiquidity) fails.push(`LIQ ${v.liquidityScore} < ${g.minLiquidity}`);
@@ -2324,7 +2677,7 @@ function TopCard({ entry, rank, sortMode }) {
         {entry.sweepOk && <span style={{ fontSize:10, color:"#ffe033", border:"1px solid #ffe03344", padding:"1px 4px" }}>SW</span>}
         {entry.dpOk    && <span style={{ fontSize:10, color:"#44ffbb", border:"1px solid #44ffbb44", padding:"1px 4px" }}>DP</span>}
         {entry.gex_bias==="short_gamma" && <span title={`Dealers short gamma — squeezes amplified${entry.gex_wall?` · wall ${entry.gex_wall}`:""}`} style={{ fontSize:10, color:"#ff88cc", border:"1px solid #ff88cc55", padding:"1px 5px", fontWeight:700 }}>γ↑{entry.gex_wall?` ${entry.gex_wall}`:""}</span>}
-        {entry.gex_bias==="long_gamma"  && <span title={`Dealers long gamma — flushes amplified${entry.gex_wall?` · wall ${entry.gex_wall}`:""}`} style={{ fontSize:10, color:"#ff6600", border:"1px solid #ff660055", padding:"1px 5px", fontWeight:700 }}>γ↓{entry.gex_wall?` ${entry.gex_wall}`:""}</span>}
+        {entry.gex_bias==="long_gamma"  && <span title={`Dealers long gamma — hedging usually dampens moves${entry.gex_wall?` · wall ${entry.gex_wall}`:""}`} style={{ fontSize:10, color:"#7799bb", border:"1px solid #7799bb55", padding:"1px 5px", fontWeight:700 }}>γ DAMP{entry.gex_wall?` ${entry.gex_wall}`:""}</span>}
         {entry.congress?.any && <span style={{ fontSize:10, color: entry.congress.net_side==="buy"?"#00ff88":entry.congress.net_side==="sell"?"#ff3355":"#66ccff", border:`1px solid ${entry.congress.net_side==="buy"?"#00ff8844":entry.congress.net_side==="sell"?"#ff335544":"#66ccff44"}`, padding:"1px 4px" }}>🏛</span>}
         {entry.insider?.any  && <span style={{ fontSize:10, color: entry.insider.net_side==="buy"?"#00ff88":"#ff9955", border:`1px solid ${entry.insider.net_side==="buy"?"#00ff8844":"#ff995544"}`, padding:"1px 4px" }}>👤</span>}
         {entry.news?.any     && <span style={{ fontSize:10, color:"#ff9955", border:"1px solid #ff995544", padding:"1px 4px" }}>📰</span>}
@@ -2435,7 +2788,7 @@ function Card({ p, open, onToggle, pos, onSave, isNew, macroBias }) {
             {sc>=3 && !isEW && <span style={{ fontSize:11, color:"#00ddff", fontWeight:700 }}>📊 {sc}d staircase</span>}
             {p.sweepOk && p.dpOk && <span style={{ fontSize:11, color:"#ffe033", fontWeight:700 }}>⚡ BOTH</span>}
             {p.gex?.bias==="short_gamma" && <span title="Dealers short gamma — squeeze amplified" style={{ fontSize:11, color:"#ff88cc", fontWeight:700 }}>γ↑ SHORT</span>}
-            {p.gex?.bias==="long_gamma"  && <span title="Dealers long gamma — flush amplified" style={{ fontSize:11, color:"#ff6600", fontWeight:700 }}>γ↓ LONG</span>}
+            {p.gex?.bias==="long_gamma"  && <span title="Dealers long gamma — hedging usually dampens moves" style={{ fontSize:11, color:"#7799bb", fontWeight:700 }}>γ DAMP</span>}
             {p.news?.any && <span title={p.news.latest||""} style={{ fontSize:11, color:"#ff9955", fontWeight:600 }}>📰 {p.news.catalyst_type||"news"}{p.news.hours_ago!=null?` ${p.news.hours_ago}h`:""}</span>}
             {p.earnings?.within_14_days && <span style={{ fontSize:11, color:"#ff4444", fontWeight:700 }}>📅 EARNINGS</span>}
           </div>
@@ -2584,7 +2937,7 @@ function Card({ p, open, onToggle, pos, onSave, isNew, macroBias }) {
               {p.sqType==="ftd_squeeze"   && "FTDs elevated — shorts sold shares they never borrowed. T+35 rule forces mandatory buy-ins. Rips with no warning."}
               {p.sqType==="vol_squeeze"   && "IV compressed and about to snap. When vol explodes back, premium and underlying move violently. UVXY/VIX sweeps lead."}
               {p.sqType==="cap_flush"     && "Reported put-flow and dark-pool selling conditions align with a possible bearish setup. This does not identify the trader or predict a sustained decline."}
-              {p.sqType==="gamma_flush"   && "Dealers LONG gamma — they sell into every bounce, amplifying drops. Mirror of gamma squeeze. Bearish and mechanical."}
+              {p.sqType==="gamma_flush"   && "Dealers SHORT gamma while downside put flow and falling price align. Short-gamma hedging can require more stock selling as price falls, which can amplify a selloff. This label requires options-positioning evidence; candles alone cannot prove it."}
               {p.sqType==="stop_hunt"     && "Price pushed below support to trigger stops. After stops clear, the real move. Day trade only — resolves intraday."}
               {p.sqType==="margin_flush"  && "Leveraged longs getting margin called. Forced selling at any price. Large DP sell + no news = classic margin flush."}
               {p.sqType==="vix_flush"     && "VIX spiking hard. Don't buy SPY puts — IV too expensive. Buy UVXY calls to ride the vol spike directly."}
@@ -2856,7 +3209,7 @@ function Setup({ onConnect }) {
 // The FINAL_V4 watchlist, rendered from the same numbers ThinkorSwim would show.
 // One row per ticker (deduped), sorted by SCORE. Read left to right: is it
 // tradeable → which side → do the signals agree → how strong → early or late.
-function V4Grid({ feed, onClose, modeResult, mode }) {
+function V4Grid({ feed, onClose, modeResult, mode, quoteStatus, historyAudit }) {
   const seenT = new Set();
   const all = [];
   feed.forEach(p => {
@@ -2884,12 +3237,17 @@ function V4Grid({ feed, onClose, modeResult, mode }) {
                                 background:(MODE_GATES[mode]?.color||"#7591a8")+"1f", border:`1px solid ${(MODE_GATES[mode]?.color||"#7591a8")}66`,
                                 color:MODE_GATES[mode]?.color||"#7591a8" }}>{MODE_GATES[mode]?.label} MODE</span>}
         {hidden > 0 && <span style={{ fontSize:11, color:"#ff9955" }}>{hidden} hidden by mode gates</span>}
+        <span style={{ fontSize:10, color:quoteStatus?.state === "ok" ? "#66ffcc" : "#ff9955" }}>
+          {quoteStatus?.state === "ok"
+            ? `${quoteStatus.nbbo ? "NBBO" : String(quoteStatus.feed || "quote").toUpperCase()} quotes · ${quoteStatus.returned}/${quoteStatus.requested}`
+            : "stock spread unverified — check thinkorswim"}
+        </span>
         <button onClick={onClose} style={{ marginLeft:"auto", background:"transparent", border:"1px solid #15212e", color:"#7591a8", fontSize:12, padding:"4px 10px", cursor:"pointer", borderRadius:3 }}>✕ close</button>
       </div>
       {rows.length === 0 ? (
         <div style={{ padding:"22px 20px", fontSize:13, color:"#7591a8" }}>
-          No V4 rows yet. The engine needs at least 60 five-minute bars per ticker — it populates
-          on the next scan once OHLC data arrives.
+          No V4 rows yet. The engine needs at least 60 daily or intraday bars per ticker — it populates
+          as each provider window arrives.
         </div>
       ) : (
         <table style={{ borderCollapse:"collapse", width:"100%" }}>
@@ -2897,6 +3255,9 @@ function V4Grid({ feed, onClose, modeResult, mode }) {
             <tr>
               <th style={{ ...th, textAlign:"left" }}>SYMBOL</th>
               <th style={th}>LAST</th>
+              <th style={th} title="Current stock bid / ask from the quote provider">BID / ASK</th>
+              <th style={th} title="Stock spread as percent of midpoint. Quality gate is 0.25% maximum.">SPREAD</th>
+              <th style={th} title="Hard quality verdict: price, dollar volume, liquidity, then live spread when available">QUALITY</th>
               <th style={th} title="Master 0-100 opportunity score">SCORE</th>
               <th style={th} title="Direction: -2 strong bear … +2 strong bull">DIR</th>
               <th style={th} title="Agreement between the six direction lenses">CONF</th>
@@ -2919,6 +3280,15 @@ function V4Grid({ feed, onClose, modeResult, mode }) {
               <tr key={r.ticker} style={{ borderBottom:"1px solid #0b141c" }}>
                 <td style={{ ...td, textAlign:"left", color:"#eaf2ff", fontSize:14, fontWeight:700 }}>{r.ticker}</td>
                 <td style={{ ...td, color:"#b8c9dc" }}>{r.last?.toFixed(2) ?? "—"}</td>
+                <td style={{ ...td, color:r.quote ? "#b8c9dc" : "#556677", fontSize:11 }}>
+                  {r.quote ? `${r.quote.bid.toFixed(2)} / ${r.quote.ask.toFixed(2)}` : "CHECK TOS"}
+                </td>
+                <td style={{ ...td, color:!r.quote ? "#ff9955" : r.quality?.spreadPass ? "#00ff88" : "#ff3355" }}>
+                  {r.quote ? `${r.quote.spreadPct.toFixed(3)}%` : "—"}
+                </td>
+                <td style={{ ...td, fontSize:10, letterSpacing:"0.06em", color:!r.quality?.basePass ? "#ff3355" : r.quality?.verified ? (r.quality?.eligible ? "#00ff88" : "#ff3355") : "#ff9955" }}>
+                  {!r.quality?.basePass ? "BLOCK" : r.quality?.verified ? (r.quality?.eligible ? "TIGHT" : "BLOCK") : "CHECK"}
+                </td>
                 <td style={bar(r.score, v4Color(r.score, V4_SCORE_BAND))}>{r.score}</td>
                 <td style={{ ...td, color:v4DirColor(r.direction), fontWeight:800 }}>{v4DirLabel(r.direction)}</td>
                 <td style={bar(r.confidence, v4Color(r.confidence, V4_SCORE_BAND))}>{r.confidence}</td>
@@ -2958,16 +3328,40 @@ function V4Grid({ feed, onClose, modeResult, mode }) {
           </tbody>
         </table>
       )}
+      {historyAudit?.total > 0 && (
+        <div style={{ borderTop:"1px solid #162431", padding:"14px 20px", background:"#061019" }}>
+          <div style={{ display:"flex", gap:12, alignItems:"center", flexWrap:"wrap", marginBottom:10 }}>
+            <b style={{ fontSize:11, letterSpacing:"0.14em", color:"#66ffcc" }}>HISTORY AUDIT</b>
+            <span style={{ fontSize:11, color:"#8aabc2" }}>{historyAudit.coveredSymbols} liquid symbols · {historyAudit.total} objective 3-day moves</span>
+            <span style={{ fontSize:11, color:"#00ff88" }}>SQUEEZE {historyAudit.squeeze.captured}/{historyAudit.squeeze.total}{historyAudit.squeeze.capturePct == null ? "" : ` (${historyAudit.squeeze.capturePct}%)`}</span>
+            <span style={{ fontSize:11, color:"#ff6677" }}>FLUSH {historyAudit.flush.captured}/{historyAudit.flush.total}{historyAudit.flush.capturePct == null ? "" : ` (${historyAudit.flush.capturePct}%)`}</span>
+          </div>
+          {historyAudit.misses.length > 0 && (
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))", gap:6 }}>
+              {historyAudit.misses.map(event => (
+                <div key={`${event.ticker}-${event.date}-${event.type}`} style={{ border:"1px solid #172735", background:"#08131d", borderRadius:4, padding:"8px 10px", fontSize:11, color:"#8aa3b8" }}>
+                  <b style={{ color:event.type === "squeeze" ? "#00ff88" : "#ff6677" }}>{event.ticker} {event.type.toUpperCase()}</b>
+                  <span> · {event.date} · from ${event.priorClose.toFixed(2)} · {event.movePct > 0 ? "+" : ""}{event.movePct.toFixed(1)}%</span>
+                  <div style={{ color:"#ff9955", marginTop:3 }}>Missed: {event.missReasons.join(" · ")}</div>
+                </div>
+              ))}
+            </div>
+          )}
+          <div style={{ fontSize:10.5, color:"#5f788d", marginTop:9 }}>
+            Event label = ±12% within 3 sessions on ≥1.5× volume, with prior price ≥$10 and ≥$25M average dollar volume. This is a price/volume event study, not proof of short covering; historical NBBO is not available in this feed.
+          </div>
+        </div>
+      )}
       <div style={{ padding:"8px 20px", fontSize:11, color:"#7591a8", borderTop:"1px solid #0e1a24", lineHeight:1.7 }}>
         <b style={{color:"#8aabc2"}}>FLOW is a proxy, not order flow.</b> It is built from close-location × volume,
         VWAP displacement and relative volume — the same substitute FINAL_V4 uses in ThinkorSwim, which has no
         dark-pool feed. The real positioning data is the sweep / DP / GEX columns on the cards below.
         <b style={{color:"#8aabc2"}}> LIQ is tradeability, not depth.</b> It scores dollar volume, price level,
-        participation and turnover — never order-book thickness or real slippage, which no endpoint here exposes.
-        There is no BID/ASK column because the Unusual Whales endpoints in use return no stock-level quote; in
-        ThinkorSwim use <code style={{color:"#9fb5c8"}}>BidAskSpread.ts</code>, where bid/ask is exposed to custom
-        quotes only. <b style={{color:"#8aabc2"}}>Nothing here detects gamma.</b> The γ badges on the cards below are
-        real GEX data from the API — the V4 columns make no options-positioning claim at all.
+        participation and turnover — never order-book thickness or real slippage. <b style={{color:"#8aabc2"}}> STOCK SPREAD</b> is
+        current only: SIP quotes are NBBO; IEX is one venue and is labelled as such. CHECK means no usable two-sided
+        quote reached the site, so verify <code style={{color:"#9fb5c8"}}>BidAskSpread.ts</code> in ThinkorSwim before entry.
+        <b style={{color:"#8aabc2"}}> The V4 price/volume columns do not detect gamma.</b> The γ badges on the cards below use
+        GEX data from the licensed API — without that feed, the app makes no options-positioning claim.
       </div>
     </div>
   );
@@ -4306,6 +4700,7 @@ const MONEY_KEY  = "wsh_money_v1";
 // this stock's normal daily wiggle", NOT a prediction and NOT a guarantee: a gap
 // opens past a stop and the loss is larger than the number shown here.
 const STOP_ATR_MULT = 1.5;
+const normalizeRiskPct = value => Math.max(1, Math.min(100, Math.round(Number(value) || 2)));
 
 function sizeFor(v4, budget, riskPct) {
   const price = Number(v4?.last), atrPct = Number(v4?.atrPct);
@@ -4496,7 +4891,120 @@ function applyTheme(mode) {
   return mode;
 }
 
-function SimpleHome({ brain, zones, zone, calendar, liveMode, dataStatus, nowMs, feed, onExpert, onOpen, mode, onMode, theme, onTheme, budget, riskPct, onMoney }) {
+function BeginnerPriceChart({ ticker, bars, v4, V }) {
+  const setup = React.useMemo(() => analyzeChartSetup(bars, v4), [bars, v4]);
+  if (!setup) return (
+    <div style={{ padding:"14px 0", color:V.text4, fontSize:13 }}>
+      Not enough daily candles yet. The chart needs at least 25 days.
+    </div>
+  );
+
+  const width = 600;
+  const height = 300;
+  const left = 46;
+  const right = 62;
+  const top = 18;
+  const priceBottom = 220;
+  const volumeTop = 236;
+  const volumeBottom = 282;
+  const plotWidth = width - left - right;
+  const chartPrices = setup.bars.flatMap(bar => [bar.h, bar.l])
+    .concat([setup.support, setup.resistance, setup.zoneLow, setup.zoneHigh, setup.invalidation].filter(Number.isFinite));
+  const rawMinimum = Math.min(...chartPrices);
+  const rawMaximum = Math.max(...chartPrices);
+  const padding = Math.max(setup.atr * 0.5, (rawMaximum - rawMinimum) * 0.05, setup.last * 0.005);
+  const minimum = Math.max(0.01, rawMinimum - padding);
+  const maximum = rawMaximum + padding;
+  const priceRange = Math.max(0.01, maximum - minimum);
+  const priceY = value => top + (maximum - value) / priceRange * (priceBottom - top);
+  const candleStep = plotWidth / setup.bars.length;
+  const candleWidth = Math.max(2, Math.min(7, candleStep * 0.62));
+  const maximumVolume = Math.max(1, ...setup.bars.map(bar => bar.v));
+  const zoneTop = priceY(setup.zoneHigh);
+  const zoneBottom = priceY(setup.zoneLow);
+  const money = value => `$${Number(value).toFixed(2)}`;
+  const firstDate = new Date(setup.bars[0].t).toLocaleDateString("en-US", { month:"short", day:"numeric" });
+  const lastDate = new Date(setup.bars[setup.bars.length - 1].t).toLocaleDateString("en-US", { month:"short", day:"numeric" });
+  const zoneColor = setup.side === "up" ? V.good : setup.side === "down" ? V.bad : V.warn;
+
+  const horizontalLine = (value, color, dash, label) => Number.isFinite(value) ? (
+    <g key={label}>
+      <line x1={left} x2={width-right} y1={priceY(value)} y2={priceY(value)} stroke={color} strokeWidth="1.2" strokeDasharray={dash}/>
+      <text x={width-right+5} y={priceY(value)+4} fill={color} fontSize="10">{label}</text>
+    </g>
+  ) : null;
+
+  return (
+    <div style={{ marginTop:12, padding:"14px", background:V.raised, border:`1px solid ${V.line}`, borderRadius:9 }}>
+      <div style={{ display:"flex", alignItems:"center", gap:8, flexWrap:"wrap", marginBottom:8 }}>
+        <span style={{ fontSize:16, fontWeight:800, color:V.text }}>{ticker} picture</span>
+        <span style={{ padding:"3px 8px", borderRadius:20, fontSize:11, fontWeight:800,
+                       color:setup.status.color, border:`1px solid ${setup.status.color}66`, background:`${setup.status.color}12` }}>
+          {setup.status.label}
+        </span>
+        <span style={{ fontSize:12.5, color:V.text3 }}>{setup.patternName}</span>
+      </div>
+      <svg viewBox={`0 0 ${width} ${height}`} role="img"
+        aria-label={`${ticker} daily candle chart with support, resistance, volume, and an educational setup zone`}
+        style={{ width:"100%", height:"auto", display:"block", background:V.surface, borderRadius:7 }}>
+        {[0,1,2,3,4].map(index => {
+          const price = maximum - priceRange * index / 4;
+          const yPosition = priceY(price);
+          return <g key={index}>
+            <line x1={left} x2={width-right} y1={yPosition} y2={yPosition} stroke={V.lineSoft} strokeWidth="1"/>
+            <text x={4} y={yPosition+4} fill={V.text4} fontSize="10">{money(price)}</text>
+          </g>;
+        })}
+        <rect x={left} y={zoneTop} width={plotWidth} height={Math.max(2, zoneBottom-zoneTop)} fill={zoneColor} opacity="0.10"/>
+        {horizontalLine(setup.resistance, V.warn, "5 4", "ceiling")}
+        {horizontalLine(setup.support, V.accent, "5 4", "floor")}
+        {horizontalLine(setup.invalidation, V.bad, "2 4", "safety")}
+        {setup.bars.map((bar, index) => {
+          const xPosition = left + candleStep * index + candleStep / 2;
+          const rising = bar.c >= bar.o;
+          const color = rising ? V.good : V.bad;
+          const bodyTop = priceY(Math.max(bar.o, bar.c));
+          const bodyBottom = priceY(Math.min(bar.o, bar.c));
+          const volumeHeight = (bar.v / maximumVolume) * (volumeBottom - volumeTop);
+          return <g key={`${bar.t}-${index}`}>
+            <line x1={xPosition} x2={xPosition} y1={priceY(bar.h)} y2={priceY(bar.l)} stroke={color} strokeWidth="1"/>
+            <rect x={xPosition-candleWidth/2} y={bodyTop} width={candleWidth} height={Math.max(1.5, bodyBottom-bodyTop)} fill={color} rx="0.8"/>
+            <rect x={xPosition-candleWidth/2} y={volumeBottom-volumeHeight} width={candleWidth} height={Math.max(1, volumeHeight)} fill={color} opacity="0.42"/>
+          </g>;
+        })}
+        <line x1={left} x2={width-right} y1={priceY(setup.last)} y2={priceY(setup.last)} stroke={V.text} strokeWidth="1" opacity="0.6"/>
+        <text x={left} y={height-5} fill={V.text4} fontSize="10">{firstDate}</text>
+        <text x={width-right} y={height-5} fill={V.text4} fontSize="10" textAnchor="end">{lastDate}</text>
+        <text x={left} y={volumeTop-4} fill={V.text4} fontSize="10">volume</text>
+      </svg>
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))", gap:8, marginTop:10 }}>
+        <div style={{ padding:"9px 10px", border:`1px solid ${V.lineSoft}`, borderRadius:7 }}>
+          <div style={{ fontSize:11, color:V.text4, fontWeight:700 }}>1. SHAPE</div>
+          <div style={{ color:V.text, fontWeight:700, margin:"2px 0" }}>{setup.patternName}</div>
+          <div style={{ fontSize:12.5, color:V.text3, lineHeight:1.55 }}>{setup.patternPlain}</div>
+        </div>
+        <div style={{ padding:"9px 10px", border:`1px solid ${V.lineSoft}`, borderRadius:7 }}>
+          <div style={{ fontSize:11, color:V.text4, fontWeight:700 }}>2. STUDY AREA</div>
+          <div style={{ color:zoneColor, fontWeight:700, margin:"2px 0" }}>{money(setup.zoneLow)} to {money(setup.zoneHigh)}</div>
+          <div style={{ fontSize:12.5, color:V.text3, lineHeight:1.55 }}>Not an order. Wait for price to hold this area and volume to improve.</div>
+        </div>
+        <div style={{ padding:"9px 10px", border:`1px solid ${V.lineSoft}`, borderRadius:7 }}>
+          <div style={{ fontSize:11, color:V.text4, fontWeight:700 }}>3. SAFETY LINE</div>
+          <div style={{ color:V.bad, fontWeight:700, margin:"2px 0" }}>{Number.isFinite(setup.invalidation) ? money(setup.invalidation) : "No line"}</div>
+          <div style={{ fontSize:12.5, color:V.text3, lineHeight:1.55 }}>If price crosses this line, the chart idea failed. Gaps can still lose more.</div>
+        </div>
+      </div>
+      <div style={{ fontSize:13, color:setup.status.color, lineHeight:1.65, marginTop:10, fontWeight:600 }}>
+        {setup.status.plain}
+      </div>
+      <div style={{ fontSize:11.5, color:V.text4, lineHeight:1.55, marginTop:6 }}>
+        Daily candles only. Pattern labels describe the past; they do not predict the next candle. Education only.
+      </div>
+    </div>
+  );
+}
+
+function SimpleHome({ brain, zones, zone, calendar, liveMode, dataStatus, nowMs, feed, barData, onExpert, onOpen, mode, onMode, theme, onTheme, budget, riskPct, onMoney }) {
   // A Set, not a single value: opening one explanation must not close the one you
   // were already reading.
   const [openFolds, setOpenFolds] = useState(() => new Set());
@@ -4513,10 +5021,23 @@ function SimpleHome({ brain, zones, zone, calendar, liveMode, dataStatus, nowMs,
   const read = plainMarketRead(brain, zone, dataStatus);
   const L = LIGHTS[read.light];
 
+  const flowByTicker = React.useMemo(() => {
+    const grouped = {};
+    for (const row of feed || []) {
+      if (!row?.ticker) continue;
+      (grouped[row.ticker] ||= []).push(row);
+    }
+    return grouped;
+  }, [feed]);
+
   // Size every candidate against the reader's money, then put what they can
   // actually take first. A 95-score setup they cannot afford is not the best
   // option FOR THEM — that is the whole point of asking.
-  const sized = (brain?.best || []).map(b => ({ ...b, size: sizeFor(b, budget, riskPct) }));
+  const sized = (brain?.best || []).map(b => ({
+    ...b,
+    size:sizeFor(b, budget, riskPct),
+    optionStudy:buildOptionStrikeStudy(b, flowByTicker[b.t] || [], barData?.[b.t] || []),
+  }));
   const best = (budget > 0
     ? [...sized].sort((a, b) => (b.size?.fits ? 1 : 0) - (a.size?.fits ? 1 : 0))
     : sized).slice(0, 5);
@@ -4607,11 +5128,32 @@ function SimpleHome({ brain, zones, zone, calendar, liveMode, dataStatus, nowMs,
               style={{ width:96, background:V.raised, border:`1px solid ${V.line}`, color:V.text,
                        padding:"7px 10px", fontSize:15, fontWeight:700, borderRadius:6, outline:"none" }}/>
             <span style={{ fontSize:13.5, color:V.text2, marginLeft:4 }}>OK to lose per trade:</span>
-            <select value={riskPct} onChange={e => onMoney(budget, +e.target.value)}
-              style={{ background:V.raised, border:`1px solid ${V.line}`, color:V.text,
-                       padding:"7px 8px", fontSize:14, borderRadius:6, cursor:"pointer" }}>
-              {[1, 2, 5].map(v => <option key={v} value={v}>{v}%</option>)}
-            </select>
+            <input type="range" min="1" max="100" step="1" value={riskPct}
+              aria-label="Maximum loss per trade percentage"
+              onChange={e => onMoney(budget, +e.target.value)}
+              style={{ width:150, accentColor:riskPct >= 30 ? V.bad : riskPct >= 10 ? V.warn : V.good, cursor:"pointer" }}/>
+            <input type="number" inputMode="numeric" min="1" max="100" step="1" value={riskPct}
+              aria-label="Maximum loss per trade percent value"
+              onChange={e => onMoney(budget, e.target.value)}
+              style={{ width:66, background:V.raised, border:`1px solid ${riskPct >= 30 ? V.bad : V.line}`,
+                       color:riskPct >= 30 ? V.bad : V.text, padding:"7px 8px", fontSize:14,
+                       fontWeight:800, borderRadius:6, outline:"none" }}/>
+            <strong style={{ color:riskPct >= 30 ? V.bad : V.text2 }}>%</strong>
+          </div>
+          <div style={{
+            marginTop:10, padding:riskPct >= 30 ? "10px 12px" : 0,
+            border:riskPct >= 30 ? `1px solid ${V.bad}66` : "none",
+            borderRadius:8, background:riskPct >= 30 ? `${V.bad}12` : "transparent",
+            color:riskPct >= 30 ? V.bad : riskPct >= 10 ? V.warnText : V.text4,
+            fontSize:12.5, fontWeight:riskPct >= 30 ? 750 : 500, lineHeight:1.6
+          }}>
+            {riskPct >= 100
+              ? "MAXIMUM DANGER: 100% means one bad trade could lose all of this money. If a live position is near this loss, review your exit plan now."
+              : riskPct >= 30
+                ? `DANGER ZONE: ${riskPct}% is a very large planned loss. If a live position reaches 30% down, review your exit plan instead of hoping it comes back.`
+                : riskPct >= 10
+                  ? `High risk: one losing trade may cost ${riskPct}% of the money entered above.`
+                  : "Move the slider from 1% to 100%. This is the most you are planning to lose on one trade, not the amount you hope to make."}
           </div>
           <div style={{ fontSize:12.5, color:V.text4, marginTop:9, lineHeight:1.6 }}>
             {budget > 0
@@ -4634,6 +5176,13 @@ function SimpleHome({ brain, zones, zone, calendar, liveMode, dataStatus, nowMs,
                   </span>
                   <span style={{ fontSize:12.5, color:V.text4 }}>{b.score}/100</span>
                 </div>
+                <div style={{ fontSize:12.5, marginBottom:5, color:b.quality?.verified ? (b.quality?.eligible ? V.good : V.bad) : V.warnText }}>
+                  {b.quality?.verified
+                    ? b.quality?.eligible
+                      ? `✓ Stock spread ${b.quote.spreadPct.toFixed(3)}% · ${b.quote.nbbo ? "NBBO" : String(b.quote.feed || "quote").toUpperCase()}`
+                      : `✕ ${b.quality.reasons.join(" · ")}`
+                    : "△ Price and dollar volume pass; verify stock bid/ask in thinkorswim before entry."}
+                </div>
                 <div style={{ fontSize:13.5, color:V.text3, lineHeight:1.65 }}>
                   {b.timing <= -1
                     ? "⚠ Too late. The move already happened. Chasing this is how beginners lose money."
@@ -4641,6 +5190,85 @@ function SimpleHome({ brain, zones, zone, calendar, liveMode, dataStatus, nowMs,
                       ? "The checks disagree. Treat it as a maybe, not a plan."
                       : "The checks agree and it has not run too far yet."}
                 </div>
+                {b.optionStudy?.flush && (
+                  <div style={{
+                    marginTop:9, padding:"9px 11px", borderRadius:8,
+                    border:`1px solid ${b.optionStudy.flush.color}66`,
+                    background:`${b.optionStudy.flush.color}12`, color:b.optionStudy.flush.color,
+                    fontSize:12.5, lineHeight:1.6
+                  }}>
+                    <b>{b.optionStudy.flush.label}:</b> {b.optionStudy.flush.plain}
+                  </div>
+                )}
+                <button
+                  onClick={()=>flip(`options:${b.t}`)}
+                  style={{
+                    width:"100%", marginTop:9, padding:"9px 12px", borderRadius:9,
+                    border:`1px solid ${V.line}`, background:V.raised, color:V.text2,
+                    cursor:"pointer", fontWeight:700, textAlign:"left"
+                  }}
+                >
+                  {isOpen(`options:${b.t}`) ? "Hide options lesson" : "Calls / sell-put strike lesson"}
+                </button>
+                {isOpen(`options:${b.t}`) && (
+                  <div style={{ marginTop:8, padding:"12px 13px", border:`1px solid ${V.line}`, borderRadius:9, background:V.raised }}>
+                    {b.optionStudy.stance === "avoid_bullish" ? (
+                      <div style={{ color:V.bad, fontSize:13, lineHeight:1.65, fontWeight:700 }}>
+                        Bullish options lesson paused. This stock currently has flush risk, so the scanner will not point to a call or short-put strike.
+                      </div>
+                    ) : (
+                      <>
+                        <div style={{ fontSize:11, color:V.text4, fontWeight:800, letterSpacing:"0.08em" }}>BUY-CALL REFERENCE</div>
+                        {b.optionStudy.observedCall ? (
+                          <div style={{ fontSize:13, color:V.text2, lineHeight:1.65, margin:"4px 0 11px" }}>
+                            Reported ask-side call flow printed at <b style={{ color:V.good }}>{b.optionStudy.observedCall.label}</b>
+                            {b.optionStudy.observedCall.expiry ? <> expiring <b>{b.optionStudy.observedCall.expiry}</b></> : null}.
+                            {b.optionStudy.callReferenceUsable
+                              ? " For research, start with that same strike or the nearest listed strike; do not move farther out-of-the-money just because it is cheaper."
+                              : ` It is ${Number(b.optionStudy.strikeDistancePct || 0).toFixed(1)}% from the stock price, so the scanner will not treat it as a usable reference.`}
+                          </div>
+                        ) : (
+                          <div style={{ fontSize:13, color:V.warnText, lineHeight:1.65, margin:"4px 0 11px" }}>
+                            No recent ask-side call sweep with a readable strike is available. The scanner will not invent a strike.
+                          </div>
+                        )}
+
+                        <div style={{ fontSize:11, color:V.text4, fontWeight:800, letterSpacing:"0.08em" }}>SELL-PUT REFERENCE</div>
+                        {b.optionStudy.putReference ? (
+                          <div style={{ fontSize:13, color:V.text2, lineHeight:1.65, marginTop:4 }}>
+                            Cash-secured study only: look at the first listed put strike <b style={{ color:V.accent }}>at or below the chart floor near {usd(b.optionStudy.putReference)}</b>,
+                            not automatically the call-flow strike. One assigned contract would require about <b>{usd(b.optionStudy.estimatedCashSecuredCollateral)}</b> to buy 100 shares.
+                            A bull put spread defines risk; a naked short put does not.
+                          </div>
+                        ) : (
+                          <div style={{ fontSize:13, color:V.warnText, lineHeight:1.65, marginTop:4 }}>
+                            No confirmed bullish floor is available, so there is no sell-put strike reference.
+                          </div>
+                        )}
+                      </>
+                    )}
+                    <div style={{ fontSize:11.5, color:V.text4, lineHeight:1.55, marginTop:10 }}>
+                      An options sweep can be one leg of a spread or hedge, so it does not prove the trader's full position. This site has no live options chain, option bid/ask, delta, open interest validation, or brokerage connection. Verify all of those in your broker. Nothing here places an order.
+                    </div>
+                  </div>
+                )}
+                {barData?.[b.t]?.length >= 25 && (
+                  <>
+                    <button
+                      onClick={()=>flip(`chart:${b.t}`)}
+                      style={{
+                        width:"100%", marginTop:9, padding:"9px 12px", borderRadius:9,
+                        border:`1px solid ${V.line}`, background:V.raised, color:V.text2,
+                        cursor:"pointer", fontWeight:700, textAlign:"left"
+                      }}
+                    >
+                      {isOpen(`chart:${b.t}`) ? "Hide chart" : "Show chart + pattern"}
+                    </button>
+                    {isOpen(`chart:${b.t}`) && (
+                      <BeginnerPriceChart ticker={b.t} bars={barData[b.t]} v4={b} V={V}/>
+                    )}
+                  </>
+                )}
                 {b.size && (
                   <div style={{ fontSize:13, marginTop:7, lineHeight:1.7,
                                 color: b.size.fits ? V.text2 : V.text4 }}>
@@ -4685,6 +5313,28 @@ function SimpleHome({ brain, zones, zone, calendar, liveMode, dataStatus, nowMs,
           <div style={{ fontSize:13, color:V.text4, marginTop:8 }}>
             All times are New York time. Worked out from the clock and the economic calendar —
             not a guess about price.
+          </div>
+        </Fold>
+
+        <Fold V={V} title="Learn the chart pictures" open={isOpen("patterns")} onToggle={()=>flip("patterns")}>
+          <div style={{ fontSize:13.5, color:V.text3, marginBottom:12, lineHeight:1.7 }}>
+            Candles are tiny stories about price. These common shapes are clues, not promises.
+          </div>
+          {CHART_PATTERN_LESSONS.map(pattern => (
+            <div key={pattern.key} style={{
+              display:"grid", gridTemplateColumns:"42px 92px 1fr", gap:8,
+              alignItems:"center", padding:"9px 0", borderBottom:`1px solid ${V.line}`
+            }}>
+              <span style={{ fontFamily:"monospace", color:V.accent, fontWeight:800 }}>{pattern.icon}</span>
+              <span style={{ color:V.text2, fontWeight:750 }}>{pattern.name}</span>
+              <span style={{ color:V.text3, fontSize:13 }}>{pattern.plain}</span>
+            </div>
+          ))}
+          <div style={{
+            marginTop:12, padding:10, borderRadius:9, background:V.warnBg,
+            color:V.text2, fontSize:13, lineHeight:1.6
+          }}>
+            News can break every pattern. Wait for confirmation and always decide where the idea is wrong first.
           </div>
         </Fold>
 
@@ -4899,7 +5549,7 @@ function App() {
   // leaving the browser, and there is no server to send it to anyway.
   const [moneyPrefs, setMoneyState] = useState(() => {
     try { const v = JSON.parse(localStorage.getItem(MONEY_KEY) || "{}");
-          return { budget: Number(v.budget) || 0, riskPct: [1,2,5].includes(v.riskPct) ? v.riskPct : 2 }; }
+          return { budget: Number(v.budget) || 0, riskPct: normalizeRiskPct(v.riskPct) }; }
     catch(_) { return { budget: 0, riskPct: 2 }; }
   });
   const [theme,     setTheme]     = useState(() => {
@@ -4911,8 +5561,12 @@ function App() {
   const [liveMode,  setLiveMode]  = useState(false);
   // Daily bars from /api/bars — the keyless data path. Scores computed client-side
   // by the same computeV4 the options-flow path uses, so there is one engine.
-  const [barRows,   setBarRows]   = useState([]);
+  const [barData,   setBarData]   = useState(() => loadBarDataCache());
+  const barRows = React.useMemo(() => scoreBarData(barData), [barData]);
+  const historyAudit = React.useMemo(() => historicalMoveAudit(barData), [barData]);
   const [barStatus, setBarStatus] = useState({ state:"idle" });
+  const [stockQuotes, setStockQuotes] = useState({});
+  const [quoteStatus, setQuoteStatus] = useState({ state:"idle" });
 
   const seen       = useRef(new Set());
   const intv       = useRef(null);
@@ -4920,6 +5574,7 @@ function App() {
   const fetchRef   = useRef(null);
   const akRef      = useRef("");
   const ukRef      = useRef("");
+  const barDataRef = useRef(barData);
 
   const addLog = useCallback(msg => {
     const t = new Date().toTimeString().slice(0,8);
@@ -5095,44 +5750,89 @@ function App() {
   // Pulls daily bars from our own endpoint and scores them locally. This is what
   // makes the scanner work for a visitor with no API key of any kind. It runs
   // regardless of liveMode; the options-flow feed is additive, not a prerequisite.
-  const loadBars = useCallback(async () => {
-    setBarStatus({ state:"loading" });
+  const loadQuotes = useCallback(async symbols => {
+    if (!symbols?.length) return;
     try {
-      const r = await fetch("/api/bars");
-      const j = await r.json();
-      if (!j.ok) {
-        setBarRows([]);
-        setBarStatus({ state:"unavailable", reason:j.reason, message:j.message, accepts:j.accepts });
-        addLog(`Bars unavailable: ${j.reason}`);
+      const response = await fetch(`/api/quotes?symbols=${encodeURIComponent(symbols.join(","))}`);
+      const payload = await response.json();
+      if (!payload.ok) {
+        setQuoteStatus({ state:"unavailable", reason:payload.reason, message:payload.message });
         return;
       }
-      const rows = [];
-      for (const [ticker, bars] of Object.entries(j.bars || {})) {
-        try {
-          const v4 = computeV4(bars);
-          if (v4) rows.push({ ticker, v4 });
-        } catch (_) { /* one bad symbol must never break the whole scan */ }
+      setStockQuotes(previous => ({ ...previous, ...(payload.quotes || {}) }));
+      setQuoteStatus({
+        state:"ok", provider:payload.provider, feed:payload.feed, nbbo:payload.nbbo,
+        returned:payload.returned, requested:payload.requested, asOf:payload.asOf,
+      });
+    } catch (error) {
+      setQuoteStatus({ state:"error", message:String(error.message || error) });
+    }
+  }, []);
+
+  const loadBars = useCallback(async (cursor = 0) => {
+    setBarStatus(previous => previous.scored
+      ? { ...previous, refreshing:true }
+      : { ...previous, state:"loading", refreshing:true });
+    try {
+      const r = await fetch(`/api/bars?cursor=${cursor}`);
+      const j = await r.json();
+      if (!j.ok) {
+        setBarStatus(previous => previous.scored
+          ? { ...previous, refreshing:false, warning:j.reason, message:j.message }
+          : { ...previous, state:"unavailable", refreshing:false, reason:j.reason, message:j.message, accepts:j.accepts });
+        addLog(`Bars unavailable: ${j.reason}`);
+        return j.reason === "PROVIDER_ERROR" ? cursor : null;
       }
-      rows.sort((a, b) => b.v4.score - a.v4.score);
-      setBarRows(rows);
-      setBarStatus({ state:"ok", provider:j.provider, asOf:j.asOf, scored:rows.length,
-                     requested:j.requested, failed:(j.failed || []).length });
-      addLog(`Scored ${rows.length}/${j.requested} symbols from ${j.provider}`);
+      const merged = { ...barDataRef.current, ...(j.bars || {}) };
+      barDataRef.current = merged;
+      setBarData(merged);
+      saveBarDataCache(merged);
+      const universe = j.universe || Object.keys(merged);
+      const loaded = universe.filter(symbol => merged[symbol]).length;
+      const scored = scoreBarData(merged).filter(row => universe.includes(row.ticker)).length;
+      setBarStatus({
+        state:"ok", provider:j.provider, asOf:j.asOf, scored, loaded,
+        requested:j.requested, attempted:j.attempted, failed:(j.failed || []).length,
+        nextCursor:j.nextCursor, windowSize:j.windowSize, refreshing:false,
+      });
+      addLog(`Bars: ${loaded}/${j.requested} loaded · ${scored} scored via ${j.provider}`);
+      return Number.isInteger(j.nextCursor) ? j.nextCursor : null;
     } catch (e) {
-      setBarRows([]);
-      setBarStatus({ state:"error", message:String(e.message || e) });
+      setBarStatus(previous => previous.scored
+        ? { ...previous, refreshing:false, warning:"FETCH_ERROR", message:String(e.message || e) }
+        : { ...previous, state:"error", refreshing:false, message:String(e.message || e) });
       addLog(`Bars fetch failed: ${e.message || e}`);
+      return cursor;
     }
   }, [addLog]);
 
-  // Daily bars change once a day. Load on entry, refresh every 15 minutes so a
-  // tab left open through the close picks up the new bar without hammering.
+  // Low-credit providers expose one symbol window at a time. Advance once per
+  // minute, merge each window, then refresh the completed universe every 15m.
   useEffect(() => {
     if (!ready) return;
-    loadBars();
-    const id = setInterval(loadBars, 15 * 60 * 1000);
-    return () => clearInterval(id);
+    let cancelled = false;
+    let timer = null;
+    const run = async cursor => {
+      const nextCursor = await loadBars(cursor);
+      if (cancelled) return;
+      const moreWindows = Number.isInteger(nextCursor);
+      timer = setTimeout(() => run(moreWindows ? nextCursor : 0), moreWindows ? 65_000 : 15 * 60_000);
+    };
+    run(0);
+    return () => { cancelled = true; clearTimeout(timer); };
   }, [ready, loadBars]);
+
+  const quoteSymbols = React.useMemo(() => {
+    const symbols = [...barRows.map(row => row.ticker), ...feed.filter(row => row.v4).map(row => row.ticker)];
+    return [...new Set(symbols)].slice(0, 50);
+  }, [barRows, feed]);
+
+  useEffect(() => {
+    if (!ready || !quoteSymbols.length) return;
+    loadQuotes(quoteSymbols);
+    const id = setInterval(() => loadQuotes(quoteSymbols), 30_000);
+    return () => clearInterval(id);
+  }, [ready, quoteSymbols.join(","), loadQuotes]);
 
   useEffect(()=>{ if(paused) clearInterval(intv.current); }, [paused]);
   useEffect(() => { const id = setInterval(() => setNowMin(nowETMin()), 30000); return () => clearInterval(id); }, []);
@@ -5153,7 +5853,7 @@ function App() {
   // Toggling from "system" commits to whichever side is the opposite of what the
   // reader is currently looking at, which is what they meant by pressing it.
   const setMoneyPrefs = (budget, riskPct) => {
-    const next = { budget: Number(budget) || 0, riskPct: [1,2,5].includes(riskPct) ? riskPct : 2 };
+    const next = { budget: Number(budget) || 0, riskPct: normalizeRiskPct(riskPct) };
     setMoneyState(next);
     try { localStorage.setItem(MONEY_KEY, JSON.stringify(next)); } catch(_){}
   };
@@ -5213,7 +5913,14 @@ function App() {
   // they carry the extra signal context (sweeps, dark pool, GEX) that bar rows lack.
   const scanFeed = (() => {
     const seenT = new Set(feed.filter(p => p.v4).map(p => p.ticker));
-    return feed.concat(barRows.filter(r => !seenT.has(r.ticker)));
+    return feed.concat(barRows.filter(r => !seenT.has(r.ticker))).map(row => {
+      if (!row.v4) return row;
+      const quote = stockQuotes[row.ticker] || null;
+      return {
+        ...row,
+        v4: { ...row.v4, quote, quality:stockQuality(row.v4, quote, marketOpen) },
+      };
+    });
   })();
   const brain = marketBrain({ feed: scanFeed, events: catalystEvents, calendar: scheduled, zones, nowMs });
 
@@ -5268,11 +5975,11 @@ function App() {
       {showIntel && <IntelTab onClose={()=>setShowIntel(false)} events={catalystEvents} feed={feed}
                               calendar={scheduled} macroRiskScore={brain.macroRisk} stats={intelStats}
                               now={nowMs} ingestStatus={ingestStatus}/>}
-      {showV4 && <V4Grid feed={scanFeed} onClose={()=>setShowV4(false)} modeResult={modeResult} mode={tradeMode}/>}
+      {showV4 && <V4Grid feed={scanFeed} onClose={()=>setShowV4(false)} modeResult={modeResult} mode={tradeMode} quoteStatus={quoteStatus} historyAudit={historyAudit}/>}
       {showIncome && <IncomeTab onClose={()=>setShowIncome(false)}/>}
       <SimpleHome
         brain={brain} zones={zones} zone={activeZone(zones, nowMs)} calendar={scheduled}
-        liveMode={liveMode} dataStatus={barStatus} nowMs={nowMs} feed={scanFeed}
+        liveMode={liveMode} dataStatus={barStatus} nowMs={nowMs} feed={scanFeed} barData={barData}
         mode={tradeMode} onMode={setTradeMode}
         theme={theme} onTheme={flipTheme}
         budget={moneyPrefs.budget} riskPct={moneyPrefs.riskPct} onMoney={setMoneyPrefs}
@@ -5306,8 +6013,8 @@ function App() {
   const hcCount = feed.filter(p=>p.sweepOk&&p.dpOk&&(p.winProb||0)>=65).length;
   const scCount = feed.filter(p=>(p.staircase_days||0)>=3).length;
   const gexShort = feed.filter(p=>p.gex?.bias==="short_gamma" && p.cat==="squeeze").length;
-  const gexLong  = feed.filter(p=>p.gex?.bias==="long_gamma"  && p.cat==="flush").length;
-  const gexAmp   = gexShort + gexLong;
+  const gexFlush = feed.filter(p=>p.gex?.bias==="short_gamma" && p.cat==="flush").length;
+  const gexAmp   = gexShort + gexFlush;
 
 
   return (
@@ -5356,13 +6063,22 @@ function App() {
             <span title={liveMode?undefined:"The paid options-flow feed is not connected. Every other panel still works."}
                   style={{ fontSize:11, fontWeight:600, color:!liveMode?"#7591a8":error?"#ff3355":loading?"#ffe033":paused?"#8aa3b8":"#00ff88", letterSpacing:"0.1em" }}>{!liveMode?"FLOW OFF":error?"ERROR":loading?"SCANNING…":paused?"PAUSED":"LIVE"}</span>
             <span title={barStatus.state==="ok"
-                    ? `Daily bars via ${barStatus.provider} · ${barStatus.scored}/${barStatus.requested} scored${barStatus.failed?` · ${barStatus.failed} unavailable`:""}`
+                    ? `Daily bars via ${barStatus.provider} · ${barStatus.loaded}/${barStatus.requested} loaded · ${barStatus.scored} scored${barStatus.refreshing?" · refreshing next window":""}${barStatus.failed?` · ${barStatus.failed} failed in last window`:""}`
                     : barStatus.message || "No market-data provider configured on the server."}
                   style={{ fontSize:10, fontWeight:600, letterSpacing:"0.08em", padding:"3px 8px", borderRadius:3,
                            color: barStatus.state==="ok" ? "#66ffcc" : barStatus.state==="loading" ? "#ffe033" : "#7591a8",
                            background: barStatus.state==="ok" ? "#66ffcc12" : "#7591a812",
                            border:`1px solid ${barStatus.state==="ok" ? "#66ffcc44" : "#7591a833"}` }}>
-              {barStatus.state==="ok" ? `📈 ${barStatus.scored} SCORED` : barStatus.state==="loading" ? "📈 LOADING…" : "📈 NO DATA"}
+              {barStatus.state==="ok" ? `📈 ${barStatus.scored}/${barStatus.requested} SCORED${barStatus.refreshing?" …":""}` : barStatus.state==="loading" ? "📈 LOADING…" : "📈 NO DATA"}
+            </span>
+            <span title={quoteStatus.state==="ok"
+                    ? `${quoteStatus.provider} ${quoteStatus.feed} · ${quoteStatus.returned}/${quoteStatus.requested} two-sided quotes${quoteStatus.nbbo?" · NBBO":" · not consolidated NBBO"}`
+                    : quoteStatus.message || "No quote-capable provider configured; verify spreads in thinkorswim."}
+                  style={{ fontSize:10, fontWeight:600, letterSpacing:"0.08em", padding:"3px 8px", borderRadius:3,
+                           color:quoteStatus.state==="ok" ? "#66ffcc" : "#ff9955",
+                           background:quoteStatus.state==="ok" ? "#66ffcc12" : "#ff995512",
+                           border:`1px solid ${quoteStatus.state==="ok" ? "#66ffcc44" : "#ff995544"}` }}>
+              {quoteStatus.state==="ok" ? `↔ ${quoteStatus.returned} QUOTED` : "↔ CHECK TOS"}
             </span>
           </div>
           <div style={{ width:1, height:30, background:"#1a2a3a", marginRight:20 }}/>
@@ -5372,7 +6088,7 @@ function App() {
           </div>
           {hcCount>0 && <div style={{ marginRight:8, padding:"4px 10px", background:"#ffe03318", border:"1px solid #ffe03344", fontSize:10, fontWeight:600, color:"#ffe033", borderRadius:3 }}>{hcCount} HIGH CONV</div>}
           {scCount>0 && <div style={{ marginRight:8, padding:"4px 10px", background:"#00ddff18", border:"1px solid #00ddff44", fontSize:10, fontWeight:600, color:"#00ddff", borderRadius:3 }}>📊 {scCount} STAIRCASE</div>}
-          {gexAmp>0 && <div title={`GEX amplifying ${gexAmp} setup${gexAmp>1?"s":""} — dealers ${gexShort?"short gamma on "+gexShort+" squeeze"+(gexShort>1?"s":""):""}${gexShort&&gexLong?", ":""}${gexLong?"long gamma on "+gexLong+" flush"+(gexLong>1?"es":""):""}`} style={{ marginRight:8, padding:"4px 10px", background:"#ff88cc18", border:"1px solid #ff88cc55", fontSize:10, fontWeight:600, color:"#ff88cc", borderRadius:3 }}>🔥 {gexAmp} GEX{gexShort>0?` ↑${gexShort}`:""}{gexLong>0?` ↓${gexLong}`:""}</div>}
+          {gexAmp>0 && <div title={`Short-gamma positioning may amplify ${gexAmp} setup${gexAmp>1?"s":""}: ${gexShort} squeeze${gexShort===1?"":"s"}, ${gexFlush} flush${gexFlush===1?"":"es"}.`} style={{ marginRight:8, padding:"4px 10px", background:"#ff88cc18", border:"1px solid #ff88cc55", fontSize:10, fontWeight:600, color:"#ff88cc", borderRadius:3 }}>🔥 {gexAmp} SHORT GEX{gexShort>0?` ↑${gexShort}`:""}{gexFlush>0?` ↓${gexFlush}`:""}</div>}
           {trackedCount>0 && <div onClick={()=>setViewMode(v=>v==="top10"?"live":"top10")} title={viewMode==="top10" ? "Click to return to LIVE view" : "Click to open the 30-day backup list — pre-squeeze builds tracked across days"} style={{ marginRight:8, padding:"4px 10px", background: viewMode==="top10" ? "#66ccff33" : "#66ccff18", border:`1px solid ${viewMode==="top10" ? "#66ccff" : "#66ccff44"}`, fontSize:10, fontWeight:700, color:"#66ccff", borderRadius:3, cursor:"pointer", letterSpacing:"0.04em" }}>🧠 {trackedCount} TRACKED · {viewMode==="top10" ? "← BACK TO LIVE" : "VIEW 30D"}</div>}
           {usage.scans>0 && (() => {
             const cost = (usage.in*3 + usage.out*15) / 1e6;
@@ -5499,7 +6215,7 @@ function App() {
       {showIntel && <IntelTab onClose={()=>setShowIntel(false)} events={catalystEvents} feed={feed}
                               calendar={scheduled} macroRiskScore={brain.macroRisk} stats={intelStats}
                               now={nowMs} ingestStatus={ingestStatus}/>}
-      {showV4 && <V4Grid feed={scanFeed} onClose={()=>setShowV4(false)} modeResult={modeResult} mode={tradeMode}/>}
+      {showV4 && <V4Grid feed={scanFeed} onClose={()=>setShowV4(false)} modeResult={modeResult} mode={tradeMode} quoteStatus={quoteStatus} historyAudit={historyAudit}/>}
       {showIncome && <IncomeTab onClose={()=>setShowIncome(false)}/>}
 
       <div style={{ display:"grid", gridTemplateColumns:showLog?"1fr 1fr 0.7fr 200px":"1fr 1fr 0.7fr", flex:1, overflow:"hidden", background:"#05090e" }}>

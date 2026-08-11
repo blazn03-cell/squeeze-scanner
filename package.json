@@ -5,6 +5,8 @@
   "type": "module",
   "main": "index.js",
   "scripts": {
+    "start": "node backend/server.js",
+    "dev": "node --watch backend/server.js",
     "scan": "node index.js",
     "setup": "node setup-sheet.js",
     "improve": "node improve-agent.js",
