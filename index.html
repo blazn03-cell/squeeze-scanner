@@ -3,158 +3,131 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate"/>
-  <meta http-equiv="Pragma" content="no-cache"/>
-  <meta http-equiv="Expires" content="0"/>
-  <title>⚡ Squeeze & Flush Scanner</title>
-  <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
-  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <title>Income Edge — Options · Polymarket · Income</title>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-  <link rel="preconnect" href="https://fonts.googleapis.com"/>
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet"/>
   <style>
-    *{box-sizing:border-box;margin:0;padding:0}
-    html{font-size:16px}
-    body{background:#05090e;overflow:hidden;font-family:'Inter','Segoe UI',system-ui,-apple-system,sans-serif;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;color:#cfdcec;font-size:14px;line-height:1.55}
-    code,kbd,.mono{font-family:'JetBrains Mono','SF Mono',Menlo,Consolas,monospace}
-    ::-webkit-scrollbar{width:8px;height:8px}
-    ::-webkit-scrollbar-track{background:transparent}
-    ::-webkit-scrollbar-thumb{background:#243648;border-radius:4px}
-    ::-webkit-scrollbar-thumb:hover{background:#33526b}
-    @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.18}}
-    @keyframes urgent{0%,100%{opacity:1}50%{opacity:0.4}}
-    @keyframes slideIn{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:translateY(0)}}
-    .live{animation:pulse 1.8s ease-in-out infinite}
-    .urgent{animation:urgent 0.9s ease-in-out infinite}
-    .slide-in{animation:slideIn 0.25s ease-out}
-    button{font-family:inherit}
-    input,select,textarea{font-family:inherit;font-size:13px}
-    /* Readable defaults — no text smaller than 11px, body text at least 13px */
-    .sec-label{font-size:11px;font-weight:700;letter-spacing:0.18em;color:#8aabc2;text-transform:uppercase}
-    .hdr{font-size:12px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase}
-    .label{font-size:12px;color:#8aabc2;letter-spacing:0.04em}
-    .value{font-size:15px;font-weight:700;color:#e4edf7}
-    .body-text{font-size:13px;line-height:1.7;color:#b5c8dc}
-    .body-text-lg{font-size:14px;line-height:1.75;color:#c4d5e8}
-    .stat-num{font-size:18px;font-weight:700;letter-spacing:-0.01em}
-    .mini{font-size:11px;color:#8aabc2}
-    .verdict-big{font-size:28px;font-weight:800;letter-spacing:0.02em}
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body, #root { height: 100%; }
+    body {
+      background: #0d1117;
+      color: #e6edf3;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      font-size: 14px;
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
+    }
+    button { font-family: inherit; cursor: pointer; }
+    input, select, textarea { font-family: inherit; }
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #30363d; border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: #484f58; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+    @keyframes fadeIn { from{opacity:0;transform:translateY(-6px)} to{opacity:1;transform:translateY(0)} }
+    .live-dot { animation: pulse 2s ease-in-out infinite; }
+    .fade-in { animation: fadeIn .2s ease-out; }
+    .alert-blink { animation: pulse .8s ease-in-out infinite; }
   </style>
 </head>
 <body>
-  <div id="root"></div>
-  <script type="text/babel">
-const { useState, useEffect, useRef, useCallback } = React;
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect, useRef, useCallback, useMemo } = React;
 
-// ── SIGNAL TYPES ──────────────────────────────────────────────────────────────
+// ─── SIGNAL TYPE REGISTRY ──────────────────────────────────────────────────────
 const SQ = {
-  staircase:     { label:"STAIRCASE",    color:"#00ddff", icon:"📊", tier:1, cat:"squeeze" },
-  short_squeeze: { label:"SHORT SQ",     color:"#00ff88", icon:"🚀", tier:1, cat:"squeeze" },
-  gamma_squeeze: { label:"GAMMA SQ",     color:"#ffe033", icon:"⚡", tier:1, cat:"squeeze" },
-  delta_squeeze: { label:"DELTA SQ",     color:"#44ffdd", icon:"∆",  tier:2, cat:"squeeze" },
-  liquidity_sq:  { label:"LIQUIDITY SQ", color:"#ff88cc", icon:"💧", tier:2, cat:"squeeze" },
-  ftd_squeeze:   { label:"FTD SQ",       color:"#ff9900", icon:"📌", tier:2, cat:"squeeze" },
-  vol_squeeze:   { label:"VOL SQ",       color:"#cc88ff", icon:"🌀", tier:3, cat:"squeeze" },
+  staircase:     { label:"Staircase",     color:"#58a6ff", icon:"📊", tier:1, cat:"squeeze" },
+  short_squeeze: { label:"Short Squeeze", color:"#3fb950", icon:"🚀", tier:1, cat:"squeeze" },
+  gamma_squeeze: { label:"Gamma Squeeze", color:"#d29922", icon:"⚡", tier:1, cat:"squeeze" },
+  delta_squeeze: { label:"Delta Squeeze", color:"#58a6ff", icon:"△",  tier:2, cat:"squeeze" },
+  liquidity_sq:  { label:"Liquidity Sq",  color:"#bc8cff", icon:"💧", tier:2, cat:"squeeze" },
+  ftd_squeeze:   { label:"FTD Squeeze",   color:"#d29922", icon:"📌", tier:2, cat:"squeeze" },
+  vol_squeeze:   { label:"Vol Squeeze",   color:"#bc8cff", icon:"🌀", tier:3, cat:"squeeze" },
 };
 const FL = {
-  cap_flush:    { label:"CAPITULATION",  color:"#ff3355", icon:"🩸", tier:1, cat:"flush" },
-  gamma_flush:  { label:"GAMMA FLUSH",   color:"#ff6600", icon:"🔥", tier:1, cat:"flush" },
-  stop_hunt:    { label:"STOP HUNT",     color:"#ff9955", icon:"🎯", tier:2, cat:"flush" },
-  margin_flush: { label:"MARGIN CALL",   color:"#ff5577", icon:"💥", tier:2, cat:"flush" },
-  vix_flush:    { label:"VIX SPIKE",     color:"#cc44ff", icon:"🌋", tier:2, cat:"flush" },
-  liq_flush:    { label:"LIQ FLUSH",     color:"#ff7788", icon:"📉", tier:3, cat:"flush" },
+  cap_flush:    { label:"Capitulation",  color:"#f85149", icon:"🩸", tier:1, cat:"flush" },
+  gamma_flush:  { label:"Gamma Flush",   color:"#f85149", icon:"🔥", tier:1, cat:"flush" },
+  stop_hunt:    { label:"Stop Hunt",     color:"#d29922", icon:"🎯", tier:2, cat:"flush" },
+  margin_flush: { label:"Margin Call",   color:"#f85149", icon:"💥", tier:2, cat:"flush" },
+  vix_flush:    { label:"VIX Spike",     color:"#bc8cff", icon:"🌋", tier:2, cat:"flush" },
+  liq_flush:    { label:"Liq Flush",     color:"#f85149", icon:"📉", tier:3, cat:"flush" },
 };
 const MC = {
-  macro_bull: { label:"MACRO BULL", color:"#66ccff", icon:"📈", tier:2, cat:"macro" },
-  macro_bear: { label:"MACRO BEAR", color:"#ff9955", icon:"📉", tier:2, cat:"macro" },
+  macro_bull: { label:"Macro Bull", color:"#3fb950", icon:"📈", tier:2, cat:"macro" },
+  macro_bear: { label:"Macro Bear", color:"#f85149", icon:"📉", tier:2, cat:"macro" },
 };
 const ALL = { ...SQ, ...FL, ...MC };
 
-// ── SETUP PROFILES ────────────────────────────────────────────────────────────
+// ─── HOLD PROFILES ─────────────────────────────────────────────────────────────
 const PROF = {
-  staircase:     { dte:"14–21", hold:"5–14 days", holdDays:14 },
-  short_squeeze: { dte:"7–21",  hold:"3–10 days", holdDays:10 },
-  gamma_squeeze: { dte:"3–10",  hold:"1–4 days",  holdDays:4  },
-  delta_squeeze: { dte:"5–14",  hold:"2–5 days",  holdDays:5  },
-  liquidity_sq:  { dte:"7–14",  hold:"2–7 days",  holdDays:7  },
-  ftd_squeeze:   { dte:"21–45", hold:"1–3 weeks", holdDays:21 },
-  vol_squeeze:   { dte:"7–21",  hold:"3–7 days",  holdDays:7  },
-  cap_flush:     { dte:"7–14",  hold:"2–5 days",  holdDays:5  },
-  gamma_flush:   { dte:"5–14",  hold:"2–5 days",  holdDays:5  },
-  stop_hunt:     { dte:"0–3",   hold:"Same day",   holdDays:1  },
-  margin_flush:  { dte:"5–14",  hold:"2–4 days",  holdDays:4  },
-  vix_flush:     { dte:"7–21",  hold:"2–5 days",  holdDays:5  },
-  liq_flush:     { dte:"5–10",  hold:"1–3 days",  holdDays:3  },
-  macro_bull:    { dte:"7–14",  hold:"1–5 days",  holdDays:5  },
-  macro_bear:    { dte:"7–14",  hold:"1–5 days",  holdDays:5  },
+  staircase:     { dte:"14–21", hold:"5–14d", holdDays:14 },
+  short_squeeze: { dte:"7–21",  hold:"3–10d", holdDays:10 },
+  gamma_squeeze: { dte:"3–10",  hold:"1–4d",  holdDays:4  },
+  delta_squeeze: { dte:"5–14",  hold:"2–5d",  holdDays:5  },
+  liquidity_sq:  { dte:"7–14",  hold:"2–7d",  holdDays:7  },
+  ftd_squeeze:   { dte:"21–45", hold:"1–3wk", holdDays:21 },
+  vol_squeeze:   { dte:"7–21",  hold:"3–7d",  holdDays:7  },
+  cap_flush:     { dte:"7–14",  hold:"2–5d",  holdDays:5  },
+  gamma_flush:   { dte:"5–14",  hold:"2–5d",  holdDays:5  },
+  stop_hunt:     { dte:"0–3",   hold:"Same day",holdDays:1 },
+  margin_flush:  { dte:"5–14",  hold:"2–4d",  holdDays:4  },
+  vix_flush:     { dte:"7–21",  hold:"2–5d",  holdDays:5  },
+  liq_flush:     { dte:"5–10",  hold:"1–3d",  holdDays:3  },
+  macro_bull:    { dte:"7–14",  hold:"1–5d",  holdDays:5  },
+  macro_bear:    { dte:"7–14",  hold:"1–5d",  holdDays:5  },
 };
 
-// ── STRATEGIES ────────────────────────────────────────────────────────────────
+// ─── STRATEGIES ─────────────────────────────────────────────────────────────────
 const STRATS = {
-  naked_call:  { name:"Naked Call (OTM)",   emoji:"🎯", color:"#00ff88", risk:"HIGH",    ivNeed:"low",  best:["short_squeeze","delta_squeeze","staircase"],        how:"Buy 1 OTM call 1–2 strikes above price. DTE = profile. Max 2% account.",          exit:"Sell 50–100% gain or when sweeps stop. Never past max hold day.", stop:"Down 50% OR put sweeps appear on same ticker.", pros:"Unlimited upside. Simple.", cons:"Full premium at risk. IV crush on high-IV tickers." },
-  call_spread: { name:"Call Debit Spread",  emoji:"📐", color:"#ffe033", risk:"DEFINED", ivNeed:"high", best:["short_squeeze","gamma_squeeze","cap_flush","staircase"], how:"Buy ATM call + sell OTM call same expiry. Cuts cost and IV risk ~50%.",              exit:"Close at 50–75% max profit.",              stop:"Down 50% on spread.",          pros:"Defined risk. Cheaper. IV crush halved.", cons:"Caps upside at short strike." },
-  atm_call:    { name:"ATM Call",           emoji:"⚡", color:"#44ffdd", risk:"MED",     ivNeed:"any",  best:["gamma_squeeze","delta_squeeze"],                     how:"Buy ATM call 3–10 DTE. Max delta sensitivity for fast moves.",                    exit:"50–80% and leave. Gamma reverses fast.",   stop:"Price stalls at GEX wall.",    pros:"Max delta. Best for explosive moves.", cons:"Expensive. Theta kills on stall." },
-  itm_call:    { name:"Deep ITM Call",      emoji:"🐋", color:"#44ffbb", risk:"LOWER",   ivNeed:"any",  best:["liquidity_sq","ftd_squeeze","staircase"],            how:"Buy 0.80+ delta call. Moves 1:1 with stock. Minimal theta.",                       exit:"Sell when volume dries or hits resistance.", stop:"Break below staircase zone.",  pros:"Minimal decay. High delta.", cons:"More capital. Less leverage." },
-  leaps:       { name:"LEAPS (45–90 DTE)",  emoji:"⏳", color:"#ff9900", risk:"MEDIUM",  ivNeed:"any",  best:["ftd_squeeze","staircase"],                          how:"Buy call 45–90 DTE, delta 0.50–0.70. Time for T+35 buy-in cycles.",               exit:"Close when SI drops sharply.",             stop:"FTDs normalize 5+ days.",      pros:"Survives false starts. Low daily theta.", cons:"Slower move. More premium at risk." },
-  naked_put:   { name:"Naked Put (OTM)",    emoji:"🩸", color:"#ff3355", risk:"HIGH",    ivNeed:"low",  best:["cap_flush","margin_flush"],                         how:"Buy OTM put 1–2 strikes below price. 7–14 DTE.",                                 exit:"50–100% gain. Exit by Day 5.",             stop:"Call sweeps appear.",          pros:"Max downside profit.", cons:"Full premium at risk." },
-  put_spread:  { name:"Put Debit Spread",   emoji:"📉", color:"#ff7755", risk:"DEFINED", ivNeed:"high", best:["cap_flush","gamma_flush","liq_flush"],               how:"Buy ATM put + sell OTM put same expiry.",                                         exit:"50–75% max profit.",                       stop:"DP buy prints at lows.",       pros:"Cheaper. Defined risk.", cons:"Caps downside capture." },
-  fast_put:    { name:"0–3 DTE ATM Put",    emoji:"🎯", color:"#ff9955", risk:"V.HIGH",  ivNeed:"any",  best:["stop_hunt"],                                        how:"ATM put 0–3 DTE. Enter on support break. Day trade only.",                        exit:"Same session or next morning. Never overnight.", stop:"Price reclaims support.",  pros:"Cheap. Max leverage intraday.", cons:"Theta destroys overnight." },
-  uvxy_call:   { name:"UVXY Calls",         emoji:"🌋", color:"#cc44ff", risk:"V.HIGH",  ivNeed:"any",  best:["vix_flush","vol_squeeze"],                          how:"UVXY calls ATM 2–3 weeks out. Vol spikes fast and brutal.",                       exit:"Sell INTO the spike. 2–4 days max.",       stop:"VIX starts dropping.",         pros:"Designed for vol spikes. 3–5x potential.", cons:"UVXY decays hard." },
-  diagonal:    { name:"Diagonal Spread",    emoji:"📅", color:"#7799bb", risk:"MEDIUM",  ivNeed:"any",  best:["ftd_squeeze","vol_squeeze","staircase"],            how:"Buy 30–45 DTE call + sell 7–14 DTE OTM call.",                                   exit:"Near-term expires, reassess.",             stop:"Long leg down 40%.",           pros:"Reduces cost basis. Time on side.", cons:"Complex. Capped near-term." },
+  naked_call:  { name:"Naked Call (OTM)",  emoji:"🎯", color:"#3fb950", risk:"HIGH",    ivNeed:"low",  best:["short_squeeze","delta_squeeze","staircase"],        how:"Buy 1 OTM call 1–2 strikes above price. Max 2% account.", exit:"Sell at 50–100% gain or when sweeps stop.", stop:"Down 50% or put sweeps on same ticker." },
+  call_spread: { name:"Call Debit Spread", emoji:"📐", color:"#d29922", risk:"DEFINED", ivNeed:"high", best:["short_squeeze","gamma_squeeze","cap_flush","staircase"], how:"Buy ATM call + sell OTM call same expiry. Cuts cost ~50%.",   exit:"Close at 50–75% max profit.",              stop:"Down 50% on spread." },
+  atm_call:    { name:"ATM Call",          emoji:"⚡", color:"#58a6ff", risk:"MED",     ivNeed:"any",  best:["gamma_squeeze","delta_squeeze"],                     how:"Buy ATM call 3–10 DTE. Max delta sensitivity.",           exit:"50–80% — gamma reverses fast.",            stop:"Price stalls at GEX wall." },
+  naked_put:   { name:"Naked Put (OTM)",   emoji:"🩸", color:"#f85149", risk:"HIGH",    ivNeed:"low",  best:["cap_flush","margin_flush"],                         how:"Buy OTM put 1–2 strikes below price. 7–14 DTE.",          exit:"50–100% gain. Exit by Day 5.",             stop:"Call sweeps appear." },
+  put_spread:  { name:"Put Debit Spread",  emoji:"📉", color:"#f85149", risk:"DEFINED", ivNeed:"high", best:["cap_flush","gamma_flush","liq_flush"],               how:"Buy ATM put + sell OTM put same expiry.",                 exit:"50–75% max profit.",                       stop:"DP buy prints at lows." },
+  uvxy_call:   { name:"UVXY Calls",        emoji:"🌋", color:"#bc8cff", risk:"V.HIGH",  ivNeed:"any",  best:["vix_flush","vol_squeeze"],                          how:"UVXY calls ATM 2–3 weeks out. Vol spikes fast.",          exit:"Sell INTO the spike. 2–4 days max.",       stop:"VIX starts dropping." },
 };
 
-function getBestStrats(sqType, ivHigh) {
-  if (!sqType) return [];
-  const m = Object.entries(STRATS).filter(([,s]) =>
-    s.best.includes(sqType) && (s.ivNeed==="any"||(s.ivNeed==="high"&&ivHigh)||(s.ivNeed==="low"&&!ivHigh))
+function getBestStrat(sqType, ivHigh) {
+  if (!sqType) return null;
+  const match = Object.entries(STRATS).find(([, s]) =>
+    s.best.includes(sqType) && (s.ivNeed === "any" || (s.ivNeed === "high" && ivHigh) || (s.ivNeed === "low" && !ivHigh))
   );
-  if (m.length < 2) m.push(["diagonal", STRATS.diagonal]);
-  return m.slice(0,2);
+  return match ? match[1] : STRATS.call_spread;
 }
 
-// ── WIN PROBABILITY ───────────────────────────────────────────────────────────
+// ─── WIN PROBABILITY ───────────────────────────────────────────────────────────
 function calcWinProb(p) {
   if (p.cat === "macro") return null;
   let pts = 0;
-  const s   = p.short || {};
-  const si  = parseFloat(s.si_pct || 0);
-  const dtc = parseFloat(s.days_to_cover || 0);
+  const sh  = p.short || {};
+  const si  = parseFloat(sh.si_pct || 0);
+  const dtc = parseFloat(sh.days_to_cover || 0);
   const soi = p.oi > 0 ? p.size / p.oi : 0;
   const sc  = parseInt(p.staircase_days || 0);
   const pc  = parseFloat(p.options_vol?.put_call_ratio || 0);
-  // Core flow confirmation (0-28)
   pts += p.sweepOk && p.dpOk ? 28 : p.sweepOk || p.dpOk ? 12 : 4;
-  // Staircase — institutional accumulation (0-20)
   pts += sc >= 7 ? 20 : sc >= 5 ? 15 : sc >= 3 ? 9 : sc >= 2 ? 4 : 0;
-  // Repeat sweeps (0-10)
-  pts += (p.sweep_count||1) >= 3 ? 10 : (p.sweep_count||1) >= 2 ? 5 : 0;
-  // Size vs OI (0-12)
+  pts += (p.sweep_count || 1) >= 3 ? 10 : (p.sweep_count || 1) >= 2 ? 5 : 0;
   pts += soi >= 5 ? 12 : soi >= 3 ? 8 : soi >= 2 ? 4 : 0;
-  // Short data for squeezes (0-20)
   if (p.cat === "squeeze") {
     pts += si >= 30 ? 10 : si >= 20 ? 7 : si >= 10 ? 3 : 0;
     pts += dtc >= 5 ? 6 : dtc >= 3 ? 3 : 0;
-    pts += parseFloat(s.borrow_rate||0) >= 30 ? 2 : 0;
-    pts += s.ftds_elevated ? 2 : 0;
+    pts += parseFloat(sh.borrow_rate || 0) >= 30 ? 2 : 0;
+    pts += sh.ftds_elevated ? 2 : 0;
   }
-  // GEX bias (0-8)
   if (p.gex?.bias === "short_gamma" && p.cat === "squeeze") pts += 8;
   if (p.gex?.bias === "long_gamma"  && p.cat === "flush")   pts += 8;
-  // Net premium momentum (0-8)
   if (p.cat === "squeeze" && p.net_prem?.trending === "up")   pts += 8;
   if (p.cat === "flush"   && p.net_prem?.trending === "down") pts += 8;
   if (p.cat === "squeeze" && p.net_prem?.trending === "down") pts -= 5;
-  // P/C ratio (0-6)
   if (p.cat === "squeeze" && pc > 0 && pc < 0.5) pts += 6;
   if (p.cat === "flush"   && pc > 1.2)           pts += 6;
-  // Ask quality (0-4)
-  pts += parseFloat(p.ask_pct||0) >= 0.9 ? 4 : parseFloat(p.ask_pct||0) >= 0.7 ? 2 : 0;
-  // OTM bonus (0-2)
+  pts += parseFloat(p.ask_pct || 0) >= 0.9 ? 4 : parseFloat(p.ask_pct || 0) >= 0.7 ? 2 : 0;
   if (p.is_otm) pts += 2;
-  // Penalties
   if (p.earnings?.within_14_days) pts = Math.round(pts * 0.7);
-  const td = parseInt(p.trade_day || p.day || 1);
+  const td = parseInt(p.trade_day || 1);
   if (td === 2) pts = Math.round(pts * 0.85);
   if (td === 3) pts = Math.round(pts * 0.65);
   if (td >= 7)  pts = Math.round(pts * 0.45);
@@ -164,159 +137,49 @@ function calcWinProb(p) {
 function getHoldStatus(td, sqType) {
   const max = (PROF[sqType] || PROF.short_squeeze).holdDays;
   const pct = td / max;
-  if (td <= 1)    return { label:"ENTER",       color:"#00ff88", action:"enter" };
-  if (pct <= 0.4) return { label:"HOLD",         color:"#ffe033", action:"hold" };
-  if (pct <= 0.7) return { label:"MONITOR",      color:"#ffaa44", action:"monitor" };
-  if (pct <= 0.9) return { label:"TRIM 25–50%",  color:"#ff9955", action:"prepare" };
-  return           { label:"EXIT NOW",      color:"#ff3355", action:"exit" };
+  if (td <= 1)    return { label:"ENTER",     color:"#3fb950" };
+  if (pct <= 0.4) return { label:"HOLD",       color:"#d29922" };
+  if (pct <= 0.7) return { label:"MONITOR",    color:"#d29922" };
+  if (pct <= 0.9) return { label:"TRIM 25–50%",color:"#f85149" };
+  return               { label:"EXIT NOW",   color:"#f85149" };
 }
 
-function getGuidance(p) {
-  const prob = p.winProb || 0;
-  const prof = PROF[p.sqType] || PROF.short_squeeze;
-  const td   = parseInt(p.trade_day || p.day || 1);
-  const hs   = getHoldStatus(td, p.sqType);
-  const sc   = parseInt(p.staircase_days || 0);
-  const lines = [];
-  if (p.cat === "macro") {
-    lines.push(p.sqType === "macro_bull" ? "Market bias BULLISH. Squeeze setups get a tailwind. Size up on confirmed plays." : "Market bias BEARISH. Strong headwind. Size down everything. Don't fight the tape.");
-    return lines;
-  }
-  if (sc >= 3 && !p.sweepOk)        lines.push(`👀 ${sc}-DAY STAIRCASE — Institutions quietly accumulating at ${p.staircase_zone || "this zone"}. No sweep yet. Watch for call sweeps to fire entry.`);
-  else if (hs.action === "exit")     lines.push(`🚨 EXIT NOW — Day ${td}, max hold (${prof.hold}) reached. Sell today. Non-negotiable.`);
-  else if (hs.action === "prepare")  lines.push(`⚠️ TRIM — Approaching max hold. Cut 25–50% now. Hold rest if sweeps still printing.`);
-  else if (td===1 && p.sweepOk && p.dpOk) lines.push(`✅ ENTER NOW — Both sweep + DP confirmed Day 1${sc>=3?` + ${sc}-day staircase`:""}. ${prob>=65?"High conviction":"Solid"} setup.`);
-  else if (td===1 && (p.sweepOk||p.dpOk)) lines.push("⚠️ WAIT — One signal confirmed. Watch for second (sweep OR DP) before entering.");
-  else if (td===2 && prob>=50)       lines.push("🟡 HOLD — Day 2. Still valid. Last good entry if not in yet.");
-  else if (td===2 && prob<50)        lines.push("⚠️ CAUTION — Day 2, weak signals. Only hold if already in.");
-  else                               lines.push("📊 MONITORING — Watch for sweep + DP confirmation before committing capital.");
-  const strats = getBestStrats(p.sqType, !!p.iv?.elevated);
-  if (strats.length > 0) {
-    const [, s] = strats[0];
-    lines.push(`BEST PLAY: ${s.emoji} ${s.name} (${s.risk} risk) — ${s.how}`);
-    lines.push(`EXIT: ${s.exit}`);
-    lines.push(`STOP: ${s.stop}`);
-  }
-  if (p.earnings?.within_14_days) lines.push("⚠️ EARNINGS in 14 days — IV crush risk. Use spread or skip.");
-  if (p.iv?.elevated)             lines.push("⚠️ HIGH IV — Use debit spread to cut IV crush risk in half.");
-  if (p.gex?.bias==="short_gamma" && p.cat==="squeeze") lines.push("🔥 SHORT GAMMA — Moves amplified. Squeeze goes further and faster than normal.");
-  if (p.sqType==="vol_squeeze")   lines.push("📌 VOL SQUEEZE — IV compressed like a coiled spring. Break will be violent.");
-  return lines;
-}
-
-// ── TECHNICAL READ + VERDICT ENGINE ───────────────────────────────────────────
-// Tech bias comes from ICHIMOKU on 5m bars — not from the signal category.
-// Macro bias comes from UW market tide (macro_bull / macro_bear signals in feed).
-// Framework rule:
-//   Tech BULLISH + Macro BULLISH = CALLS full size
-//   Tech BEARISH + Macro BEARISH = PUTS full size
-//   Tech BULLISH + Macro BEARISH = COIN FLIP (conflict — can't tell which wins)
-//   Tech BEARISH + Macro BULLISH = COIN FLIP (conflict — can't tell which wins)
-//   Tech NEUTRAL or Macro NEUTRAL = CASH (no edge either way)
-//   No Ichimoku data = PENDING (not enough technical data to decide)
+// ─── TECHNICAL READ ─────────────────────────────────────────────────────────────
 function getTechnicalRead(p, macroBias) {
-  // MACRO comes from market tide — unchanged
   const mb = macroBias === "BULLISH" || macroBias === "BEARISH" ? macroBias : "NEUTRAL";
-
-  // TECH BIAS strictly from Ichimoku. No fallback to squeeze/flush category.
   const ich = p.ichimoku || null;
   const techBias = ich?.bias || "PENDING";
   const techStrength = ich?.strength || null;
-
-  // IV READ — from near/far term structure + elevated flag
   const ivNear = parseFloat(p.iv?.near) || 0;
   const ivFar  = parseFloat(p.iv?.far)  || 0;
-  const ivRank = (ivNear > 0 && ivFar > 0)
-    ? Math.min(100, Math.max(0, Math.round(((ivNear - ivFar) / Math.max(ivFar, 1)) * 100 + 50)))
-    : null;
-  const ivHigh = !!p.iv?.elevated || (ivRank !== null && ivRank >= 55);
-
-  // SUGGESTED STRATEGY based on tech direction + IV regime
+  const ivHigh = !!p.iv?.elevated || (ivNear > 0 && ivFar > 0 && ivNear > ivFar * 1.1);
   const suggestedStrategy = (() => {
-    if (techBias === "BULLISH") return ivHigh ? "Call Debit Spread (IV hedge)" : "Naked Call OTM";
-    if (techBias === "BEARISH") return ivHigh ? "Put Debit Spread (IV hedge)" : "Naked Put OTM";
-    if (techBias === "NEUTRAL") return "Iron Condor or Stay Out";
-    return "Wait for Ichimoku read";
+    if (techBias === "BULLISH") return ivHigh ? "Call Debit Spread" : "Naked Call OTM";
+    if (techBias === "BEARISH") return ivHigh ? "Put Debit Spread"  : "Naked Put OTM";
+    if (techBias === "NEUTRAL") return "Iron Condor or Skip";
+    return "Wait for signal";
   })();
-  const creditAlt = (() => {
-    if (!ivHigh) return null;
-    if (techBias === "BULLISH") return "Bull Put Credit Spread (sell IV)";
-    if (techBias === "BEARISH") return "Bear Call Credit Spread (sell IV)";
-    return null;
-  })();
-
-  // VERDICT logic — implements the framework rule precisely
   let verdict, verdictConf, verdictReason, verdictColor;
   if (techBias === "PENDING") {
-    verdict = "PENDING";
-    verdictConf = 0;
-    verdictReason = "Ichimoku data not yet loaded for this ticker. Wait for next scan cycle.";
-    verdictColor = "#7591a8";
+    verdict = "PENDING"; verdictConf = 0; verdictColor = "#7d8590";
+    verdictReason = "No 5m data yet. Wait for next scan.";
   } else if (techBias === "NEUTRAL" || mb === "NEUTRAL") {
-    verdict = "CASH";
-    verdictConf = 50;
-    verdictReason = techBias === "NEUTRAL"
-      ? "Price inside Ichimoku cloud — no trend. No directional edge."
-      : "Macro neutral — no tailwind. Wait for tide to pick a side.";
-    verdictColor = "#7aaed0";
+    verdict = "CASH"; verdictConf = 50; verdictColor = "#58a6ff";
+    verdictReason = techBias === "NEUTRAL" ? "Price inside cloud — no trend edge." : "Macro neutral. Wait for direction.";
   } else if (techBias === mb) {
-    // Aligned — CALLS or PUTS
     verdict = techBias === "BULLISH" ? "CALLS" : "PUTS";
-    const strengthBonus = techStrength === "STRONG" ? 15 : techStrength === "MODERATE" ? 8 : 0;
-    verdictConf = Math.min(95, 50 + strengthBonus + Math.round((p.winProb || 50) * 0.3));
-    verdictReason = `${techBias} Ichimoku (${techStrength}) + ${mb} macro aligned. Full size per framework.`;
-    verdictColor = techBias === "BULLISH" ? "#00ff88" : "#ff3355";
+    const sb = techStrength === "STRONG" ? 15 : techStrength === "MODERATE" ? 8 : 0;
+    verdictConf = Math.min(95, 50 + sb + Math.round((p.winProb || 50) * 0.3));
+    verdictColor = techBias === "BULLISH" ? "#3fb950" : "#f85149";
+    verdictReason = `${techBias} Ichimoku (${techStrength || "–"}) + ${mb} macro aligned.`;
   } else {
-    // Conflict — tech and macro disagree → COIN FLIP
-    verdict = "COIN FLIP";
-    verdictConf = 50;
-    verdictReason = `CONFLICT: ${techBias} Ichimoku vs ${mb} macro. No directional edge — 50/50 which side wins. Skip or size down hard.`;
-    verdictColor = "#ffaa44";
+    verdict = "CONFLICT"; verdictConf = 50; verdictColor = "#d29922";
+    verdictReason = `${techBias} Ichimoku vs ${mb} macro — skip or size down hard.`;
   }
-
-  // News sanity check — 24h recent news adds a confirm-flow caveat
-  const newsRecent = p.news?.any && p.news.hours_ago != null && p.news.hours_ago <= 24;
-  if (newsRecent && verdict !== "PENDING") {
-    verdictReason += ` News ${p.news.hours_ago}h ago — confirm flow holds post-headline.`;
-  }
-
-  return {
-    techBias, techStrength, macroBias: mb, ivNear, ivFar, ivRank, ivHigh,
-    suggestedStrategy, creditAlt,
-    verdict, verdictConf, verdictReason, verdictColor,
-    ichimoku: ich,
-  };
+  return { techBias, techStrength, macroBias: mb, ivHigh, suggestedStrategy, verdict, verdictConf, verdictReason, verdictColor, ichimoku: ich };
 }
 
-// ── SYSTEM PROMPT BUILDER ─────────────────────────────────────────────────────
-const buildSystem = (uwKey) => `You connect to Unusual Whales MCP (paid). Return ONE raw JSON array ONLY. First char MUST be [. Last char MUST be ]. No text before or after.
-
-UW Bearer token: ${uwKey}
-
-FETCH IN ORDER (KEEP IT TIGHT — at most 5 MCP calls total to avoid timeouts):
-1. Flow alerts: size_greater_oi=true, is_otm=true, min_ask_perc=0.7, limit=30. Both calls AND puts.
-2. Dark pool recent: limit=25. Cross-reference tickers in both sweeps AND dark pool (higher conviction).
-3. Market tide: net direction.
-4. For each unique non-macro ticker (up to 6 — TOP TICKERS BY PREMIUM ONLY): fetch darkpool/{ticker} last 7 days. Count consecutive days with DP prints at same price zone (±2%). count = staircase_days. Zone = staircase_zone.
-5. For the SAME top 6 tickers: fetch greek-exposure (bias, wall, comment). This populates gex.{bias, wall, comment} which drives the gamma squeeze/flush classification.
-
-Do NOT call any other tools this scan. Set the following enrichment fields to null and they will be filled in by a future enrichment pass: short, options_vol, net_prem, earnings, iv, levels, congress, insider, news, fda, predict.
-
-CLASSIFY sqType:
-staircase (3+ DP days, no call sweep yet), short_squeeze (call sweep si>10%), gamma_squeeze (short_gamma + calls), delta_squeeze (size/OI>3 call), liquidity_sq (float<20M), ftd_squeeze (ftds elevated), vol_squeeze (UVXY/VIX sweep), cap_flush (put sweep+dp sell), gamma_flush (long_gamma+puts), stop_hunt (near support), margin_flush (large dp sell no news), vix_flush (broad VIX spike), liq_flush (put only thin bids)
-
-sig: cs_dp | call_sweep | dp_buy | ps_dp | put_sweep | dp_sell | macro_bull | macro_bear
-cat: squeeze | flush | macro
-trade_day: 1=today, 2-3=yesterday, 4-7=this week
-MACRO set (SPY QQQ IWM DIA TLT GLD XLF XLE SQQQ TQQQ UVXY VIX): cat=macro
-
-SCHEMA (one object per signal):
-{"id":"str","ticker":"NVDA","cat":"squeeze","sig":"cs_dp","sqType":"short_squeeze","premium":500000,"size":2000,"oi":400,"strike":"$155c","expiry":"Apr 25","exchange":"CBOE","time":"09:32","trade_day":1,"day":1,"sweepOk":true,"dpOk":true,"sweep_count":2,"ask_pct":0.85,"is_otm":true,"staircase_days":5,"staircase_zone":"$148-152","short":{"si_pct":28,"days_to_cover":4.2,"borrow_rate":35,"short_vol_ratio":0.48,"ftds_elevated":false,"float_shares_outstanding":45000000},"options_vol":{"put_call_ratio":0.4},"net_prem":{"trending":"up"},"earnings":{"within_14_days":false,"next_date":"May 28","days_away":51},"gex":{"bias":"short_gamma","wall":"$160","comment":"Dealers short gamma above $155"},"iv":{"elevated":false,"near":38,"far":35},"levels":{"support":"$148","resistance":"$162","entry_zone":"$150-154","target":"$165"},"congress":{"any":true,"buys":2,"sells":0,"net_side":"buy","latest_name":"Pelosi","latest_date":"2026-04-18"},"insider":{"any":true,"buys":1,"sells":0,"net_amount":350000,"net_side":"buy"},"news":{"any":true,"latest":"headline","catalyst_type":"upgrade","hours_ago":4},"fda":{"upcoming":false,"event_date":null,"event_type":null},"predict":{"any":false,"smart_money_side":null,"insider_side":null,"market":null,"prob_pct":null}}
-
-Use null for unavailable fields. Return [] if all fetches fail. Aim for full ticker coverage on earnings/congress/insider/news — these should rarely be null on large-cap US tickers. predict will often be null (most tickers don't have a prediction market) — that is expected.`;
-
-// ── DIRECT MODE — bypass MCP, fetch UW REST in browser, classify with Claude ──
-// MCP server has been hanging at peak hours. UW REST responds in ~100ms.
+// ─── SYSTEM PROMPT ──────────────────────────────────────────────────────────────
 const buildSystemDirect = () => `You will receive pre-fetched UW data. Classify into the trader's signal schema. Return ONE raw JSON array ONLY. First char [, last char ]. No prose.
 
 CLASSIFY sqType:
@@ -327,33 +190,27 @@ cat: squeeze | flush | macro
 trade_day: 1=today, 2-3=yesterday, 4-7=this week
 MACRO set (SPY QQQ IWM DIA TLT GLD XLF XLE SQQQ TQQQ UVXY VIX): cat=macro
 
-ENRICHMENT FROM PROVIDED DATA:
-- per_ticker[T].dp_history → count consecutive days (group executed_at by YYYY-MM-DD) with prints in same price zone (±2%). count = staircase_days. Zone = "$low-$high".
-- per_ticker[T].gex_snapshot → infer bias from net gamma sign (use call_gex/put_gex or call_gamma/put_gamma fields). bias="short_gamma" if net negative, "long_gamma" if positive. Estimate wall from largest absolute gamma strike if visible. Otherwise comment="dealers neutral".
-- market_tide → set sig=macro_bull if net_call_premium >> net_put_premium aggregated, macro_bear if reverse.
+ENRICHMENT:
+- per_ticker[T].dp_history → count consecutive days with prints in same price zone (±2%). count = staircase_days. Zone = "$low-$high".
+- per_ticker[T].gex_snapshot → infer bias: "short_gamma" if net gamma negative, "long_gamma" if positive.
+- market_tide → set macro signals based on net call vs put premium direction.
 
 OUTPUT SCHEMA (one object per signal):
 {"id":"str","ticker":"NVDA","cat":"squeeze","sig":"cs_dp","sqType":"short_squeeze","premium":500000,"size":2000,"oi":400,"strike":"$155c","expiry":"Apr 25","exchange":"CBOE","time":"09:32","trade_day":1,"sweepOk":true,"dpOk":true,"sweep_count":2,"ask_pct":0.85,"is_otm":true,"staircase_days":5,"staircase_zone":"$148-152","gex":{"bias":"short_gamma","wall":"$160","comment":"..."},"short":null,"options_vol":null,"net_prem":null,"earnings":null,"iv":null,"levels":null,"congress":null,"insider":null,"news":null,"fda":null,"predict":null}
 
-Set enrichment fields (short, options_vol, earnings, iv, levels, congress, insider, news, fda, predict) to null — not in this scan's data. Use null wherever a field can't be derived. Return [] only if no signals classify.`;
+Set enrichment fields to null if not derivable. Return [] if no signals qualify.`;
 
+// ─── ICHIMOKU ──────────────────────────────────────────────────────────────────
 const MACRO_TICKERS = new Set(["SPY","QQQ","IWM","DIA","TLT","GLD","XLF","XLE","SQQQ","TQQQ","UVXY","VIX"]);
 
-// ── ICHIMOKU CLOUD — client-side math on 5m OHLC bars ─────────────────────────
-// Computes Tenkan (9), Kijun (26), Senkou Span A/B (52 for B), Chikou (26-back),
-// cloud state vs price, TK cross, and derives a BULLISH/BEARISH/NEUTRAL read.
 function computeIchimoku(barsRaw) {
   if (!Array.isArray(barsRaw) || barsRaw.length < 55) return null;
-  // Normalize bar shape — UW returns {open, high, low, close, start_time} or similar
   const bars = barsRaw.map(b => ({
-    h: +(b.high ?? b.h ?? 0),
-    l: +(b.low  ?? b.l ?? 0),
-    c: +(b.close?? b.c ?? 0),
-    t: b.start_time || b.timestamp || b.t || null,
+    h: +(b.high ?? b.h ?? 0), l: +(b.low ?? b.l ?? 0),
+    c: +(b.close ?? b.c ?? 0), t: b.start_time || b.timestamp || b.t || null,
   })).filter(b => b.h > 0 && b.l > 0 && b.c > 0);
   if (bars.length < 55) return null;
-  // Assume bars arrive newest-first from UW; sort ascending (oldest → newest)
-  const sorted = [...bars].sort((a,b) => {
+  const sorted = [...bars].sort((a, b) => {
     if (!a.t || !b.t) return 0;
     return new Date(a.t).getTime() - new Date(b.t).getTime();
   });
@@ -361,1284 +218,803 @@ function computeIchimoku(barsRaw) {
   const hl = (period, endIdx) => {
     const start = Math.max(0, endIdx - period + 1);
     let hi = -Infinity, lo = Infinity;
-    for (let i = start; i <= endIdx; i++) {
-      if (sorted[i].h > hi) hi = sorted[i].h;
-      if (sorted[i].l < lo) lo = sorted[i].l;
-    }
+    for (let i = start; i <= endIdx; i++) { if (sorted[i].h > hi) hi = sorted[i].h; if (sorted[i].l < lo) lo = sorted[i].l; }
     return (hi + lo) / 2;
   };
   const last = n - 1;
-  const tenkan = hl(9, last);
-  const kijun  = hl(26, last);
-  const spanA  = (tenkan + kijun) / 2;
-  const spanB  = hl(52, last);
-  const close  = sorted[last].c;
-  // Previous bar for TK-cross detection
-  const prevTenkan = n >= 2 ? hl(9, last - 1)  : tenkan;
-  const prevKijun  = n >= 2 ? hl(26, last - 1) : kijun;
-  const tkCross =
-    (prevTenkan <= prevKijun && tenkan > kijun) ? "bullish" :
-    (prevTenkan >= prevKijun && tenkan < kijun) ? "bearish" :
-    null;
-  // Chikou confirmation: today's close vs price 26 bars ago
-  const chikouRef = n > 26 ? sorted[last - 26].c : null;
-  const chikouConfirm =
-    chikouRef === null ? null :
-    close > chikouRef ? "bullish" :
-    close < chikouRef ? "bearish" : "neutral";
-  // Cloud geometry
-  const cloudTop = Math.max(spanA, spanB);
-  const cloudBot = Math.min(spanA, spanB);
+  const tenkan = hl(9, last), kijun = hl(26, last);
+  const spanA = (tenkan + kijun) / 2, spanB = hl(52, last);
+  const close = sorted[last].c;
+  const tkCross = n >= 2
+    ? (hl(9, last-1) <= hl(26, last-1) && tenkan > kijun ? "bullish" : hl(9, last-1) >= hl(26, last-1) && tenkan < kijun ? "bearish" : null)
+    : null;
+  const cloudTop = Math.max(spanA, spanB), cloudBot = Math.min(spanA, spanB);
   const cloudColor = spanA > spanB ? "green" : spanA < spanB ? "red" : "flat";
   const priceZone = close > cloudTop ? "above" : close < cloudBot ? "below" : "inside";
-  // Bias synthesis — standard Ichimoku rules
   let bias, strength, summary;
-  if (priceZone === "above" && cloudColor === "green" && tenkan > kijun) {
-    bias = "BULLISH"; strength = "STRONG";
-    summary = "Price above green cloud + Tenkan>Kijun. Full trend-up posture.";
-  } else if (priceZone === "above" && cloudColor === "green") {
-    bias = "BULLISH"; strength = "MODERATE";
-    summary = "Price above green cloud but TK flat — trend intact, momentum pausing.";
-  } else if (priceZone === "above" && cloudColor === "red") {
-    bias = "BULLISH"; strength = "WEAK";
-    summary = "Price above cloud but cloud still red — recovery, not confirmed trend.";
-  } else if (priceZone === "below" && cloudColor === "red" && tenkan < kijun) {
-    bias = "BEARISH"; strength = "STRONG";
-    summary = "Price below red cloud + Tenkan<Kijun. Full trend-down posture.";
-  } else if (priceZone === "below" && cloudColor === "red") {
-    bias = "BEARISH"; strength = "MODERATE";
-    summary = "Price below red cloud but TK flat — downtrend intact, momentum pausing.";
-  } else if (priceZone === "below" && cloudColor === "green") {
-    bias = "BEARISH"; strength = "WEAK";
-    summary = "Price below cloud but cloud still green — pullback, not confirmed reversal.";
-  } else {
-    bias = "NEUTRAL"; strength = "TRANSITION";
-    summary = "Price inside the cloud — no trend. Wait for break above/below before acting.";
-  }
-  return {
-    tenkan: +tenkan.toFixed(2),
-    kijun:  +kijun.toFixed(2),
-    spanA:  +spanA.toFixed(2),
-    spanB:  +spanB.toFixed(2),
-    cloudTop: +cloudTop.toFixed(2),
-    cloudBot: +cloudBot.toFixed(2),
-    close:  +close.toFixed(2),
-    cloudColor, priceZone, tkCross, chikouConfirm,
-    bias, strength, summary,
-    bars: n,
-  };
+  if      (priceZone === "above" && cloudColor === "green" && tenkan > kijun) { bias = "BULLISH"; strength = "STRONG";   summary = "Price above green cloud + Tenkan>Kijun. Full uptrend."; }
+  else if (priceZone === "above" && cloudColor === "green")                   { bias = "BULLISH"; strength = "MODERATE"; summary = "Price above green cloud, TK flat — trend intact."; }
+  else if (priceZone === "above" && cloudColor === "red")                     { bias = "BULLISH"; strength = "WEAK";     summary = "Recovery — price above cloud but cloud still red."; }
+  else if (priceZone === "below" && cloudColor === "red" && tenkan < kijun)  { bias = "BEARISH"; strength = "STRONG";   summary = "Price below red cloud + Tenkan<Kijun. Full downtrend."; }
+  else if (priceZone === "below" && cloudColor === "red")                     { bias = "BEARISH"; strength = "MODERATE"; summary = "Price below red cloud — downtrend intact."; }
+  else if (priceZone === "below" && cloudColor === "green")                   { bias = "BEARISH"; strength = "WEAK";     summary = "Pullback — price below cloud but cloud still green."; }
+  else                                                                         { bias = "NEUTRAL"; strength = "TRANSITION"; summary = "Price inside cloud — no trend. Wait for breakout."; }
+  return { tenkan: +tenkan.toFixed(2), kijun: +kijun.toFixed(2), spanA: +spanA.toFixed(2), spanB: +spanB.toFixed(2), cloudTop: +cloudTop.toFixed(2), cloudBot: +cloudBot.toFixed(2), close: +close.toFixed(2), cloudColor, priceZone, tkCross, bias, strength, summary, bars: n };
 }
 
+// ─── UW DIRECT FETCH ───────────────────────────────────────────────────────────
 async function fetchUWDirect(uwKey, signal) {
   const H = { Authorization: `Bearer ${uwKey}` };
   const get = (path) => fetch(`https://api.unusualwhales.com/api${path}`, { headers: H, signal })
     .then(r => r.ok ? r.json() : { data: [] }).catch(() => ({ data: [] }));
-
-  // Phase 1: parallel-fetch the broad data (3 calls, ~150ms total)
   const [flow, dp, tide] = await Promise.all([
     get(`/option-trades/flow-alerts?limit=30&size_greater_oi=true&is_otm=true&min_ask_perc=0.7`),
     get(`/darkpool/recent?limit=25`),
     get(`/market/market-tide`),
   ]);
-
-  // Phase 2: pick top 6 tickers by premium for heavy DP/GEX, all unique for light OHLC
   const premBy = {};
   (flow.data||[]).forEach(r => { const t = r.ticker; if (!t || MACRO_TICKERS.has(t)) return; premBy[t] = (premBy[t]||0) + (+r.total_premium||0); });
   (dp.data||[]).forEach(r   => { const t = r.ticker; if (!t || MACRO_TICKERS.has(t)) return; premBy[t] = (premBy[t]||0) + (+r.premium||0); });
-  const sortedTickers = Object.entries(premBy).sort((a,b) => b[1]-a[1]).map(x => x[0]);
-  const topTickers  = sortedTickers.slice(0, 6);           // heavy endpoints
-  const ohlcTickers = sortedTickers.slice(0, 12);          // light OHLC endpoint — wider coverage
-
-  // Phase 3: parallel per-ticker enrichment (DP history + GEX + OHLC for Ichimoku)
-  const dpGexPromises = topTickers.flatMap(t => [
-    get(`/darkpool/${t}?limit=30`),
-    get(`/stock/${t}/greek-exposure`),
-  ]);
-  const ohlcPromises = ohlcTickers.map(t => get(`/stock/${t}/ohlc/5m?limit=400`));
-  const allResults = await Promise.all([...dpGexPromises, ...ohlcPromises]);
-  const dpGexResults = allResults.slice(0, dpGexPromises.length);
-  const ohlcResults  = allResults.slice(dpGexPromises.length);
-
+  const sorted = Object.entries(premBy).sort((a,b)=>b[1]-a[1]).map(x=>x[0]);
+  const topTickers = sorted.slice(0,6), ohlcTickers = sorted.slice(0,12);
+  const dpGexRes = await Promise.all(topTickers.flatMap(t=>[get(`/darkpool/${t}?limit=30`),get(`/stock/${t}/greek-exposure`)]));
+  const ohlcRes  = await Promise.all(ohlcTickers.map(t=>get(`/stock/${t}/ohlc/5m?limit=400`)));
   const per_ticker = {};
-  topTickers.forEach((t, i) => {
-    per_ticker[t] = {
-      dp_history:  (dpGexResults[i*2]?.data || []).slice(0, 30),
-      gex_snapshot: dpGexResults[i*2+1]?.data?.[0] || null,
-    };
-  });
-
-  // Pre-compute Ichimoku per ticker on the client — avoids bloating Claude tokens
+  topTickers.forEach((t,i)=>{ per_ticker[t] = { dp_history: (dpGexRes[i*2]?.data||[]).slice(0,30), gex_snapshot: dpGexRes[i*2+1]?.data?.[0]||null }; });
   const ichimokuByTicker = {};
-  ohlcTickers.forEach((t, i) => {
-    const bars = ohlcResults[i]?.data || [];
-    const ich = computeIchimoku(bars);
-    if (ich) ichimokuByTicker[t] = ich;
-  });
-
-  return {
-    flow_alerts: flow.data || [],
-    dark_pool_recent: dp.data || [],
-    market_tide: tide.data || [],
-    per_ticker,
-    ichimokuByTicker,
-  };
+  ohlcTickers.forEach((t,i)=>{ const ich=computeIchimoku(ohlcRes[i]?.data||[]); if(ich) ichimokuByTicker[t]=ich; });
+  return { flow_alerts: flow.data||[], dark_pool_recent: dp.data||[], market_tide: tide.data||[], per_ticker, ichimokuByTicker };
 }
 
-// ── HELPERS ───────────────────────────────────────────────────────────────────
+// ─── HELPERS ───────────────────────────────────────────────────────────────────
 const fmt  = n => !n ? "—" : +n >= 1e6 ? `$${(+n/1e6).toFixed(2)}M` : +n >= 1e3 ? `$${(+n/1e3).toFixed(0)}K` : `$${(+n).toFixed(2)}`;
 const fmtP = n => !n ? "—" : parseFloat(n).toFixed(1) + "%";
-const beep = () => { try { const ac = new(window.AudioContext||window.webkitAudioContext)(); const o=ac.createOscillator(),g=ac.createGain(); o.connect(g); g.connect(ac.destination); o.frequency.value=900; g.gain.setValueAtTime(0.18,ac.currentTime); g.gain.exponentialRampToValueAtTime(0.001,ac.currentTime+0.5); o.start(); o.stop(ac.currentTime+0.5); } catch(_){} };
+const beep = () => { try { const ac=new(window.AudioContext||window.webkitAudioContext)(); const o=ac.createOscillator(),g=ac.createGain(); o.connect(g); g.connect(ac.destination); o.frequency.value=880; g.gain.setValueAtTime(0.15,ac.currentTime); g.gain.exponentialRampToValueAtTime(0.001,ac.currentTime+0.4); o.start(); o.stop(ac.currentTime+0.4); } catch(_){} };
 
-// ── DAILY TRADING PLAYBOOK (time-aware) ───────────────────────────────────────
-// Each step: t = minutes since midnight ET. Schedule is fixed in Eastern Time.
-const PLAYBOOK = [
-  { t: 8*60+30,  time: "8:30 AM",  title: "Scanner Fires",                 phase: "Pre-Market",  color: "#5b9bd5", body: "Replit runs the first scheduled scan. You don't need to do anything. Stay calm — the system works without you." },
-  { t: 8*60+35,  time: "8:35 AM",  title: "Phone Check (60 sec)",          phase: "Pre-Market",  color: "#5b9bd5", body: "Open Google Sheets → UW Scanner Log → Today tab. Look at the summary strip. Any candidates? Trading day possible. Zero candidates? Slow day, don't force." },
-  { t: 9*60+0,   time: "9:00 AM",  title: "Be At Your Desk",               phase: "Pre-Market",  color: "#5b9bd5", body: "Second scheduled scan runs. Coffee ready. Computer on. TradingView open. You need 20 min to prep before the bell." },
-  { t: 9*60+20,  time: "9:20 AM",  title: "📋 THE BRIEF (3 min)",          phase: "Brief",       color: "#d97706", body: "Open Today tab. Read summary → scan rows → check Repeat Hits → pick MAX 2 TICKERS with entry zone, stop zone, one-line thesis. Zero strong candidates? Don't trade today." },
-  { t: 9*60+25,  time: "9:25 AM",  title: "Final Pre-Market Scan",         phase: "Brief",       color: "#d97706", body: "Last scan fires. Refresh Today tab. Did your 2 picks still rank high? Dropped off → question them. Climbed → conviction confirmed." },
-  { t: 9*60+30,  time: "9:30 AM",  title: "🚫 HANDS OFF — Market Opens",   phase: "Wait Window", color: "#dc2626", body: "NO ENTRIES 9:30–10:00. Open TradingView, apply Ichimoku/Squeeze Pro/MFI/ORB-15. Check VIX: <20 full size · 20–25 half · >25 SKIP DAY. No trades. None." },
-  { t: 9*60+45,  time: "9:45 AM",  title: "📍 Mark Opening Range",         phase: "Wait Window", color: "#dc2626", body: "Note the highest and lowest price hit in the first 15 minutes for each pick. This is your ORB zone. Watch — don't click buy." },
-  { t: 10*60+0,  time: "10:00 AM", title: "✅ 13-Point Checklist → ENTRY", phase: "Execution",   color: "#16a34a", body: "Run the 13-point checklist. ALL 13 GREEN = enter (call spread or naked call, position-sized to VIX). 12 green, 1 missing = SKIP. No exceptions." },
-  { t: 10*60+30, time: "10:30 AM", title: "Position Management",           phase: "Manage",      color: "#6b7280", body: "Watch price action. Don't stare at P&L. Don't add. Don't roll. Don't open new tickers. The morning signal is the morning signal." },
-  { t: 12*60+0,  time: "12:00 PM", title: "☕ Lunch Chop",                  phase: "Manage",      color: "#6b7280", body: "Volume dies, algos dominate. Set price alerts at stop_zone + target_zone. Walk away. Stop hit? Exit immediately. +75% hit? Sell 50%, move stop to breakeven." },
-  { t: 14*60+0,  time: "2:00 PM",  title: "🔄 Power Hour Prep",            phase: "Manage",      color: "#6b7280", body: "Re-engage. Still above entry, ORB high, Ichimoku cloud? Hold. Any broken? Plan exit. Approaching GEX target? Scale out more. Trail final 20% with Kijun line." },
-  { t: 15*60+30, time: "3:30 PM",  title: "🎯 Close Decision",             phase: "Close",       color: "#5b21b6", body: "Hold overnight or close? Close if: +100%+, VIX spiked, macro headline tomorrow, momentum faded, or unsure. Hold ONLY if triple-hit + DP accumulation + no catalysts + bullish daily + VIX <20." },
-  { t: 16*60+0,  time: "4:00 PM",  title: "🔔 Market Closes",              phase: "Close",       color: "#5b21b6", body: "Confirm all intended exits filled. Screenshot P&L for the day. Don't touch the scanner or charts." },
-  { t: 16*60+30, time: "4:30 PM",  title: "📔 Journal (5 min)",            phase: "Close",       color: "#5b21b6", body: "Write: what tickers did the scanner surface, what did I trade, what happened, what would I change? Single most important habit — without it you can't improve." },
-  { t: 17*60+0,  time: "After 5 PM", title: "Done",                         phase: "Close",       color: "#5b21b6", body: "Close Replit, Google Sheets, TradingView. Don't research tomorrow's trades tonight — that's Sunday's job. Mental separation matters." },
-];
-function nowETMin() {
-  try {
-    const parts = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", hour12: false, hour: "2-digit", minute: "2-digit" }).formatToParts(new Date());
-    const h = +parts.find(p => p.type === "hour").value;
-    const m = +parts.find(p => p.type === "minute").value;
-    return h * 60 + m;
-  } catch { const d = new Date(); return d.getHours()*60 + d.getMinutes(); }
-}
-
-// ── 30-DAY HISTORY (localStorage) ─────────────────────────────────────────────
-const HIST_KEY = "sfs_history_v1";
-const DAY_MS   = 86400000;
-const today    = () => new Date().toISOString().slice(0,10);
-
-function loadHist() {
-  try { const r = JSON.parse(localStorage.getItem(HIST_KEY)||"{}"); return r && typeof r === "object" ? r : {}; }
-  catch { return {}; }
-}
-function saveHist(h) { try { localStorage.setItem(HIST_KEY, JSON.stringify(h)); } catch(_){} }
+// ─── 30-DAY HISTORY ────────────────────────────────────────────────────────────
+const HIST_KEY = "ie_hist_v1";
+function loadHist() { try { return JSON.parse(localStorage.getItem(HIST_KEY)||"{}}"); } catch { return {}; } }
+function saveHist(h) { try { localStorage.setItem(HIST_KEY,JSON.stringify(h)); } catch(_){} }
 function pruneHist(h) {
-  const now = Date.now();
-  const out = {};
-  Object.entries(h).forEach(([k,v]) => {
-    const t = new Date(v.last_seen || today()).getTime();
-    const ageDays = (now - t)/DAY_MS;
-    // Hard cap: drop anything older than 30 days
-    if (ageDays > 30) return;
-    // Stale-and-never-fired: drop items tracked 3+ days that never showed real follow-through
-    // ("fired" = had matched sweep+DP confluence OR cleared 70% win prob OR ≥3 distinct sighting days)
-    const fired = (v.sweepOk && v.dpOk) || (v.max_win_prob||0) >= 70 || (v.days_seen?.length||0) >= 3;
-    if (ageDays > 3 && !fired) return;
-    out[k] = v;
-  });
+  const now = Date.now(), out = {};
+  Object.entries(h).forEach(([k,v])=>{ const age=(now-new Date(v.last_seen||"2000").getTime())/86400000; if(age<=30) out[k]=v; });
   return out;
 }
 function recordHist(prints, prev) {
-  const h = { ...prev };
-  const td = today();
-  (prints||[]).forEach(p => {
-    if (!p.ticker || !p.sqType) return;
-    if (!ALL[p.sqType]) return;
-    const key = `${p.ticker}|${p.sqType}`;
-    const e = h[key] || {
-      ticker: p.ticker, sqType: p.sqType, cat: p.cat,
-      first_seen: td, last_seen: td, days_seen: [],
-      total_premium: 0, sighting_count: 0, max_win_prob: 0,
-      sweepOk: false, dpOk: false,
-      latest_strike: "", latest_expiry: "",
-      latest_staircase_days: 0,
-      congress: null, insider: null, news: null, fda: null, earnings: null, predict: null,
-    };
+  const h = {...prev}, td = new Date().toISOString().slice(0,10);
+  (prints||[]).forEach(p=>{
+    if (!p.ticker||!p.sqType||!ALL[p.sqType]) return;
+    const key=`${p.ticker}|${p.sqType}`;
+    const e = h[key] || { ticker:p.ticker, sqType:p.sqType, cat:p.cat, first_seen:td, last_seen:td, days_seen:[], total_premium:0, sighting_count:0, max_win_prob:0, sweepOk:false, dpOk:false };
     if (!e.days_seen.includes(td)) e.days_seen.push(td);
-    e.last_seen             = td;
-    e.total_premium        += parseInt(p.premium)||0;
-    e.sighting_count       += 1;
-    e.max_win_prob          = Math.max(e.max_win_prob||0, p.winProb||0);
-    e.sweepOk               = e.sweepOk || !!p.sweepOk;
-    e.dpOk                  = e.dpOk    || !!p.dpOk;
-    if (p.strike) e.latest_strike = p.strike;
-    if (p.expiry) e.latest_expiry = p.expiry;
-    e.latest_staircase_days = Math.max(e.latest_staircase_days||0, parseInt(p.staircase_days)||0);
-    // Persist confluence data (always keep the latest non-null snapshot)
-    if (p.congress) e.congress = p.congress;
-    if (p.insider)  e.insider  = p.insider;
-    if (p.news)     e.news     = p.news;
-    if (p.fda)      e.fda      = p.fda;
-    if (p.earnings) e.earnings = p.earnings;
-    if (p.predict && p.predict.any) e.predict = p.predict;
-    if (p.gex?.bias) { e.gex_bias = p.gex.bias; e.gex_wall = p.gex.wall || e.gex_wall; }
+    e.last_seen = td; e.total_premium += parseInt(p.premium)||0; e.sighting_count += 1;
+    e.max_win_prob = Math.max(e.max_win_prob||0, p.winProb||0);
+    e.sweepOk = e.sweepOk || !!p.sweepOk; e.dpOk = e.dpOk || !!p.dpOk;
+    if (p.strike) e.latest_strike = p.strike; if (p.expiry) e.latest_expiry = p.expiry;
     h[key] = e;
   });
   return pruneHist(h);
 }
 
-// ── WIN-PROB GATE ─────────────────────────────────────────────────────────────
-// Hard rule: setup must clear 70% win probability before it counts as actionable.
-const WIN_GATE = 70;
+// ─── UI PRIMITIVES ─────────────────────────────────────────────────────────────
+const C = {
+  bg:     "#0d1117", surface: "#161b22", surfaceHigh: "#1c2128",
+  border: "#21262d", borderHigh: "#30363d",
+  text:   "#e6edf3", textMuted: "#7d8590", textDim: "#484f58",
+  green:  "#3fb950", red: "#f85149", blue: "#58a6ff", yellow: "#d29922", purple: "#bc8cff",
+};
 
-// ── POSITION SIZE HINT (discipline layer) ─────────────────────────────────────
-// Maps days-building + win-prob to recommended account % per profile rules:
-// <70% win prob = WAIT (gate). < 3d = wait, 3-4d = 1%, 5-6d = 2%, 7+d = 3% cap.
-function sizingHint(days, winProb) {
-  if ((winProb||0) < WIN_GATE) return { pct: "0%", color: "#556677", label: "WAIT <70%" };
-  if (days >= 7) return { pct: "3%", color: "#00ff88", label: "MAX SIZE" };
-  if (days >= 5) return { pct: "2%", color: "#ffe033", label: "SIZE UP" };
-  if (days >= 3) return { pct: "1%", color: "#ff9955", label: "START" };
-  return             { pct: "0%", color: "#556677", label: "BUILD"   };
-}
-function topBuilds(h, cat, sortMode, n, gateOn) {
-  return Object.values(h||{})
-    .filter(e => e.cat === cat)
-    .filter(e => !gateOn || (e.max_win_prob||0) >= WIN_GATE)
-    .sort((a,b) => {
-      if (sortMode === "premium") {
-        if ((b.total_premium||0) !== (a.total_premium||0)) return (b.total_premium||0)-(a.total_premium||0);
-        return (b.days_seen?.length||0) - (a.days_seen?.length||0);
-      }
-      const da = a.days_seen?.length||0, db = b.days_seen?.length||0;
-      if (db !== da) return db - da;
-      return (b.total_premium||0) - (a.total_premium||0);
-    })
-    .slice(0, n||10);
+const s = {
+  card:    { background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, overflow: "hidden" },
+  pill:    (color) => ({ display:"inline-flex", alignItems:"center", gap:4, padding:"2px 8px", borderRadius:4, fontSize:11, fontWeight:600, background:color+"22", border:`1px solid ${color}55`, color }),
+  btn:     (active, color="#3fb950") => ({ padding:"6px 14px", borderRadius:6, border:`1px solid ${active?color+"66":C.border}`, background:active?color+"18":"transparent", color:active?color:C.textMuted, fontSize:12, fontWeight:600, cursor:"pointer", transition:"all .15s", letterSpacing:"0.02em" }),
+  input:   { width:"100%", padding:"8px 12px", background:C.surfaceHigh, border:`1px solid ${C.border}`, borderRadius:6, color:C.text, fontSize:13, outline:"none" },
+  label:   { fontSize:11, fontWeight:600, color:C.textMuted, letterSpacing:"0.06em", textTransform:"uppercase", marginBottom:4, display:"block" },
+  section: { fontSize:10, fontWeight:700, color:C.textDim, letterSpacing:"0.14em", textTransform:"uppercase" },
+};
+
+function Badge({ color, children }) {
+  return <span style={s.pill(color)}>{children}</span>;
 }
 
-// ── UI PRIMITIVES ─────────────────────────────────────────────────────────────
-const Sec = ({ label }) => (
-  <div style={{ display:"flex", alignItems:"center", gap:8, margin:"16px 0 8px" }}>
-    <div style={{ fontSize:9, color:"#6e88a0", letterSpacing:"0.2em", fontWeight:700, whiteSpace:"nowrap" }}>{label}</div>
-    <div style={{ flex:1, height:1, background:"#111d28" }}/>
-  </div>
-);
-
-function WinCircle({ prob }) {
+function WinBar({ prob }) {
   if (prob === null) return null;
-  const c = prob >= 70 ? "#00ff88" : prob >= 50 ? "#ffe033" : prob >= 35 ? "#ff9955" : "#ff3355";
+  const c = prob >= 70 ? C.green : prob >= 50 ? C.yellow : prob >= 35 ? "#f0883e" : C.red;
   return (
-    <div style={{ position:"relative", width:44, height:44, flexShrink:0 }}>
-      <svg width="44" height="44" viewBox="0 0 44 44">
-        <circle cx="22" cy="22" r="19" fill="none" stroke="#111d28" strokeWidth="3.5"/>
-        <circle cx="22" cy="22" r="19" fill="none" stroke={c} strokeWidth="3.5"
-          strokeDasharray={`${prob * 1.194} 119.4`} strokeLinecap="round"
-          transform="rotate(-90 22 22)" style={{ transition:"stroke-dasharray 0.6s" }}/>
-      </svg>
-      <div style={{ position:"absolute", inset:0, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center" }}>
-        <span style={{ fontSize:11, fontWeight:700, color:c, lineHeight:1 }}>{prob}%</span>
-        <span style={{ fontSize:9, color:c, opacity:0.7, letterSpacing:"0.05em" }}>WIN</span>
+    <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+      <div style={{ flex:1, height:4, background:C.border, borderRadius:2, overflow:"hidden" }}>
+        <div style={{ height:"100%", width:`${prob}%`, background:c, borderRadius:2, transition:"width .5s" }}/>
       </div>
+      <span style={{ fontSize:12, fontWeight:700, color:c, minWidth:36, textAlign:"right" }}>{prob}%</span>
     </div>
   );
 }
 
-function DataRow({ label, value, color, sub }) {
-  return (
-    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"7px 0", borderBottom:"1px solid #0e1a24" }}>
-      <span style={{ fontSize:10, color:"#7591a8", letterSpacing:"0.05em" }}>{label}</span>
-      <div style={{ textAlign:"right" }}>
-        <span style={{ fontSize:11, fontWeight:700, color:color || "#c0d4e8" }}>{value || "—"}</span>
-        {sub && <div style={{ fontSize:9, color:"#6e88a0", marginTop:1 }}>{sub}</div>}
-      </div>
-    </div>
-  );
+function Divider() {
+  return <div style={{ height:1, background:C.border, margin:"0" }}/>;
 }
 
-function Alrt({ icon, text, color }) {
-  return (
-    <div style={{ display:"flex", gap:10, padding:"9px 12px", background:color+"0d", border:`1px solid ${color}33`, marginBottom:6, borderRadius:2 }}>
-      <span style={{ flexShrink:0, fontSize:13 }}>{icon}</span>
-      <span style={{ fontSize:11, color, lineHeight:1.75 }}>{text}</span>
-    </div>
-  );
-}
-
-function StaircaseViz({ days, zone }) {
-  if (!days || days < 2) return null;
-  return (
-    <div style={{ background:"#060e14", border:"1px solid #00ddff22", padding:"12px 14px", marginBottom:16 }}>
-      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-end", marginBottom:10 }}>
-        <div>
-          <div style={{ fontSize:11, fontWeight:700, color:"#00ddff" }}>{days}-DAY DARK POOL STAIRCASE</div>
-          {zone && <div style={{ fontSize:10, color:"#7595a8", marginTop:2 }}>Accumulation zone: {zone}</div>}
-        </div>
-        <div style={{ fontSize:9, fontWeight:700, color:days>=5?"#00ff88":days>=3?"#ffe033":"#445566" }}>
-          {days >= 5 ? "STRONG" : days >= 3 ? "BUILDING" : "EARLY"}
-        </div>
-      </div>
-      <div style={{ display:"flex", gap:3, alignItems:"flex-end", height:28 }}>
-        {Array.from({ length:7 }, (_,i) => (
-          <div key={i} style={{ flex:1, height:`${i < days ? Math.min(100, 35+i*10) : 20}%`, background:i<days?"#00ddff":"#0e1a24", opacity:i<days?1:0.3, transition:"all 0.4s" }}/>
-        ))}
-      </div>
-      <div style={{ display:"flex", justifyContent:"space-between", marginTop:5 }}>
-        {[1,2,3,4,5,6,7].map(d => (
-          <div key={d} style={{ flex:1, textAlign:"center", fontSize:9, fontWeight:600, color:d<=days?"#00ddff":"#3a5468" }}>D{d}</div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-// ── TOP-10 LEADERBOARD ENTRY (30-day memory) ─────────────────────────────────
-function TopCard({ entry, rank, sortMode }) {
-  const def    = ALL[entry.sqType] || { label: entry.sqType, color: "#888", icon: "·" };
-  const strats = getBestStrats(entry.sqType, false);
-  const rec    = strats.length ? strats[0][1] : null;
-  const days   = entry.days_seen?.length || 0;
-  const barPct = Math.min(100, (days / 15) * 100);
-  const daysC  = days >= 7 ? "#00ff88" : days >= 4 ? "#ffe033" : days >= 2 ? "#ff9955" : "#556677";
-  const mwp    = entry.max_win_prob || 0;
-  const size   = sizingHint(days, mwp);
-  const verified = mwp >= 70;
-  return (
-    <div style={{ padding:"9px 12px", borderBottom:"1px solid #0e1a24" }}>
-      <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:5, flexWrap:"wrap" }}>
-        <span style={{ fontSize:9, color:"#6e88a0", width:22, fontWeight:700 }}>#{rank}</span>
-        <span style={{ fontSize:13 }}>{def.icon}</span>
-        <span style={{ fontWeight:700, fontSize:12, color:"#ddeeff", minWidth:48 }}>{entry.ticker}</span>
-        <span style={{ fontSize:10, color:def.color, border:`1px solid ${def.color}55`, padding:"1px 5px", letterSpacing:"0.08em" }}>{def.label}</span>
-        {entry.sweepOk && <span style={{ fontSize:10, color:"#ffe033", border:"1px solid #ffe03344", padding:"1px 4px" }}>SW</span>}
-        {entry.dpOk    && <span style={{ fontSize:10, color:"#44ffbb", border:"1px solid #44ffbb44", padding:"1px 4px" }}>DP</span>}
-        {entry.gex_bias==="short_gamma" && <span title={`Dealers short gamma — squeezes amplified${entry.gex_wall?` · wall ${entry.gex_wall}`:""}`} style={{ fontSize:10, color:"#ff88cc", border:"1px solid #ff88cc55", padding:"1px 5px", fontWeight:700 }}>γ↑{entry.gex_wall?` ${entry.gex_wall}`:""}</span>}
-        {entry.gex_bias==="long_gamma"  && <span title={`Dealers long gamma — flushes amplified${entry.gex_wall?` · wall ${entry.gex_wall}`:""}`} style={{ fontSize:10, color:"#ff6600", border:"1px solid #ff660055", padding:"1px 5px", fontWeight:700 }}>γ↓{entry.gex_wall?` ${entry.gex_wall}`:""}</span>}
-        {entry.congress?.any && <span style={{ fontSize:10, color: entry.congress.net_side==="buy"?"#00ff88":entry.congress.net_side==="sell"?"#ff3355":"#66ccff", border:`1px solid ${entry.congress.net_side==="buy"?"#00ff8844":entry.congress.net_side==="sell"?"#ff335544":"#66ccff44"}`, padding:"1px 4px" }}>🏛</span>}
-        {entry.insider?.any  && <span style={{ fontSize:10, color: entry.insider.net_side==="buy"?"#00ff88":"#ff9955", border:`1px solid ${entry.insider.net_side==="buy"?"#00ff8844":"#ff995544"}`, padding:"1px 4px" }}>👤</span>}
-        {entry.news?.any     && <span style={{ fontSize:10, color:"#ff9955", border:"1px solid #ff995544", padding:"1px 4px" }}>📰</span>}
-        {entry.fda?.upcoming && <span style={{ fontSize:10, color:"#cc44ff", border:"1px solid #cc44ff44", padding:"1px 4px" }}>💊</span>}
-        {entry.predict?.any && (() => { const side = entry.predict.smart_money_side || entry.predict.insider_side; const col = side==="buy"?"#00ff88":side==="sell"?"#ff3355":"#aa88ff"; return <span title={entry.predict.market||""} style={{ fontSize:10, color:col, border:`1px solid ${col}66`, padding:"1px 4px" }}>🎯{entry.predict.prob_pct!=null?entry.predict.prob_pct+"%":""}</span>; })()}
-        {entry.earnings?.within_14_days && <span style={{ fontSize:10, color:"#ff4444", border:"1px solid #ff444444", padding:"1px 4px" }}>📅</span>}
-        {verified && <span style={{ fontSize:10, color:"#00ff88", background:"#00ff8818", border:"1px solid #00ff8866", padding:"1px 5px", fontWeight:700, letterSpacing:"0.06em" }}>✓ 70%+ VERIFIED</span>}
-        <span style={{ marginLeft:"auto", fontSize:10, color:"#7aaed0", fontWeight:700 }}>{fmt(entry.total_premium)}</span>
-      </div>
-      <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:5 }}>
-        <div style={{ flex:1, height:4, background:"#0e1a24", position:"relative", overflow:"hidden" }}>
-          <div style={{ position:"absolute", left:0, top:0, bottom:0, width:`${barPct}%`, background:daysC, opacity:0.85, transition:"width 0.4s" }}/>
-        </div>
-        <span style={{ fontSize:9, color:daysC, fontWeight:700, minWidth:70, textAlign:"right" }}>
-          {days}d building
-        </span>
-        <span style={{ fontSize:9, fontWeight:700, color:size.color, border:`1px solid ${size.color}55`, padding:"1px 6px", minWidth:54, textAlign:"center" }}>
-          {size.label} {size.pct}
-        </span>
-      </div>
-      {rec && (
-        <div style={{ fontSize:9, color:"#6080a0", lineHeight:1.5, background:"#050a10", border:"1px solid #0e1a24", padding:"5px 8px" }}>
-          <span style={{ color:rec.color, fontWeight:700 }}>{rec.emoji} {rec.name}</span>
-          <span style={{ color:"#7591a8" }}> · {rec.risk} · {(PROF[entry.sqType]||{}).dte||"—"} DTE</span>
-          {entry.latest_strike && <div style={{ color:"#6e88a0", marginTop:2 }}>Last seen: {entry.latest_strike}{entry.latest_expiry?" "+entry.latest_expiry:""}</div>}
-        </div>
-      )}
-      <div style={{ display:"flex", gap:12, marginTop:6, fontSize:10, color:"#7591a8", flexWrap:"wrap" }}>
-        <span>hits <b style={{color:"#a7c0d4"}}>{entry.sighting_count}</b></span>
-        <span>first <b style={{color:"#a7c0d4"}}>{entry.first_seen}</b></span>
-        <span>last <b style={{color:"#a7c0d4"}}>{entry.last_seen}</b></span>
-        {entry.max_win_prob > 0 && <span>peak win <b style={{color:entry.max_win_prob>=70?"#00ff88":entry.max_win_prob>=55?"#ffe033":"#ff9955"}}>{entry.max_win_prob}%</b></span>}
-      </div>
-    </div>
-  );
-}
-
-function TopList({ entries, sortMode, emptyLabel }) {
-  if (!entries || entries.length === 0) {
-    return (
-      <div style={{ padding:32, textAlign:"center" }}>
-        <div style={{ fontSize:11, color:"#1e2e3e" }}>No 30-day builds yet</div>
-        <div style={{ fontSize:9, color:"#0e1a24", marginTop:4 }}>{emptyLabel || "Run a scan to start recording."}</div>
-      </div>
-    );
-  }
-  return (
-    <div>
-      {entries.map((e,i) => <TopCard key={`${e.ticker}-${e.sqType}`} entry={e} rank={i+1} sortMode={sortMode}/>)}
-    </div>
-  );
-}
-
-// ── CARD ──────────────────────────────────────────────────────────────────────
-function Card({ p, open, onToggle, pos, onSave, isNew, macroBias }) {
-  const sigDef  = ALL[p.sig] || ALL[p.sqType] || { label:"SIGNAL", color:"#555", icon:"·", cat:p.cat };
-  const sqT     = SQ[p.sqType] || FL[p.sqType];
-  const td      = Math.max(1, Math.min(21, parseInt(p.trade_day||p.day||1)));
-  const hs      = getHoldStatus(td, p.sqType);
-  const sc      = parseInt(p.staircase_days||0);
-  const sh      = p.short || {};
-  const prof    = PROF[p.sqType] || PROF.short_squeeze;
-  const isEW    = sc >= 3 && !p.sweepOk && p.cat !== "macro";
-  const strats  = getBestStrats(p.sqType, !!p.iv?.elevated);
-  const guidance= getGuidance(p);
-  const accent  = sqT?.color || sigDef.color;
-  const tech    = getTechnicalRead(p, macroBias);
-
-  // Position tracker state (now collapsible section, not a tab)
-  const [posOpen, setPosOpen] = useState(!!pos?.entryPrice);
-  const [ep,   setEp]   = useState(pos?.entryPrice || "");
-  const [cp,   setCp]   = useState(pos?.currentPrice || "");
-  const [stop, setStop] = useState(pos?.stopPrice || "");
-  const [note, setNote] = useState(pos?.note || "");
-  const [saved,setSaved]= useState(false);
-
-  const entryN   = parseFloat(ep);
-  const currentN = parseFloat(cp);
-  const stopN    = parseFloat(stop);
-  const pnlPct   = (!isNaN(entryN) && !isNaN(currentN) && entryN > 0) ? ((currentN - entryN) / entryN * 100).toFixed(1) : null;
-  const stopHit  = (!isNaN(currentN) && !isNaN(stopN) && stopN > 0 && currentN <= stopN);
-  const lockNudge= (pnlPct !== null && parseFloat(pnlPct) >= 50);
-  const savePos  = () => { onSave({ entryPrice:ep, currentPrice:cp, stopPrice:stop, note }); setSaved(true); setTimeout(()=>setSaved(false),2000); };
+// ─── SIGNAL CARD ───────────────────────────────────────────────────────────────
+function SignalCard({ p, open, onToggle, macroBias }) {
+  const def   = ALL[p.sqType] || ALL[p.sig] || { label:"Signal", color:C.blue, icon:"·" };
+  const prof  = PROF[p.sqType] || PROF.short_squeeze;
+  const td    = Math.max(1, Math.min(21, parseInt(p.trade_day || 1)));
+  const hs    = getHoldStatus(td, p.sqType);
+  const sc    = parseInt(p.staircase_days || 0);
+  const tech  = getTechnicalRead(p, macroBias);
+  const strat = getBestStrat(p.sqType, tech.ivHigh);
+  const sh    = p.short || {};
 
   return (
-    <div style={{ marginBottom:8, border:`1px solid ${open?accent+"66":isNew?accent+"33":"#13202e"}`, background:open?"#080e16":isNew?"#070d15":"#070c12", transition:"background 2s", borderRadius:4 }}>
-      {/* ═══ COLLAPSED ROW ═══ */}
-      <div onClick={onToggle} style={{ display:"flex", alignItems:"center", gap:14, padding:"14px 18px", cursor:"pointer" }}>
-        <span style={{ fontSize:24, flexShrink:0 }}>{sqT?.icon||sigDef.icon}</span>
-        <div style={{ minWidth:0, flex:1 }}>
-          <div style={{ display:"flex", alignItems:"center", gap:10, flexWrap:"wrap", marginBottom:6 }}>
-            <span style={{ fontSize:20, fontWeight:700, color:"#f0f6ff", letterSpacing:"0.01em" }}>{p.ticker}</span>
-            <span style={{ fontSize:11, padding:"3px 9px", background:accent+"1f", border:`1px solid ${accent}55`, color:accent, fontWeight:700, letterSpacing:"0.1em", borderRadius:3 }}>{sqT?.label||sigDef.label}</span>
-            {/* VERDICT CHIP — shows on collapsed row so you see CALLS/PUTS/CASH/COIN FLIP at a glance */}
-            <span style={{ fontSize:12, padding:"3px 11px", background:tech.verdictColor+"25", border:`1.5px solid ${tech.verdictColor}`, color:tech.verdictColor, fontWeight:800, letterSpacing:"0.1em", borderRadius:3 }}>
-              {tech.verdict}{tech.verdict==="PENDING"?"":` · ${tech.verdictConf}%`}
+    <div style={{ ...s.card, marginBottom:8, border:`1px solid ${open ? def.color+"55" : C.border}`, transition:"border-color .15s" }}>
+      <div onClick={onToggle} style={{ display:"flex", alignItems:"center", gap:12, padding:"14px 16px", cursor:"pointer" }}>
+        <span style={{ fontSize:20, flexShrink:0 }}>{def.icon}</span>
+        <div style={{ flex:1, minWidth:0 }}>
+          <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:6, flexWrap:"wrap" }}>
+            <span style={{ fontSize:18, fontWeight:700, color:C.text }}>{p.ticker}</span>
+            <Badge color={def.color}>{def.label}</Badge>
+            <span style={{ fontSize:11, fontWeight:700, padding:"2px 8px", borderRadius:4, background:tech.verdictColor+"28", border:`1.5px solid ${tech.verdictColor}88`, color:tech.verdictColor }}>
+              {tech.verdict}{tech.verdictConf > 0 ? ` ${tech.verdictConf}%` : ""}
             </span>
-            {isEW && <span style={{ fontSize:11, color:"#00ddff", background:"#001418", border:"1px solid #00ddff55", padding:"2px 8px", borderRadius:3 }}>👀 EARLY</span>}
-            {sc>=3 && !isEW && <span style={{ fontSize:11, color:"#00ddff", fontWeight:700 }}>📊 {sc}d staircase</span>}
-            {p.sweepOk && p.dpOk && <span style={{ fontSize:11, color:"#ffe033", fontWeight:700 }}>⚡ BOTH</span>}
-            {p.gex?.bias==="short_gamma" && <span title="Dealers short gamma — squeeze amplified" style={{ fontSize:11, color:"#ff88cc", fontWeight:700 }}>γ↑ SHORT</span>}
-            {p.gex?.bias==="long_gamma"  && <span title="Dealers long gamma — flush amplified" style={{ fontSize:11, color:"#ff6600", fontWeight:700 }}>γ↓ LONG</span>}
-            {p.news?.any && <span title={p.news.latest||""} style={{ fontSize:11, color:"#ff9955", fontWeight:600 }}>📰 {p.news.catalyst_type||"news"}{p.news.hours_ago!=null?` ${p.news.hours_ago}h`:""}</span>}
-            {p.earnings?.within_14_days && <span style={{ fontSize:11, color:"#ff4444", fontWeight:700 }}>📅 EARNINGS</span>}
+            {sc >= 3 && <Badge color={C.blue}>📊 {sc}d staircase</Badge>}
+            {p.sweepOk && p.dpOk && <Badge color={C.yellow}>⚡ Confirmed</Badge>}
+            {p.earnings?.within_14_days && <Badge color={C.red}>📅 Earnings</Badge>}
           </div>
-          <div style={{ fontSize:13, color:"#9fb5c8", display:"flex", gap:16, flexWrap:"wrap", fontFamily:"'JetBrains Mono','SF Mono',Menlo,Consolas,monospace" }}>
-            <span><b style={{color:"#d0deec"}}>{p.strike}</b> · {p.expiry}</span>
-            <span style={{color:"#b8c9dc", fontWeight:700}}>{fmt(p.premium)}</span>
-            <span>{p.time}</span>
-            {pos?.entryPrice && <span style={{color:"#44ffbb", fontWeight:700}}>IN @ ${pos.entryPrice}</span>}
+          <div style={{ display:"flex", gap:16, flexWrap:"wrap" }}>
+            <span style={{ fontSize:13, color:C.textMuted, fontFamily:"monospace" }}>{p.strike} · {p.expiry}</span>
+            <span style={{ fontSize:13, fontWeight:600, color:C.text }}>{fmt(p.premium)}</span>
+            <span style={{ fontSize:12, color:C.textMuted }}>{p.time}</span>
           </div>
         </div>
-        <div style={{ display:"flex", alignItems:"center", gap:14, flexShrink:0 }}>
-          <WinCircle prob={p.winProb}/>
-          <div style={{ textAlign:"right", minWidth:90 }}>
-            <div style={{ fontSize:11, fontWeight:700, color:hs.color, letterSpacing:"0.1em" }}>{hs.label}</div>
-            <div style={{ fontSize:12, color:"#8aabc2", marginTop:3 }}>Day {td} of {prof.holdDays}</div>
-          </div>
-          <span style={{ fontSize:14, color:"#7591a8" }}>{open?"▲":"▼"}</span>
+        <div style={{ textAlign:"right", flexShrink:0 }}>
+          <div style={{ fontSize:12, fontWeight:700, color:hs.color, marginBottom:3 }}>{hs.label}</div>
+          <div style={{ fontSize:11, color:C.textMuted }}>Day {td}/{prof.holdDays}</div>
+          {p.winProb !== null && <div style={{ marginTop:6, width:80 }}><WinBar prob={p.winProb}/></div>}
         </div>
+        <div style={{ fontSize:16, color:C.textDim, marginLeft:4 }}>{open ? "▲" : "▼"}</div>
       </div>
 
-      {/* ═══ EXPANDED — NO TABS, SINGLE SCROLL WITH CLEAR SECTIONS ═══ */}
       {open && (
-        <div className="slide-in" style={{ borderTop:`1px solid ${accent}33`, padding:"0" }}>
-
-          {/* ─── 1. VERDICT BANNER (big, prominent, always first) ─── */}
-          <div style={{ padding:"20px 22px", background:tech.verdictColor+"0f", borderBottom:`2px solid ${tech.verdictColor}44`, display:"flex", gap:18, alignItems:"center" }}>
-            <div style={{ flex:1 }}>
-              <div style={{ fontSize:11, color:tech.verdictColor, fontWeight:700, letterSpacing:"0.18em", marginBottom:6 }}>VERDICT</div>
-              <div className="verdict-big" style={{ color:tech.verdictColor, marginBottom:6 }}>{tech.verdict}</div>
-              <div style={{ fontSize:13, color:"#b5c8dc", lineHeight:1.65 }}>{tech.verdictReason}</div>
+        <div className="fade-in">
+          <Divider/>
+          <div style={{ padding:"16px 20px", background:tech.verdictColor+"0d", borderBottom:`1px solid ${tech.verdictColor}33`, display:"flex", justifyContent:"space-between", alignItems:"center", gap:16, flexWrap:"wrap" }}>
+            <div>
+              <div style={{ fontSize:11, color:tech.verdictColor, fontWeight:700, letterSpacing:"0.12em", marginBottom:4 }}>VERDICT</div>
+              <div style={{ fontSize:28, fontWeight:800, color:tech.verdictColor, letterSpacing:"0.01em" }}>{tech.verdict}</div>
+              <div style={{ fontSize:13, color:C.textMuted, marginTop:4, maxWidth:480, lineHeight:1.6 }}>{tech.verdictReason}</div>
             </div>
-            <div style={{ textAlign:"center", padding:"12px 18px", background:"#040810", border:`1px solid ${tech.verdictColor}55`, borderRadius:6, minWidth:110 }}>
-              <div style={{ fontSize:11, color:"#8aabc2", letterSpacing:"0.14em" }}>CONFIDENCE</div>
-              <div style={{ fontSize:26, fontWeight:800, color:tech.verdictColor, margin:"4px 0" }}>{tech.verdictConf}%</div>
-              <div style={{ fontSize:11, color:"#7591a8" }}>{tech.verdictConf>=75?"HIGH":tech.verdictConf>=55?"MODERATE":"LOW"}</div>
+            <div style={{ textAlign:"center", padding:"12px 20px", background:C.surface, border:`1px solid ${tech.verdictColor}44`, borderRadius:8 }}>
+              <div style={{ fontSize:11, color:C.textMuted, marginBottom:2 }}>CONFIDENCE</div>
+              <div style={{ fontSize:28, fontWeight:800, color:tech.verdictColor }}>{tech.verdictConf}%</div>
+              <div style={{ fontSize:11, color:C.textMuted }}>{tech.verdictConf >= 75 ? "HIGH" : tech.verdictConf >= 55 ? "MODERATE" : "LOW"}</div>
             </div>
           </div>
 
-          {/* ─── 2. ICHIMOKU CLOUD (tech bias source — full math) ─── */}
-          {tech.ichimoku ? (
-            <div style={{ padding:"18px 22px", background:"#060d15", borderBottom:"1px solid #111d28" }}>
-              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14, gap:12, flexWrap:"wrap" }}>
-                <div>
-                  <div className="sec-label">ICHIMOKU · 5M · {tech.ichimoku.bars} BARS</div>
-                  <div style={{ fontSize:22, fontWeight:800, marginTop:6, color: tech.ichimoku.bias==="BULLISH"?"#00ff88":tech.ichimoku.bias==="BEARISH"?"#ff3355":"#7aaed0", letterSpacing:"0.02em" }}>
-                    {tech.ichimoku.bias} · {tech.ichimoku.strength}
-                  </div>
-                </div>
-                <div style={{ textAlign:"right" }}>
-                  <div className="label">CLOSE</div>
-                  <div style={{ fontSize:22, fontWeight:700, color:"#eaf2ff", fontFamily:"'JetBrains Mono','SF Mono',Menlo,Consolas,monospace" }}>
-                    ${tech.ichimoku.close.toFixed(2)}
-                  </div>
-                </div>
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:0, borderBottom:`1px solid ${C.border}` }}>
+            {[
+              { label:"ICHIMOKU (5m)", value: tech.ichimoku ? `${tech.ichimoku.bias} · ${tech.ichimoku.strength}` : "PENDING", color: tech.ichimoku?.bias === "BULLISH" ? C.green : tech.ichimoku?.bias === "BEARISH" ? C.red : C.textMuted, sub: tech.ichimoku?.summary || "No 5m data yet" },
+              { label:"MACRO BIAS",    value: tech.macroBias, color: tech.macroBias === "BULLISH" ? C.green : tech.macroBias === "BEARISH" ? C.red : C.textMuted, sub: "from market tide" },
+              { label:"IV",            value: tech.ivHigh ? "ELEVATED" : tech.ichimoku ? "NORMAL" : "—", color: tech.ivHigh ? C.yellow : C.green, sub: tech.ivHigh ? "Use spread to cut IV risk" : "Naked call/put ok" },
+            ].map((item, i) => (
+              <div key={i} style={{ padding:"14px 20px", borderRight: i < 2 ? `1px solid ${C.border}` : "none" }}>
+                <div style={s.section}>{item.label}</div>
+                <div style={{ fontSize:15, fontWeight:700, color:item.color, marginTop:6 }}>{item.value}</div>
+                <div style={{ fontSize:11, color:C.textMuted, marginTop:2 }}>{item.sub}</div>
               </div>
-              <div className="body-text-lg" style={{ marginBottom:14, color:"#c4d5e8", padding:"10px 14px", background:"#040810", borderLeft:`3px solid ${tech.ichimoku.bias==="BULLISH"?"#00ff88":tech.ichimoku.bias==="BEARISH"?"#ff3355":"#7aaed0"}`, borderRadius:3 }}>
-                {tech.ichimoku.summary}
-              </div>
-              {/* Ichimoku component values — the actual math in one glance */}
-              <div style={{ display:"grid", gridTemplateColumns:"repeat(4, 1fr)", gap:10, marginBottom:12 }}>
-                {[
-                  ["TENKAN (9)", tech.ichimoku.tenkan, "#66ccff"],
-                  ["KIJUN (26)", tech.ichimoku.kijun,  "#ffe033"],
-                  ["SPAN A", tech.ichimoku.spanA, tech.ichimoku.cloudColor==="green"?"#00ff88":"#ff9955"],
-                  ["SPAN B (52)", tech.ichimoku.spanB, tech.ichimoku.cloudColor==="green"?"#ff9955":"#ff3355"],
-                ].map(([l,v,c])=>(
-                  <div key={l} style={{ padding:"10px 12px", background:"#040810", border:`1px solid ${c}33`, borderRadius:4, textAlign:"center" }}>
-                    <div className="label" style={{ marginBottom:4, color:c+"cc", fontSize:11 }}>{l}</div>
-                    <div style={{ fontSize:15, fontWeight:700, color:c, fontFamily:"'JetBrains Mono','SF Mono',Menlo,Consolas,monospace" }}>${v.toFixed(2)}</div>
+            ))}
+          </div>
+
+          <div style={{ padding:"16px 20px", borderBottom:`1px solid ${C.border}` }}>
+            <div style={{ ...s.section, marginBottom:10 }}>WHY THIS SETUP</div>
+            <div style={{ fontSize:13, color:"#c9d1d9", lineHeight:1.75 }}>
+              {p.sqType === "staircase"     && `Institutions quietly accumulating ${p.ticker} through dark pools for ${sc} consecutive days at ${p.staircase_zone || "the same zone"}. Classic pre-squeeze — when call sweeps appear, the squeeze fires.`}
+              {p.sqType === "short_squeeze" && `Shorts are trapped. High short interest + institutional accumulation = forced covering. ${sc >= 3 ? `Staircase visible (${sc}d) adds fuel.` : "Watch for staircase confirmation."}`}
+              {p.sqType === "gamma_squeeze" && "Dealers SHORT gamma — as price rises they must buy stock to hedge, accelerating the move. Violent and fast, days not weeks."}
+              {p.sqType === "delta_squeeze" && "Massive call buying forcing dealers to buy stock for delta hedging. Sustained heavy call volume mechanically drives price up."}
+              {p.sqType === "liquidity_sq"  && "Tiny float = very few shares. Small buying creates massive moves. Staircase on low float is extremely powerful."}
+              {p.sqType === "ftd_squeeze"   && "FTDs elevated — shorts sold shares never borrowed. T+35 buy-in rule forces mandatory covering. Rips without warning."}
+              {p.sqType === "vol_squeeze"   && "IV compressed like a coiled spring. When volatility snaps back, premium and underlying move violently."}
+              {p.sqType === "cap_flush"     && "Smart money exiting aggressively. Put sweeps + dark pool sells = institutions getting out fast. Sharp, sustained drop incoming."}
+              {p.sqType === "gamma_flush"   && "Dealers LONG gamma — they sell into every bounce, amplifying drops. Mirror of gamma squeeze. Bearish and mechanical."}
+              {p.sqType === "stop_hunt"     && "Price pushed below support to trigger stops. After stops clear, the real move begins. Day trade only — resolves intraday."}
+              {p.sqType === "margin_flush"  && "Leveraged longs being margin called. Forced selling at any price. Large dark pool sells + no news = classic margin flush."}
+              {p.sqType === "vix_flush"     && "VIX spiking hard. Buy UVXY calls (not SPY puts — IV too expensive) to ride the volatility spike directly."}
+              {p.sqType === "liq_flush"     && "Thin bids + market sell orders cascading. Watch for dark pool buy prints as the reversal signal."}
+              {p.cat   === "macro"          && "Use as overall market bias. Bullish = size up on squeezes. Bearish = size down everything, don't fight the tape."}
+            </div>
+          </div>
+
+          {p.levels && (
+            <div style={{ padding:"16px 20px", borderBottom:`1px solid ${C.border}` }}>
+              <div style={{ ...s.section, marginBottom:12 }}>KEY LEVELS</div>
+              <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:10 }}>
+                {[["Support", C.green, p.levels.support], ["Entry Zone", C.blue, p.levels.entry_zone], ["Resistance", C.yellow, p.levels.resistance], ["Target", C.purple, p.levels.target]].map(([l,c,v]) => (
+                  <div key={l} style={{ padding:"10px", background:C.surfaceHigh, border:`1px solid ${c}33`, borderRadius:6, textAlign:"center" }}>
+                    <div style={{ fontSize:11, color:c, fontWeight:600, marginBottom:4 }}>{l}</div>
+                    <div style={{ fontSize:16, fontWeight:700, color:c }}>{v || "—"}</div>
                   </div>
                 ))}
-              </div>
-              {/* Price vs Cloud + signals */}
-              <div style={{ display:"grid", gridTemplateColumns:"repeat(3, 1fr)", gap:10 }}>
-                <div style={{ padding:"10px 12px", background:"#040810", border:"1px solid #15212e", borderRadius:4 }}>
-                  <div className="label" style={{ marginBottom:4 }}>PRICE vs CLOUD</div>
-                  <div style={{ fontSize:13, fontWeight:700, color: tech.ichimoku.priceZone==="above"?"#00ff88":tech.ichimoku.priceZone==="below"?"#ff3355":"#ffaa44" }}>
-                    {tech.ichimoku.priceZone==="above"?"▲ ABOVE CLOUD":tech.ichimoku.priceZone==="below"?"▼ BELOW CLOUD":"◆ INSIDE CLOUD"}
-                  </div>
-                  <div className="mini" style={{marginTop:3}}>
-                    Cloud: ${tech.ichimoku.cloudBot.toFixed(2)}–${tech.ichimoku.cloudTop.toFixed(2)}
-                  </div>
-                </div>
-                <div style={{ padding:"10px 12px", background:"#040810", border:"1px solid #15212e", borderRadius:4 }}>
-                  <div className="label" style={{ marginBottom:4 }}>TK CROSS</div>
-                  <div style={{ fontSize:13, fontWeight:700, color: tech.ichimoku.tkCross==="bullish"?"#00ff88":tech.ichimoku.tkCross==="bearish"?"#ff3355":"#7aaed0" }}>
-                    {tech.ichimoku.tkCross==="bullish"?"▲ BULL CROSS":tech.ichimoku.tkCross==="bearish"?"▼ BEAR CROSS":tech.ichimoku.tenkan > tech.ichimoku.kijun?"T > K (bull posture)":tech.ichimoku.tenkan < tech.ichimoku.kijun?"T < K (bear posture)":"T = K (flat)"}
-                  </div>
-                  <div className="mini" style={{marginTop:3}}>Tenkan vs Kijun</div>
-                </div>
-                <div style={{ padding:"10px 12px", background:"#040810", border:"1px solid #15212e", borderRadius:4 }}>
-                  <div className="label" style={{ marginBottom:4 }}>CHIKOU</div>
-                  <div style={{ fontSize:13, fontWeight:700, color: tech.ichimoku.chikouConfirm==="bullish"?"#00ff88":tech.ichimoku.chikouConfirm==="bearish"?"#ff3355":"#7aaed0" }}>
-                    {tech.ichimoku.chikouConfirm==="bullish"?"▲ CONFIRMS BULL":tech.ichimoku.chikouConfirm==="bearish"?"▼ CONFIRMS BEAR":"— NO CONFIRM"}
-                  </div>
-                  <div className="mini" style={{marginTop:3}}>Close vs 26 bars ago</div>
-                </div>
-              </div>
-            </div>
-          ) : (
-            <div style={{ padding:"14px 22px", background:"#060d15", borderBottom:"1px solid #111d28" }}>
-              <div className="sec-label" style={{ marginBottom:6 }}>ICHIMOKU · 5M</div>
-              <div style={{ fontSize:13, color:"#8aabc2", lineHeight:1.6 }}>
-                No 5m OHLC data fetched for {p.ticker} this scan cycle. Ichimoku only runs on top-12 tickers by premium — if this ticker ranks lower, tech bias defaults to PENDING and verdict holds for next scan.
               </div>
             </div>
           )}
 
-          {/* ─── 3. MACRO + IV + SUGGESTED STRATEGY ─── */}
-          <div style={{ padding:"14px 22px", background:"#050b12", borderBottom:"1px solid #111d28" }}>
-            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 2fr", gap:14, alignItems:"center" }}>
-              <div>
-                <div className="label" style={{ marginBottom:4 }}>MACRO</div>
-                <div style={{ fontSize:16, fontWeight:700, color:tech.macroBias==="BULLISH"?"#00ff88":tech.macroBias==="BEARISH"?"#ff3355":"#7aaed0" }}>{tech.macroBias}</div>
-                <div className="mini" style={{marginTop:2}}>from market tide</div>
-              </div>
-              <div>
-                <div className="label" style={{ marginBottom:4 }}>IV RANK</div>
-                <div style={{ fontSize:16, fontWeight:700, color:tech.ivRank===null?"#7aaed0":tech.ivRank>=55?"#ffaa44":"#44ffbb" }}>
-                  {tech.ivRank===null?"—":tech.ivRank+"%"}
-                </div>
-                <div className="mini" style={{marginTop:2}}>{tech.ivRank===null?"pending":tech.ivHigh?"elevated":"normal"}</div>
-              </div>
-              <div>
-                <div className="label" style={{ marginBottom:4 }}>SUGGESTED STRATEGY</div>
-                <div style={{ display:"flex", gap:8, alignItems:"center", flexWrap:"wrap" }}>
-                  <span style={{ fontSize:14, fontWeight:700, color:"#ffe033", padding:"5px 10px", background:"#141008", border:"1px solid #ffe03355", borderRadius:4 }}>
-                    {tech.suggestedStrategy}
-                  </span>
-                  {tech.creditAlt && <span style={{ fontSize:12, color:"#aa88ff" }}>· or {tech.creditAlt}</span>}
-                </div>
-                <div className="mini" style={{marginTop:3}}>DTE {prof.dte} · hold {prof.hold}</div>
-              </div>
-            </div>
-          </div>
-
-          {/* ─── 4. WHY — plain-English explanation + news ─── */}
-          <div style={{ padding:"16px 22px", borderBottom:"1px solid #111d28" }}>
-            <div className="sec-label" style={{ marginBottom:10 }}>WHY THIS SETUP</div>
-            <div className="body-text-lg" style={{ marginBottom:12 }}>
-              {p.sqType==="staircase"     && `Institutions quietly buying ${p.ticker} through dark pools for ${sc} consecutive days at ${p.staircase_zone||"the same zone"}. Classic pre-squeeze. When call sweeps appear on top, the squeeze fires.`}
-              {p.sqType==="short_squeeze" && `Shorts are trapped. High SI + institutional accumulation = explosive forced covering. ${sc>=3?`Staircase visible (${sc}d) adds fuel.`:"Watch for staircase confirmation."}`}
-              {p.sqType==="gamma_squeeze" && "Dealers SHORT gamma. As price rises they must buy stock to hedge — accelerates the move. Violent and fast, days not weeks."}
-              {p.sqType==="delta_squeeze" && "Massive call buying forcing dealers to buy stock for delta hedge. Sustained heavy call volume mechanically drives price up."}
-              {p.sqType==="liquidity_sq"  && "Tiny float = very few shares available. Small buying creates massive moves. Staircase on low float = extremely powerful."}
-              {p.sqType==="ftd_squeeze"   && "FTDs elevated — shorts sold shares they never borrowed. T+35 rule forces mandatory buy-ins. Rips with no warning."}
-              {p.sqType==="vol_squeeze"   && "IV compressed and about to snap. When vol explodes back, premium and underlying move violently. UVXY/VIX sweeps lead."}
-              {p.sqType==="cap_flush"     && "Institutions exiting aggressively. Put sweeps + DP sells = smart money getting out fast. Sharp sustained drop incoming."}
-              {p.sqType==="gamma_flush"   && "Dealers LONG gamma — they sell into every bounce, amplifying drops. Mirror of gamma squeeze. Bearish and mechanical."}
-              {p.sqType==="stop_hunt"     && "Price pushed below support to trigger stops. After stops clear, the real move. Day trade only — resolves intraday."}
-              {p.sqType==="margin_flush"  && "Leveraged longs getting margin called. Forced selling at any price. Large DP sell + no news = classic margin flush."}
-              {p.sqType==="vix_flush"     && "VIX spiking hard. Don't buy SPY puts — IV too expensive. Buy UVXY calls to ride the vol spike directly."}
-              {p.sqType==="liq_flush"     && "Thin bids + market sells cascading. Happens fast in low volume. Watch for DP buy prints as reversal signal."}
-              {p.cat==="macro"            && "Use as overall market bias. Bullish = size up on squeezes. Bearish = size down everything, don't fight the tape."}
-            </div>
-            {p.news?.any && p.news.latest && (
-              <div style={{ padding:"10px 14px", background:"#0e0a05", border:"1px solid #ff995555", borderLeft:"3px solid #ff9955", borderRadius:3, display:"flex", gap:10 }}>
-                <span style={{ fontSize:16, flexShrink:0 }}>📰</span>
-                <div style={{ flex:1 }}>
-                  <div style={{ fontSize:11, color:"#ff9955", fontWeight:700, letterSpacing:"0.1em", marginBottom:3 }}>
-                    LATEST NEWS{p.news.hours_ago!=null?` · ${p.news.hours_ago}h ago`:""}{p.news.catalyst_type?` · ${p.news.catalyst_type.toUpperCase()}`:""}
+          {strat && (
+            <div style={{ padding:"16px 20px", borderBottom:`1px solid ${C.border}` }}>
+              <div style={{ ...s.section, marginBottom:12 }}>RECOMMENDED PLAY</div>
+              <div style={{ background:C.surfaceHigh, border:`1px solid ${strat.color}44`, borderRadius:8, overflow:"hidden" }}>
+                <div style={{ padding:"12px 16px", borderBottom:`1px solid ${strat.color}33`, display:"flex", alignItems:"center", gap:10 }}>
+                  <span style={{ fontSize:20 }}>{strat.emoji}</span>
+                  <div>
+                    <div style={{ fontSize:15, fontWeight:700, color:strat.color }}>{strat.name}</div>
+                    <div style={{ fontSize:11, color:C.textMuted }}>Risk: {strat.risk} · DTE: {prof.dte} · Hold: {prof.hold}</div>
                   </div>
-                  <div style={{ fontSize:13, color:"#d5c0a8", lineHeight:1.6 }}>{p.news.latest}</div>
+                </div>
+                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:0 }}>
+                  {[["→ ENTER", C.blue, strat.how], ["← EXIT", C.green, strat.exit], ["⛔ STOP", C.red, strat.stop]].map(([l,c,v], i) => (
+                    <div key={l} style={{ padding:"12px 16px", borderRight: i < 2 ? `1px solid ${C.border}` : "none" }}>
+                      <div style={{ fontSize:11, fontWeight:700, color:c, marginBottom:6 }}>{l}</div>
+                      <div style={{ fontSize:12, color:C.textMuted, lineHeight:1.65 }}>{v}</div>
+                    </div>
+                  ))}
                 </div>
               </div>
-            )}
-          </div>
+            </div>
+          )}
 
-          {/* ─── 5. KEY LEVELS ─── */}
-          {(p.levels || sc>=2) && (
-            <div style={{ padding:"16px 22px", borderBottom:"1px solid #111d28" }}>
-              <div className="sec-label" style={{ marginBottom:12 }}>KEY LEVELS</div>
-              {p.levels && (
-                <div style={{ display:"grid", gridTemplateColumns:"repeat(4, 1fr)", gap:10, marginBottom:sc>=2?14:0 }}>
-                  {[["SUPPORT","#00ff88",p.levels.support],["ENTRY ZONE","#66ccff",p.levels.entry_zone],["RESISTANCE","#ff9955",p.levels.resistance],["TARGET","#ffe033",p.levels.target]].map(([l,c,v])=>(
-                    <div key={l} style={{ padding:"12px", background:"#040810", border:`1px solid ${c}33`, textAlign:"center", borderRadius:4 }}>
-                      <div className="label" style={{ marginBottom:5, color:c+"cc" }}>{l}</div>
-                      <div style={{ fontSize:16, fontWeight:700, color:c }}>{v||"—"}</div>
+          <div style={{ padding:"16px 20px" }}>
+            <div style={{ ...s.section, marginBottom:12 }}>FLOW DATA</div>
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:10 }}>
+              {[
+                ["Premium",     fmt(p.premium),                                               parseInt(p.premium||0) >= 500000 ? C.green : C.textMuted],
+                ["Size vs OI",  p.oi > 0 ? `${(p.size/p.oi).toFixed(1)}x` : "—",           p.oi > 0 && p.size/p.oi >= 2 ? C.green : C.textMuted],
+                ["Ask Side",    p.ask_pct ? `${(p.ask_pct*100).toFixed(0)}%` : "—",         parseFloat(p.ask_pct||0) >= 0.8 ? C.green : C.textMuted],
+                ["Sweeps",      `${p.sweep_count || 1}x`,                                    (p.sweep_count||1) >= 3 ? C.purple : C.textMuted],
+                ["Short Int",   fmtP(sh.si_pct),                                             parseFloat(sh.si_pct||0) >= 20 ? C.red : parseFloat(sh.si_pct||0) >= 10 ? C.yellow : C.textMuted],
+                ["Days to Cov", sh.days_to_cover ? `${parseFloat(sh.days_to_cover).toFixed(1)}d` : "—", parseFloat(sh.days_to_cover||0) >= 5 ? C.red : C.textMuted],
+                ["Staircase",   sc > 0 ? `${sc}d` : "—",                                   sc >= 5 ? C.green : sc >= 3 ? C.yellow : C.textMuted],
+                ["Win Prob",    p.winProb !== null ? `${p.winProb}%` : "—",                 p.winProb >= 70 ? C.green : p.winProb >= 50 ? C.yellow : C.textMuted],
+              ].map(([l,v,c]) => (
+                <div key={l} style={{ padding:"10px 12px", background:C.surfaceHigh, borderRadius:6, border:`1px solid ${C.border}` }}>
+                  <div style={{ fontSize:11, color:C.textMuted, marginBottom:4 }}>{l}</div>
+                  <div style={{ fontSize:14, fontWeight:700, color:c }}>{v}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── SCANNER TAB ───────────────────────────────────────────────────────────────
+function ScannerTab({ feed, loading, error, soundOn, setSoundOn, onRefresh, paused, setPaused, pollSec, setPollSec, ready, history }) {
+  const [openId,   setOpenId]   = useState(null);
+  const [ticker,   setTicker]   = useState("");
+  const [minPrem,  setMinPrem]  = useState(0);
+  const [minProb,  setMinProb]  = useState(60);
+  const [confOnly, setConfOnly] = useState(false);
+
+  const doFilter = (items) => items
+    .filter(p =>
+      (p.winProb === null || p.winProb >= minProb) &&
+      (!confOnly || (p.sweepOk && p.dpOk)) &&
+      (!ticker.trim() || p.ticker.includes(ticker.trim().toUpperCase())) &&
+      parseInt(p.premium || 0) >= minPrem
+    )
+    .sort((a,b) => ((ALL[a.sig]?.tier||9) - (ALL[b.sig]?.tier||9)) || ((b.winProb||0) - (a.winProb||0)));
+
+  const squeezes = doFilter(feed.filter(p => p.cat === "squeeze"));
+  const flushes  = doFilter(feed.filter(p => p.cat === "flush"));
+  const macros   = doFilter(feed.filter(p => p.cat === "macro"));
+  const mBull = macros.filter(p => p.sig === "macro_bull").length;
+  const mBear = macros.filter(p => p.sig === "macro_bear").length;
+  const bias  = mBull > mBear ? "BULLISH" : mBear > mBull ? "BEARISH" : "NEUTRAL";
+  const biasC = bias === "BULLISH" ? C.green : bias === "BEARISH" ? C.red : C.textMuted;
+  const toggle = id => setOpenId(p => p === id ? null : id);
+  const hcCount = feed.filter(p => p.sweepOk && p.dpOk && (p.winProb||0) >= 65).length;
+  const trackedCount = Object.keys(history || {}).length;
+
+  return (
+    <div style={{ display:"flex", flexDirection:"column", height:"100%" }}>
+      <div style={{ padding:"12px 24px", background:C.surface, borderBottom:`1px solid ${C.border}`, flexShrink:0 }}>
+        <div style={{ display:"flex", alignItems:"center", gap:10, flexWrap:"wrap" }}>
+          <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+            <div className={loading ? "live-dot" : ""} style={{ width:8, height:8, borderRadius:"50%", background: error ? C.red : loading ? C.yellow : paused ? C.textDim : C.green, boxShadow:`0 0 6px ${error?C.red:loading?C.yellow:paused?C.textDim:C.green}66` }}/>
+            <span style={{ fontSize:12, fontWeight:600, color: error ? C.red : loading ? C.yellow : paused ? C.textMuted : C.green }}>
+              {error ? "ERROR" : loading ? "SCANNING…" : paused ? "PAUSED" : "LIVE"}
+            </span>
+          </div>
+          <div style={{ width:1, height:20, background:C.border }}/>
+          <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+            <span style={{ fontSize:11, color:C.textMuted }}>Market:</span>
+            <span style={{ fontSize:12, fontWeight:700, color:biasC }}>{bias}</span>
+          </div>
+          {hcCount > 0 && <span style={s.pill(C.yellow)}>{hcCount} high conv.</span>}
+          {trackedCount > 0 && <span style={s.pill(C.blue)}>{trackedCount} tracked 30d</span>}
+          <div style={{ marginLeft:"auto", display:"flex", gap:8, alignItems:"center", flexWrap:"wrap" }}>
+            <input value={ticker} onChange={e => setTicker(e.target.value.toUpperCase())} placeholder="Ticker…"
+              style={{ ...s.input, width:100, padding:"6px 10px", fontSize:12 }}/>
+            <select value={minPrem} onChange={e => setMinPrem(+e.target.value)}
+              style={{ ...s.input, width:"auto", padding:"6px 10px", fontSize:12, cursor:"pointer" }}>
+              {[0,50000,100000,250000,500000].map(v=><option key={v} value={v}>{v===0?"Any $":v>=1e6?`$${v/1e6}M+`:`$${v/1e3}K+`}</option>)}
+            </select>
+            <select value={minProb} onChange={e => setMinProb(+e.target.value)}
+              style={{ ...s.input, width:"auto", padding:"6px 10px", fontSize:12, cursor:"pointer" }}>
+              {[80,70,60,50,0].map(v=><option key={v} value={v}>{v===0?"Any %":`Win ${v}%+`}</option>)}
+            </select>
+            <select value={pollSec} onChange={e => setPollSec(+e.target.value)}
+              style={{ ...s.input, width:"auto", padding:"6px 10px", fontSize:12, cursor:"pointer" }}>
+              {[60,90,120,180].map(v=><option key={v} value={v}>{v}s</option>)}
+            </select>
+            <button onClick={() => setConfOnly(p=>!p)} style={s.btn(confOnly, C.yellow)}>⚡ Confirmed</button>
+            <button onClick={() => setSoundOn(p=>!p)} style={s.btn(soundOn)}>{soundOn ? "🔔" : "🔕"}</button>
+            <button onClick={onRefresh} disabled={loading} style={{ ...s.btn(false), opacity:loading?.5:1 }}>⟳ Refresh</button>
+            <button onClick={() => setPaused(p=>!p)} style={s.btn(paused, C.blue)}>{paused ? "▶ Resume" : "⏸ Pause"}</button>
+          </div>
+        </div>
+        {error && <div style={{ fontSize:12, color:C.red, marginTop:8, padding:"6px 10px", background:C.red+"11", borderRadius:4 }}>⚠ {error}</div>}
+      </div>
+
+      <div style={{ flex:1, display:"grid", gridTemplateColumns:"1fr 1fr 0.7fr", overflow:"hidden" }}>
+        {[
+          { title:"Squeezes", color:C.green, items:squeezes, icon:"🚀" },
+          { title:"Flushes",  color:C.red,   items:flushes,  icon:"🩸" },
+          { title:"Macro",    color:C.blue,  items:macros,   icon:"📊" },
+        ].map(({ title, color, items, icon }) => (
+          <div key={title} style={{ display:"flex", flexDirection:"column", borderRight:`1px solid ${C.border}`, overflow:"hidden" }}>
+            <div style={{ padding:"12px 16px", background:C.surface, borderBottom:`1px solid ${color}33`, flexShrink:0 }}>
+              <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                <span style={{ fontSize:14 }}>{icon}</span>
+                <span style={{ fontSize:12, fontWeight:700, color, letterSpacing:"0.06em" }}>{title.toUpperCase()}</span>
+                <span style={{ fontSize:11, color:C.textMuted, marginLeft:"auto" }}>{items.length} signals</span>
+              </div>
+              {items.length > 0 && (
+                <div style={{ display:"flex", gap:6, marginTop:8, flexWrap:"wrap" }}>
+                  {items.filter(p=>(p.trade_day||1)<=1).length > 0 && <span style={s.pill(C.green)}>{items.filter(p=>(p.trade_day||1)<=1).length} enter</span>}
+                  {items.filter(p=>(p.staircase_days||0)>=3&&!p.sweepOk).length > 0 && <span style={s.pill(C.blue)}>{items.filter(p=>(p.staircase_days||0)>=3&&!p.sweepOk).length} early</span>}
+                </div>
+              )}
+            </div>
+            <div style={{ overflowY:"auto", flex:1, padding:"10px" }}>
+              {items.length === 0 ? (
+                <div style={{ padding:"40px 20px", textAlign:"center" }}>
+                  <div style={{ fontSize:32, marginBottom:12 }}>{icon}</div>
+                  <div style={{ fontSize:13, color:C.textDim }}>No {title.toLowerCase()} yet</div>
+                  <div style={{ fontSize:11, color:C.textDim, marginTop:4 }}>{ready ? "Scan in progress…" : "Connect to start scanning"}</div>
+                </div>
+              ) : items.map(p => (
+                <SignalCard key={p.id} p={p} open={openId === p.id} onToggle={() => toggle(p.id)} macroBias={bias}/>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── INCOME PLAN TAB ───────────────────────────────────────────────────────────
+function IncomePlanTab({ claudeKey }) {
+  const [goal,       setGoal]    = useState("5000");
+  const [strategy,   setStrat]   = useState("cc");
+  const [stockPrice, setStkPx]   = useState("");
+  const [shares,     setShares]  = useState("100");
+  const [strike,     setStrike]  = useState("");
+  const [premium,    setPrem]    = useState("");
+  const [dte,        setDte]     = useState("30");
+  const [account,    setAcct]    = useState("25000");
+  const [planText,   setPlanText]= useState("");
+  const [loading,    setLoading] = useState(false);
+  const [result,     setResult]  = useState(null);
+
+  const stkN   = parseFloat(stockPrice) || 0;
+  const strN   = parseFloat(strike) || 0;
+  const premN  = parseFloat(premium) || 0;
+  const sharesN= parseInt(shares) || 0;
+  const goalN  = parseFloat(goal) || 0;
+  const acctN  = parseFloat(account) || 0;
+  const contracts = Math.floor(sharesN / 100);
+  const grossPrem = premN * 100 * contracts;
+  const annualized = dte > 0 ? (premN / stkN) * (365 / parseInt(dte || 30)) * 100 : 0;
+  const tradesNeeded = goalN > 0 && grossPrem > 0 ? Math.ceil(goalN / grossPrem) : null;
+  const monthlyRunRate = grossPrem * (30 / parseInt(dte || 30));
+
+  const STRATS_INFO = {
+    cc:  { name:"Covered Call",       desc:"Sell OTM calls against shares you own. Generates income but caps upside above strike.", riskNote:"You must own 100 shares per contract. Max profit = premium + (strike − entry). Risk: shares called away if price rises above strike." },
+    csp: { name:"Cash-Secured Put",   desc:"Sell OTM puts with cash to cover assignment. You get paid to wait for a price you'd buy at.", riskNote:"Must hold cash = strike × 100 per contract. Max loss: strike price (stock goes to zero). Best used on stocks you want to own." },
+    cs:  { name:"Credit Spread",      desc:"Sell one option, buy a further OTM option for protection. Defined risk, defined reward.", riskNote:"Max gain = net premium. Max loss = spread width − premium. Use when IV is elevated." },
+    div: { name:"Dividend Income",    desc:"Collect dividends from high-yield stocks while optionally selling covered calls on top.", riskNote:"Research payout sustainability — high yield can signal a dividend cut. Consider covered calls on top for extra income." },
+  };
+  const info = STRATS_INFO[strategy];
+
+  async function generatePlan() {
+    if (!claudeKey) return;
+    setLoading(true); setPlanText(""); setResult(null);
+    try {
+      const sys = `You are an expert options income trader. Generate a clear, actionable monthly income plan.
+Return a JSON object: {"summary":"one paragraph","trades":[{"week":1,"action":"sell AAPL $170 cc","premium":1.50,"max_profit":150,"max_loss":"shares called away at $170","notes":"rolls if price touches $168"}],"risks":["list of key risks"],"monthly_projection":{"low":number,"mid":number,"high":number},"key_rules":["list of discipline rules"]}`;
+      const msg = `Create a ${strategy === "cc" ? "covered call" : strategy === "csp" ? "cash-secured put" : strategy === "cs" ? "credit spread" : "dividend income"} income plan.
+
+Account: $${acctN.toLocaleString()}
+Monthly income goal: $${goalN.toLocaleString()}
+${stkN > 0 ? `Stock price: $${stkN}` : ""}
+${strN > 0 ? `Strike: $${strN}` : ""}
+${premN > 0 ? `Premium: $${premN}` : ""}
+${dte ? `DTE: ${dte}` : ""}
+${sharesN > 0 ? `Shares: ${sharesN} (${contracts} contracts)` : ""}
+Context: ${planText || "Generate a general income plan for this strategy and account size."}`;
+      const resp = await fetch("https://api.anthropic.com/v1/messages", {
+        method:"POST",
+        headers:{ "Content-Type":"application/json", "x-api-key":claudeKey, "anthropic-version":"2023-06-01", "anthropic-dangerous-direct-browser-access":"true" },
+        body: JSON.stringify({ model:"claude-sonnet-4-6", max_tokens:1500, system:sys, messages:[{role:"user",content:msg}] })
+      });
+      const data = await resp.json();
+      const text = (data.content||[]).find(b=>b.type==="text")?.text || "{}";
+      const cleaned = text.replace(/```json|```/g,"").trim();
+      try { setResult(JSON.parse(cleaned)); } catch { setPlanText(text); }
+    } catch(e) { setPlanText("Error: " + (e.message || String(e))); }
+    finally { setLoading(false); }
+  }
+
+  return (
+    <div style={{ maxWidth:900, margin:"0 auto", padding:"28px 24px" }}>
+      <h2 style={{ fontSize:22, fontWeight:700, color:C.text, marginBottom:4 }}>Income Plan Builder</h2>
+      <p style={{ fontSize:13, color:C.textMuted, marginBottom:28, lineHeight:1.6 }}>Set your monthly income goal and strategy. The calculator shows your projection, and Claude can generate a personalized trade plan.</p>
+
+      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:16, marginBottom:24 }}>
+        <div style={s.card}><div style={{ padding:"16px 20px" }}><label style={s.label}>Monthly Income Goal ($)</label><input type="number" value={goal} onChange={e=>setGoal(e.target.value)} style={s.input} placeholder="5000"/></div></div>
+        <div style={s.card}><div style={{ padding:"16px 20px" }}><label style={s.label}>Account Size ($)</label><input type="number" value={account} onChange={e=>setAcct(e.target.value)} style={s.input} placeholder="25000"/></div></div>
+      </div>
+
+      <div style={{ ...s.card, marginBottom:24 }}>
+        <div style={{ padding:"16px 20px 0" }}><div style={s.section}>Select Strategy</div></div>
+        <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:0 }}>
+          {Object.entries(STRATS_INFO).map(([key, st], i) => (
+            <div key={key} onClick={() => setStrat(key)}
+              style={{ padding:"14px 16px", cursor:"pointer", background:strategy===key?C.green+"11":"transparent", borderTop:`3px solid ${strategy===key?C.green:"transparent"}`, borderRight:i<3?`1px solid ${C.border}`:"none", transition:"all .15s" }}>
+              <div style={{ fontSize:13, fontWeight:700, color:strategy===key?C.green:C.text, marginBottom:4 }}>{st.name}</div>
+              <div style={{ fontSize:11, color:C.textMuted, lineHeight:1.5 }}>{st.desc.split(".")[0]}.</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:16, marginBottom:24 }}>
+        <div style={s.card}>
+          <div style={{ padding:"16px 20px" }}>
+            <div style={{ ...s.section, marginBottom:14 }}>Trade Parameters</div>
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+              {[["Stock / Underlying Price ($)", stockPrice, setStkPx, "150.00"],["Strike Price ($)", strike, setStrike, "155.00"],["Premium / Credit ($)", premium, setPrem, "1.50"],["DTE (Days to Expiry)", dte, setDte, "30"],[strategy === "cc" ? "Shares Owned" : "Contracts", shares, setShares, "100"]].map(([l,v,s2,ph]) => (
+                <div key={l}><label style={s.label}>{l}</label><input type="number" value={v} onChange={e=>s2(e.target.value)} placeholder={ph} style={s.input}/></div>
+              ))}
+            </div>
+          </div>
+        </div>
+        <div style={s.card}>
+          <div style={{ padding:"16px 20px" }}>
+            <div style={{ ...s.section, marginBottom:14 }}>Projection</div>
+            {[["Contracts",`${contracts}`,C.text],["Premium per Trade",`$${(premN*100*contracts).toFixed(2)}`,C.green],["Annualized Return",`${annualized.toFixed(1)}%`,annualized>15?C.green:annualized>8?C.yellow:C.textMuted],["Monthly Run Rate",`$${monthlyRunRate.toFixed(0)}`,monthlyRunRate>=goalN?C.green:C.yellow],["Trades to Hit Goal",tradesNeeded!==null?`${tradesNeeded} trades/mo`:"—",tradesNeeded&&tradesNeeded<=4?C.green:C.yellow],["Account Return/Mo",acctN>0?`${(monthlyRunRate/acctN*100).toFixed(1)}%/mo`:"—",C.blue]].map(([l,v,c]) => (
+              <div key={l} style={{ display:"flex", justifyContent:"space-between", padding:"8px 0", borderBottom:`1px solid ${C.border}` }}>
+                <span style={{ fontSize:12, color:C.textMuted }}>{l}</span>
+                <span style={{ fontSize:13, fontWeight:700, color:c }}>{v}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div style={{ padding:"12px 16px", background:C.yellow+"11", border:`1px solid ${C.yellow}44`, borderRadius:8, marginBottom:24, fontSize:12, color:"#c9a03a", lineHeight:1.65 }}>
+        <strong>Risk:</strong> {info.riskNote}
+      </div>
+
+      <div style={s.card}>
+        <div style={{ padding:"20px" }}>
+          <div style={{ ...s.section, marginBottom:12 }}>AI Income Plan Generator</div>
+          <p style={{ fontSize:12, color:C.textMuted, marginBottom:14, lineHeight:1.6 }}>Add context (tickers you like, risk tolerance, time available) and Claude generates a detailed monthly trade plan.</p>
+          <textarea value={planText} onChange={e=>setPlanText(e.target.value)} rows={3} placeholder="e.g. I prefer AAPL, MSFT, SPY. Conservative risk. Can check positions once daily."
+            style={{ ...s.input, resize:"vertical", lineHeight:1.65, marginBottom:12 }}/>
+          <button onClick={generatePlan} disabled={loading || !claudeKey}
+            style={{ padding:"10px 24px", background:claudeKey?C.green+"22":C.border, border:`1px solid ${claudeKey?C.green+"66":C.border}`, color:claudeKey?C.green:C.textDim, borderRadius:6, fontSize:13, fontWeight:600, cursor:claudeKey?"pointer":"not-allowed" }}>
+            {loading ? "Generating plan…" : claudeKey ? "Generate Monthly Income Plan" : "Connect API keys first"}
+          </button>
+        </div>
+        {result && (
+          <div style={{ borderTop:`1px solid ${C.border}` }}>
+            <div style={{ padding:"20px" }}>
+              <p style={{ fontSize:13, color:"#c9d1d9", lineHeight:1.75, marginBottom:20 }}>{result.summary}</p>
+              {result.monthly_projection && (
+                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:10, marginBottom:20 }}>
+                  {[["Conservative",result.monthly_projection.low,C.yellow],["Expected",result.monthly_projection.mid,C.green],["Optimistic",result.monthly_projection.high,C.purple]].map(([l,v,c]) => (
+                    <div key={l} style={{ padding:"14px", background:C.surfaceHigh, borderRadius:8, border:`1px solid ${c}33`, textAlign:"center" }}>
+                      <div style={{ fontSize:11, color:C.textMuted, marginBottom:4 }}>{l}</div>
+                      <div style={{ fontSize:20, fontWeight:700, color:c }}>${v?.toLocaleString?.()??v}</div>
                     </div>
                   ))}
                 </div>
               )}
-              {p.gex?.wall && <div style={{ fontSize:13, color:"#aa88ff", background:"#0d0814", border:"1px solid #aa88ff44", padding:"10px 14px", marginBottom:sc>=2?12:0, borderRadius:4 }}>📍 <b>Gamma wall: {p.gex.wall}</b> — price gravitates here. Magnet + accelerator.</div>}
-              {sc>=2 && <StaircaseViz days={sc} zone={p.staircase_zone}/>}
-            </div>
-          )}
-
-          {/* ─── 6. DATA — shorts + flow quality + IV ─── */}
-          <div style={{ padding:"16px 22px", borderBottom:"1px solid #111d28" }}>
-            <div className="sec-label" style={{ marginBottom:12 }}>DATA & FLOW QUALITY</div>
-            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:18 }}>
-              <div>
-                <div style={{ fontSize:12, color:"#7591a8", fontWeight:700, marginBottom:8, letterSpacing:"0.08em" }}>SHORTS</div>
-                <DataRow label="Short Interest %" value={fmtP(sh.si_pct)} color={parseFloat(sh.si_pct||0)>=20?"#ff3355":parseFloat(sh.si_pct||0)>=10?"#ffe033":"#44ffbb"} sub={parseFloat(sh.si_pct||0)>=20?"HIGH FUEL":parseFloat(sh.si_pct||0)>=10?"MODERATE":"LOW"}/>
-                <DataRow label="Days to Cover" value={sh.days_to_cover?parseFloat(sh.days_to_cover).toFixed(1)+"d":"—"} color={parseFloat(sh.days_to_cover||0)>=5?"#ff3355":parseFloat(sh.days_to_cover||0)>=3?"#ffe033":"#44ffbb"} sub={parseFloat(sh.days_to_cover||0)>=5?"TRAPPED":parseFloat(sh.days_to_cover||0)>=3?"MODERATE":"EASY OUT"}/>
-                <DataRow label="Borrow Rate" value={sh.borrow_rate?parseFloat(sh.borrow_rate).toFixed(0)+"%/yr":"—"} color={parseFloat(sh.borrow_rate||0)>=30?"#ff9955":"#a0b8cc"}/>
-                <DataRow label="Float" value={sh.float_shares_outstanding?`${(parseFloat(sh.float_shares_outstanding)/1e6).toFixed(1)}M`:"—"} color={parseFloat(sh.float_shares_outstanding||0)/1e6<15?"#ff88cc":"#a0b8cc"}/>
-              </div>
-              <div>
-                <div style={{ fontSize:12, color:"#7591a8", fontWeight:700, marginBottom:8, letterSpacing:"0.08em" }}>FLOW</div>
-                <DataRow label="Premium" value={fmt(p.premium)} color={parseInt(p.premium||0)>=500000?"#00ff88":parseInt(p.premium||0)>=100000?"#ffe033":"#a0b8cc"}/>
-                <DataRow label="Size vs OI" value={p.oi>0?`${(p.size/p.oi).toFixed(1)}x`:"—"} color={p.oi>0&&p.size/p.oi>=2?"#00ff88":"#a0b8cc"}/>
-                <DataRow label="Ask Side %" value={p.ask_pct?`${(p.ask_pct*100).toFixed(0)}%`:"—"} color={parseFloat(p.ask_pct||0)>=0.8?"#00ff88":"#a0b8cc"}/>
-                <DataRow label="Sweeps Today" value={`${p.sweep_count||1}x`} color={(p.sweep_count||1)>=3?"#ff88cc":"#a0b8cc"}/>
-              </div>
-            </div>
-            {p.iv && (
-              <div style={{ marginTop:14, padding:"12px 14px", background:"#040810", border:`1px solid ${tech.ivHigh?"#ffaa4444":"#44ffbb33"}`, borderRadius:4, display:"flex", gap:18, alignItems:"center" }}>
-                <div style={{ flex:1 }}>
-                  <div className="label" style={{ marginBottom:4 }}>VOLATILITY</div>
-                  <div style={{ fontSize:14, color:tech.ivHigh?"#ffaa44":"#44ffbb" }}>
-                    Near: <b>{p.iv.near||"—"}%</b> · Far: <b>{p.iv.far||"—"}%</b> · Status: <b>{tech.ivHigh?"HIGH — USE SPREAD":"NORMAL — calls ok"}</b>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* ─── 7. BEST PLAY ─── */}
-          {strats.length > 0 && (
-            <div style={{ padding:"16px 22px", borderBottom:"1px solid #111d28" }}>
-              <div className="sec-label" style={{ marginBottom:12 }}>BEST PLAY</div>
-              {strats.slice(0,1).map(([key, s]) => (
-                <div key={key} style={{ border:`1.5px solid ${s.color}66`, background:"#040810", borderRadius:4, overflow:"hidden" }}>
-                  <div style={{ padding:"12px 16px", borderBottom:`1px solid ${s.color}33`, display:"flex", alignItems:"center", gap:12 }}>
-                    <span style={{ fontSize:22 }}>{s.emoji}</span>
-                    <div style={{ flex:1 }}>
-                      <div style={{ fontSize:15, fontWeight:700, color:s.color }}>{s.name}</div>
-                      <div className="mini">{s.risk} RISK · IV {s.ivNeed}</div>
-                    </div>
-                    <span style={{ fontSize:11, color:"#ffe033", background:"#14100a", border:"1px solid #ffe03344", padding:"3px 8px", borderRadius:3, fontWeight:700 }}>★ BEST FIT</span>
-                  </div>
-                  <div style={{ padding:"14px 16px", display:"grid", gridTemplateColumns:"1fr 1fr", gap:14 }}>
-                    <div><div className="label" style={{color:"#66ccff", marginBottom:4}}>→ ENTER</div><div className="body-text">{s.how}</div></div>
-                    <div><div className="label" style={{color:"#00ff88", marginBottom:4}}>← EXIT</div><div className="body-text">{s.exit}</div></div>
-                    <div><div className="label" style={{color:"#ff3355", marginBottom:4}}>⛔ STOP</div><div className="body-text">{s.stop}</div></div>
-                    <div><div className="label" style={{color:"#7090a8", marginBottom:4}}>✓/✗</div><div className="body-text">{s.pros} · <span style={{color:"#8aabc2"}}>{s.cons}</span></div></div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* ─── 8. GUIDANCE NOTES ─── */}
-          <div style={{ padding:"16px 22px", borderBottom:"1px solid #111d28" }}>
-            <div className="sec-label" style={{ marginBottom:10 }}>GUIDANCE</div>
-            {guidance.map((line,i) => (
-              <div key={i} style={{ fontSize:13, color:line.startsWith("✅")?"#00ff88":line.startsWith("🚨")?"#ff3355":line.startsWith("⚠️")?"#ff9955":line.startsWith("🟡")?"#ffe033":line.startsWith("👀")?"#00ddff":line.startsWith("BEST")?"#44ffdd":line.startsWith("EXIT")?"#00ff88":line.startsWith("STOP")?"#ff9955":"#9fb5c8", lineHeight:1.75, marginBottom:4 }}>{line}</div>
-            ))}
-          </div>
-
-          {/* ─── 9. POSITION TRACKER (collapsible) ─── */}
-          <div style={{ padding:"16px 22px" }}>
-            <div onClick={()=>setPosOpen(o=>!o)} style={{ cursor:"pointer", display:"flex", alignItems:"center", gap:10, marginBottom:posOpen?14:0 }}>
-              <span className="sec-label">POSITION TRACKER</span>
-              {pos?.entryPrice && <span style={{ fontSize:11, color:"#44ffbb", fontWeight:700 }}>· IN @ ${pos.entryPrice}</span>}
-              {pnlPct !== null && <span style={{ fontSize:12, color:parseFloat(pnlPct)>=0?"#00ff88":"#ff3355", fontWeight:700 }}>{parseFloat(pnlPct)>=0?"+":""}{pnlPct}%</span>}
-              <span style={{ marginLeft:"auto", fontSize:12, color:"#7591a8" }}>{posOpen?"▲ hide":"▼ show"}</span>
-            </div>
-            {posOpen && (
-              <div>
-                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:12, marginBottom:12 }}>
-                  {[["ENTRY PRICE",ep,setEp,"e.g. 2.45"],["CURRENT PRICE",cp,setCp,"e.g. 3.60"],["STOP PRICE",stop,setStop,"e.g. 1.45"]].map(([l,v,s,ph])=>(
-                    <div key={l}>
-                      <div className="label" style={{ marginBottom:6 }}>{l}</div>
-                      <input value={v} onChange={e=>s(e.target.value)} placeholder={ph}
-                        style={{ width:"100%", background:"#040810", border:`1px solid ${l==="STOP PRICE"&&stopHit?"#ff3355":"#15212e"}`, color: l==="STOP PRICE"&&stopHit?"#ff3355":"#d0deec", padding:"10px 12px", fontSize:14, outline:"none", boxSizing:"border-box", borderRadius:3 }}/>
+              {result.trades?.length>0&&(
+                <div style={{ marginBottom:20 }}>
+                  <div style={{ ...s.section, marginBottom:10 }}>Weekly Trade Plan</div>
+                  {result.trades.map((t,i)=>(
+                    <div key={i} style={{ padding:"12px 16px", background:C.surfaceHigh, borderRadius:6, marginBottom:8, border:`1px solid ${C.border}` }}>
+                      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:6 }}>
+                        <span style={{ fontSize:12, fontWeight:700, color:C.blue }}>Week {t.week}</span>
+                        <span style={{ fontSize:12, color:C.green, fontWeight:700 }}>Max gain: ${t.max_profit}</span>
+                      </div>
+                      <div style={{ fontSize:13, color:C.text, marginBottom:4 }}>{t.action}</div>
+                      {t.notes&&<div style={{ fontSize:11, color:C.textMuted }}>{t.notes}</div>}
                     </div>
                   ))}
                 </div>
-                {stopHit && <div className="urgent" style={{ padding:"12px 16px", marginBottom:12, background:"#1a0005", border:"1px solid #ff3355", borderRadius:3, fontSize:13, fontWeight:700, color:"#ff3355" }}>🛑 STOP HIT — Sell now. Don't negotiate with a loss.</div>}
-                {pnlPct!==null && (
-                  <div style={{ padding:"12px 16px", marginBottom:12, background:parseFloat(pnlPct)>=0?"#001a0e":"#1a0005", border:`1px solid ${parseFloat(pnlPct)>=0?"#00ff8855":"#ff335555"}`, borderRadius:3 }}>
-                    <span className="label">P&L: </span>
-                    <span style={{ fontSize:22, fontWeight:700, color:parseFloat(pnlPct)>=0?"#00ff88":"#ff3355" }}>{parseFloat(pnlPct)>=0?"+":""}{pnlPct}%</span>
-                    {lockNudge && <span style={{ fontSize:12, color:"#00ff88", marginLeft:14 }}>💰 Lock 50% now, move stop to breakeven</span>}
-                  </div>
-                )}
-                <div style={{ marginBottom:12 }}>
-                  <div className="label" style={{ marginBottom:6 }}>NOTES</div>
-                  <textarea value={note} onChange={e=>setNote(e.target.value)} rows={3}
-                    placeholder="SI, chart read, news, float, insider buys…"
-                    style={{ width:"100%", background:"#040810", border:"1px solid #15212e", color:"#9fb5c8", padding:"10px 12px", fontSize:13, outline:"none", resize:"vertical", lineHeight:1.65, boxSizing:"border-box", borderRadius:3 }}/>
+              )}
+              {result.key_rules?.length>0&&(
+                <div style={{ marginBottom:16 }}>
+                  <div style={{ ...s.section, marginBottom:10 }}>Discipline Rules</div>
+                  {result.key_rules.map((r,i)=>(
+                    <div key={i} style={{ fontSize:12, color:"#c9d1d9", padding:"6px 0", borderBottom:`1px solid ${C.border}`, lineHeight:1.6 }}><span style={{ color:C.green, marginRight:8 }}>✓</span>{r}</div>
+                  ))}
                 </div>
-                <button onClick={savePos}
-                  style={{ padding:"10px 22px", background:ep?"#001a0e":"#060b10", border:`1px solid ${ep?"#00ff8888":"#15212e"}`, color:ep?"#00ff88":"#3e5268", fontSize:12, fontWeight:700, letterSpacing:"0.12em", cursor:ep?"pointer":"default", borderRadius:3 }}>
-                  {saved?"✓ SAVED":"SAVE POSITION"}
-                </button>
-              </div>
-            )}
+              )}
+              {result.risks?.length>0&&(
+                <div style={{ padding:"12px 16px", background:C.red+"0d", border:`1px solid ${C.red}33`, borderRadius:6 }}>
+                  <div style={{ ...s.section, marginBottom:8 }}>Key Risks</div>
+                  {result.risks.map((r,i)=>(<div key={i} style={{ fontSize:12, color:"#c9a0a0", padding:"3px 0" }}>⚠ {r}</div>))}
+                </div>
+              )}
+            </div>
           </div>
-
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ── COLUMN ────────────────────────────────────────────────────────────────────
-function Column({ title, color, items, openId, onToggle, positions, onSave, newIds, viewMode, topEntries, sortMode, macroBias }) {
-  const enter = items.filter(p=>(p.trade_day||1)<=1&&(p.winProb||0)>=50).length;
-  const hold  = items.filter(p=>(p.trade_day||1)>1&&(p.trade_day||1)<=7).length;
-  const early = items.filter(p=>(p.staircase_days||0)>=3&&!p.sweepOk&&p.cat!=="macro").length;
-
-  // Auto-fallback: when LIVE column is empty, show 30-day Top 10 so the column is never blank.
-  const showTop = viewMode === "top10" || items.length === 0;
-
-  return (
-    <div style={{ display:"flex", flexDirection:"column", borderRight:"1px solid #0e1a24", overflow:"hidden" }}>
-      <div style={{ padding:"10px 14px", background:"#060b10", borderBottom:`1px solid ${color}33`, flexShrink:0 }}>
-        <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:6, flexWrap:"wrap" }}>
-          <div style={{ fontSize:11, color, fontWeight:700, letterSpacing:"0.1em" }}>{title}</div>
-          {showTop && (
-            <span title="Backup view: 30-day pre-squeeze tracker — what's been building when nothing has fired live yet" style={{ fontSize:9, color:"#66ccff", border:"1px solid #66ccff55", padding:"2px 7px", letterSpacing:"0.08em", borderRadius:3, fontWeight:600 }}>
-              30D BACKUP · TOP {Math.min(10, topEntries?.length||0)}{sortMode==="premium"?" · BY $":" · BY DAYS"}
-            </span>
-          )}
-        </div>
-        <div style={{ display:"flex", gap:5, flexWrap:"wrap" }}>
-          {!showTop && enter>0 && <span style={{ fontSize:10, padding:"2px 9px", background:"#00ff8818", border:"1px solid #00ff8855", color:"#00ff88", fontWeight:600, borderRadius:2 }}>{enter} ENTER</span>}
-          {!showTop && hold>0  && <span style={{ fontSize:10, padding:"2px 9px", background:"#ffe03318", border:"1px solid #ffe03355", color:"#ffe033", fontWeight:600, borderRadius:2 }}>{hold} HOLD</span>}
-          {!showTop && early>0 && <span style={{ fontSize:10, padding:"2px 9px", background:"#00ddff18", border:"1px solid #00ddff55", color:"#00ddff", fontWeight:600, borderRadius:2 }}>{early} EARLY</span>}
-          <span style={{ fontSize:10, color:"#7591a8", marginLeft:"auto", fontWeight:500 }}>
-            {showTop ? `${topEntries?.length||0} tracked` : `${items.length} live`}
-          </span>
-        </div>
-      </div>
-      <div style={{ overflowY:"auto", flex:1, padding: showTop ? 0 : "6px" }}>
-        {showTop ? (
-          <TopList entries={topEntries||[]} sortMode={sortMode} emptyLabel="Waiting for first hits — auto-records on every scan."/>
-        ) : (
-          items.map(p=>(
-            <Card key={p.id} p={p} open={openId===p.id} onToggle={()=>onToggle(p.id)}
-              pos={positions[p.id]} onSave={pos=>onSave(p.id,pos)} isNew={newIds.has(p.id)} macroBias={macroBias}/>
-          ))
         )}
       </div>
     </div>
   );
 }
 
-// ── SETUP SCREEN ──────────────────────────────────────────────────────────────
-function Setup({ onConnect }) {
-  const [ak, setAk] = useState("");
-  const [uk, setUk] = useState("");
+// ─── POLYMARKET TAB ────────────────────────────────────────────────────────────
+function PolymarketTab({ claudeKey }) {
+  const [question, setQuestion] = useState("");
+  const [mktProb,  setMktProb]  = useState("");
+  const [thesis,   setThesis]   = useState("");
+  const [loading,  setLoading]  = useState(false);
+  const [analysis, setAnalysis] = useState(null);
+  const [errText,  setErrText]  = useState("");
+
+  async function analyze() {
+    if (!question.trim() || !claudeKey) return;
+    setLoading(true); setAnalysis(null); setErrText("");
+    try {
+      const sys = `You are an expert prediction market analyst specializing in Polymarket.
+Return a JSON object: {"fair_probability":number(0-100),"market_probability":number,"edge":number,"recommended_side":"YES"|"NO"|"SKIP","confidence":"HIGH"|"MEDIUM"|"LOW","reasoning":"2-3 sentences","key_risks":["risk1","risk2","risk3"],"position_size":"1-5% of bankroll","entry_timing":"brief note","exit_plan":"brief note","similar_markets":"historical base rates"}`;
+      const msg = `Market: "${question}"
+Market probability: ${mktProb?mktProb+"%":"not provided"}
+Thesis: ${thesis||"none"}`;
+      const resp = await fetch("https://api.anthropic.com/v1/messages", {
+        method:"POST",
+        headers:{"Content-Type":"application/json","x-api-key":claudeKey,"anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},
+        body:JSON.stringify({model:"claude-sonnet-4-6",max_tokens:1200,system:sys,messages:[{role:"user",content:msg}]})
+      });
+      const data = await resp.json();
+      const text = (data.content||[]).find(b=>b.type==="text")?.text||"{}";
+      try { setAnalysis(JSON.parse(text.replace(/```json|```/g,"").trim())); } catch { setErrText(text); }
+    } catch(e) { setErrText(e.message||String(e)); }
+    finally { setLoading(false); }
+  }
+
+  const edgeColor = !analysis?C.text:analysis.edge>8?C.green:analysis.edge<-8?C.red:C.yellow;
+  const sideColor = analysis?.recommended_side==="YES"?C.green:analysis?.recommended_side==="NO"?C.red:C.yellow;
+
+  return (
+    <div style={{ maxWidth:800, margin:"0 auto", padding:"28px 24px" }}>
+      <h2 style={{ fontSize:22, fontWeight:700, color:C.text, marginBottom:4 }}>Polymarket Analyzer</h2>
+      <p style={{ fontSize:13, color:C.textMuted, marginBottom:28, lineHeight:1.6 }}>Paste a prediction market question. Claude estimates the fair probability, compares to the market price, and tells you if there is an edge.</p>
+      <div style={s.card}>
+        <div style={{ padding:"20px" }}>
+          <div style={{ marginBottom:16 }}>
+            <label style={s.label}>Market Question</label>
+            <textarea value={question} onChange={e=>setQuestion(e.target.value)} rows={3} placeholder='e.g. "Will the Fed cut rates before September 2025?"'
+              style={{ ...s.input, resize:"vertical", lineHeight:1.65 }}/>
+          </div>
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:16, marginBottom:16 }}>
+            <div><label style={s.label}>Market Price (YES %)</label><input type="number" value={mktProb} onChange={e=>setMktProb(e.target.value)} placeholder="e.g. 45" style={s.input}/></div>
+            <div><label style={s.label}>Your Thesis (optional)</label><input value={thesis} onChange={e=>setThesis(e.target.value)} placeholder="Why you think YES or NO" style={s.input}/></div>
+          </div>
+          <button onClick={analyze} disabled={loading||!question.trim()||!claudeKey}
+            style={{ padding:"10px 24px", background:claudeKey&&question.trim()?C.blue+"22":"transparent", border:`1px solid ${claudeKey&&question.trim()?C.blue+"66":C.border}`, color:claudeKey&&question.trim()?C.blue:C.textDim, borderRadius:6, fontSize:13, fontWeight:600, cursor:claudeKey&&question.trim()?"pointer":"not-allowed" }}>
+            {loading?"Analyzing…":!claudeKey?"Connect API keys first":"Analyze Market"}
+          </button>
+        </div>
+      </div>
+      {errText&&<div style={{ marginTop:16, padding:"14px 16px", background:C.red+"0d", border:`1px solid ${C.red}33`, borderRadius:8, fontSize:12, color:"#c9a0a0" }}>{errText}</div>}
+      {analysis&&(
+        <div style={{ marginTop:20 }}>
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr 1fr", gap:12, marginBottom:16 }}>
+            {[["Market Prob",`${analysis.market_probability??mktProb}%`,C.textMuted],["Fair Value",`${analysis.fair_probability}%`,C.blue],["Edge",`${analysis.edge>0?"+":""}${analysis.edge}pp`,edgeColor],["Your Side",analysis.recommended_side,sideColor]].map(([l,v,c])=>(
+              <div key={l} style={{ ...s.card, padding:"16px", textAlign:"center" }}>
+                <div style={{ fontSize:11, color:C.textMuted, marginBottom:6 }}>{l}</div>
+                <div style={{ fontSize:22, fontWeight:800, color:c }}>{v}</div>
+              </div>
+            ))}
+          </div>
+          <div style={{ ...s.card, marginBottom:16, padding:"16px 20px" }}>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12, flexWrap:"wrap", gap:12 }}>
+              <div><div style={s.section}>Confidence</div><div style={{ fontSize:18, fontWeight:700, color:analysis.confidence==="HIGH"?C.green:analysis.confidence==="MEDIUM"?C.yellow:C.red, marginTop:4 }}>{analysis.confidence}</div></div>
+              <div><div style={s.section}>Position Size</div><div style={{ fontSize:16, fontWeight:700, color:C.text, marginTop:4 }}>{analysis.position_size}</div></div>
+              <div><div style={s.section}>Recommendation</div><div style={{ fontSize:20, fontWeight:800, color:sideColor, marginTop:4 }}>{analysis.recommended_side}</div></div>
+            </div>
+            <div style={{ height:1, background:C.border, margin:"0 0 12px" }}/>
+            <div style={{ fontSize:13, color:"#c9d1d9", lineHeight:1.75 }}>{analysis.reasoning}</div>
+          </div>
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:16, marginBottom:16 }}>
+            {[["Entry Timing",C.blue,analysis.entry_timing],["Exit Plan",C.green,analysis.exit_plan]].map(([l,c,v])=>(
+              <div key={l} style={{ ...s.card, padding:"16px" }}><div style={{ ...s.section, marginBottom:8 }}>{l}</div><div style={{ fontSize:12, color:"#c9d1d9", lineHeight:1.65 }}>{v}</div></div>
+            ))}
+          </div>
+          {analysis.similar_markets&&<div style={{ ...s.card, padding:"16px", marginBottom:16 }}><div style={{ ...s.section, marginBottom:8 }}>Historical Base Rates</div><div style={{ fontSize:12, color:"#c9d1d9", lineHeight:1.65 }}>{analysis.similar_markets}</div></div>}
+          {analysis.key_risks?.length>0&&(
+            <div style={{ padding:"14px 16px", background:C.yellow+"0d", border:`1px solid ${C.yellow}33`, borderRadius:8 }}>
+              <div style={{ ...s.section, marginBottom:10 }}>Key Risks</div>
+              {analysis.key_risks.map((r,i)=>(<div key={i} style={{ fontSize:12, color:"#c9b87a", padding:"3px 0" }}>⚠ {r}</div>))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── SETUP SCREEN ───────────────────────────────────────────────────────────────
+function SetupScreen({ onConnect }) {
+  const [ak, setAk] = useState(""); const [uk, setUk] = useState("");
   const ok = ak.trim() && uk.trim();
   return (
-    <div style={{ display:"flex", alignItems:"center", justifyContent:"center", flex:1, background:"#060b10" }}>
-      <div style={{ width:520, border:"1px solid #0f1a24", background:"#080c12", padding:40 }}>
-        <div style={{ fontSize:11, color:"#7591a8", letterSpacing:"0.22em", marginBottom:6, fontWeight:500 }}>UNUSUAL WHALES · PAID SUBSCRIPTION</div>
-        <div style={{ fontSize:22, fontWeight:700, color:"#eaf2ff", marginBottom:10, letterSpacing:"-0.01em" }}>⚡ Squeeze &amp; Flush Scanner</div>
-        <div style={{ fontSize:13, color:"#9bb3c6", lineHeight:1.7, marginBottom:30 }}>
-          14 signal types · Staircase detection · Win probability engine · IV-aware strategies · Position tracker with P&amp;L
-        </div>
-        {[
-          { l:"ANTHROPIC API KEY",      h:"Get one at console.anthropic.com → API Keys",         p:"sk-ant-api03-…",         v:ak, s:setAk },
-          { l:"UNUSUAL WHALES API KEY", h:"Get one at unusualwhales.com/settings/api-dashboard",  p:"Your paid bearer token", v:uk, s:setUk },
-        ].map(({ l, h, p, v, s }) => (
+    <div style={{ display:"flex", alignItems:"center", justifyContent:"center", height:"100%", background:C.bg }}>
+      <div style={{ width:480, ...s.card, padding:40 }}>
+        <div style={{ fontSize:11, color:C.textMuted, letterSpacing:"0.2em", fontWeight:600, marginBottom:6 }}>OPTIONS · POLYMARKET · INCOME</div>
+        <div style={{ fontSize:24, fontWeight:800, color:C.text, marginBottom:8 }}>Income Edge</div>
+        <div style={{ fontSize:13, color:C.textMuted, lineHeight:1.7, marginBottom:32 }}>Real-time options flow scanner · Income plan builder · Polymarket edge analyzer.</div>
+        {[["ANTHROPIC API KEY","console.anthropic.com → API Keys","sk-ant-api03-…",ak,setAk],["UNUSUAL WHALES API KEY","unusualwhales.com/settings/api-dashboard","Your paid bearer token",uk,setUk]].map(([l,h,p,v,s2])=>(
           <div key={l} style={{ marginBottom:20 }}>
-            <div style={{ fontSize:11, color:"#a7c0d4", letterSpacing:"0.14em", marginBottom:7, fontWeight:600 }}>{l}</div>
-            <input type="password" value={v} onChange={e=>s(e.target.value)}
-              onKeyDown={e=>e.key==="Enter"&&ok&&onConnect(ak.trim(),uk.trim())}
-              placeholder={p}
-              style={{ width:"100%", background:"#07090d", border:"1px solid #1a2a3a", color:"#eaf2ff", padding:"11px 13px", fontSize:13, outline:"none", fontFamily:"inherit", boxSizing:"border-box", borderRadius:3 }}/>
-            <div style={{ fontSize:11, color:"#7591a8", marginTop:6 }}>{h}</div>
+            <label style={s.label}>{l}</label>
+            <input type="password" value={v} onChange={e=>(l.includes("ANTHROPIC")?setAk:setUk)(e.target.value)}
+              onKeyDown={e=>e.key==="Enter"&&ok&&onConnect(ak.trim(),uk.trim())} placeholder={p}
+              style={{ ...s.input, fontSize:13 }}/>
+            <div style={{ fontSize:11, color:C.textDim, marginTop:6 }}>{h}</div>
           </div>
         ))}
-        <button onClick={()=>ok&&onConnect(ak.trim(),uk.trim())}
-          style={{ width:"100%", padding:"14px 0", background:ok?"#002817":"#0a1219", border:`1px solid ${ok?"#00ff8888":"#1a2a3a"}`, color:ok?"#00ff88":"#5a7a92", fontSize:12, fontWeight:600, letterSpacing:"0.18em", cursor:ok?"pointer":"default", transition:"all 0.2s", fontFamily:"inherit", borderRadius:3 }}>
-          CONNECT &amp; SCAN
+        <button onClick={()=>ok&&onConnect(ak.trim(),uk.trim())} disabled={!ok}
+          style={{ width:"100%", padding:"12px 0", background:ok?C.green+"22":"transparent", border:`1px solid ${ok?C.green+"66":C.border}`, color:ok?C.green:C.textDim, fontSize:13, fontWeight:700, letterSpacing:"0.08em", cursor:ok?"pointer":"not-allowed", borderRadius:6 }}>
+          Connect &amp; Start Scanning
         </button>
-        <div style={{ fontSize:11, color:"#7591a8", marginTop:18, textAlign:"center", lineHeight:1.5 }}>🔒 Keys stored in memory only — never sent anywhere except Anthropic API</div>
+        <div style={{ fontSize:11, color:C.textDim, marginTop:16, textAlign:"center" }}>🔒 Keys stored in memory only</div>
       </div>
     </div>
   );
 }
 
-// ── APP ───────────────────────────────────────────────────────────────────────
+// ─── APP ───────────────────────────────────────────────────────────────────────
 function App() {
-  const [ready,     setReady]     = useState(false);
-  const [feed,      setFeed]      = useState([]);
-  const [openId,    setOpenId]    = useState(null);
-  const [positions, setPositions] = useState({});
-  const [newIds,    setNewIds]    = useState(new Set());
-  const [logs,      setLogs]      = useState([]);
-  const [loading,   setLoading]   = useState(false);
-  const [error,     setError]     = useState("");
-  const [paused,    setPaused]    = useState(false);
-  const [pollSec,   setPollSec]   = useState(120);
-  const [minProb,   setMinProb]   = useState(70);
-  const [gateOn,    setGateOn]    = useState(true);
-  const [minPrem,   setMinPrem]   = useState(0);
-  const [confirmed, setConfirmed] = useState(false);
-  const [showLog,   setShowLog]   = useState(false);
-  const [soundOn,   setSoundOn]   = useState(true);
-  const [ticker,    setTicker]    = useState("");
-  const [history,   setHistory]   = useState(() => pruneHist(loadHist()));
-  const [viewMode,  setViewMode]  = useState("live");   // "live" | "top10"
-  const [sortMode,  setSortMode]  = useState("days");    // "days" | "premium"
-  const [usage,     setUsage]     = useState({ in:0, out:0, scans:0 });  // cumulative this session
-  const [nowMin,    setNowMin]    = useState(() => nowETMin());          // minutes since midnight ET, ticks every 30s
-  const [pbOpen,    setPbOpen]    = useState(false);                     // playbook expanded panel
-  const [showLegend,setShowLegend]= useState(false);                     // legend strip hidden by default
-  const [directMode,setDirectMode]= useState(true);                      // true = REST direct (fast), false = MCP (slower)
+  const [ready,    setReady]   = useState(false);
+  const [tab,      setTab]     = useState("scanner");
+  const [feed,     setFeed]    = useState([]);
+  const [loading,  setLoading] = useState(false);
+  const [error,    setError]   = useState("");
+  const [paused,   setPaused]  = useState(false);
+  const [pollSec,  setPollSec] = useState(120);
+  const [soundOn,  setSoundOn] = useState(true);
+  const [history,  setHistory] = useState(() => pruneHist(loadHist()));
+  const akRef = useRef(""), ukRef = useRef("");
+  const seen = useRef(new Set()), intv = useRef(null), isFetching = useRef(false), fetchRef = useRef(null);
 
-  const seen       = useRef(new Set());
-  const intv       = useRef(null);
-  const isFetching = useRef(false);
-  const fetchRef   = useRef(null);
-  const akRef      = useRef("");
-  const ukRef      = useRef("");
-
-  const addLog = useCallback(msg => {
-    const t = new Date().toTimeString().slice(0,8);
-    setLogs(p => [`[${t}] ${msg}`, ...p.slice(0,99)]);
-  }, []);
-
-  const parseArr = useCallback(text => {
+  const parseArr = (text) => {
     if (!text) return [];
     const c = text.replace(/```json|```/g,"").trim();
     try { const r=JSON.parse(c); return Array.isArray(r)?r:[]; } catch {}
     const m = c.match(/\[[\s\S]*\]/);
     if (m) { try { const r=JSON.parse(m[0]); return Array.isArray(r)?r:[]; } catch {} }
     return [];
-  }, []);
+  };
 
   useEffect(() => { fetchRef.current = async () => {
-    if (isFetching.current) { addLog("⏳ Already scanning…"); return; }
-    isFetching.current=true; setLoading(true); setError("");
-    addLog("Scanning: flow + dark pool + staircase detection + enrichment…");
-    let rawFetched = null;  // hoisted — populated in direct mode, read after Claude returns to attach Ichimoku to signals
+    if (isFetching.current) return;
+    isFetching.current = true; setLoading(true); setError("");
+    let rawFetched = null;
     try {
-      // Retry with exponential backoff. AbortController guards each attempt so a hung
-      // MCP tool call can't tie up the next scan cycle.
-      const SCAN_TIMEOUT_MS = directMode ? 60000 : 150000;  // direct: 60s · MCP: 2.5min
-      const MAX_ATTEMPTS    = 2;
-      let res, lastErr;
-      for (let attempt=1; attempt<=MAX_ATTEMPTS; attempt++) {
-        const ctrl = new AbortController();
-        const timer = setTimeout(()=>ctrl.abort(), SCAN_TIMEOUT_MS);
-        try {
-          // Build the request body — DIRECT mode fetches UW REST first then sends compact data to Claude (no mcp_servers).
-          let body;
-          if (directMode) {
-            addLog("Fetching UW REST (flow + dark pool + tide + per-ticker + OHLC for Ichimoku)…");
-            const raw = await fetchUWDirect(ukRef.current, ctrl.signal);
-            rawFetched = raw;  // hoisted — used later to attach ichimoku to each classified signal
-            const tnames = Object.keys(raw.per_ticker||{});
-            const ichCount = Object.keys(raw.ichimokuByTicker||{}).length;
-            addLog(`✓ UW: ${raw.flow_alerts.length} flow · ${raw.dark_pool_recent.length} DP · ${tnames.length} top tickers (${tnames.join(", ")}) · ${ichCount} Ichimoku`);
-            // Strip ichimokuByTicker from the payload sent to Claude — it's heavy and unused by the classifier
-            const { ichimokuByTicker: _ich, ...forClaude } = raw;
-            body = JSON.stringify({
-              model:"claude-sonnet-4-5", max_tokens:2500,
-              system: buildSystemDirect(),
-              messages:[{ role:"user", content:`Pre-fetched UW data:\n${JSON.stringify(forClaude)}\n\nClassify and return only the JSON array starting with [` }],
-            });
-          } else {
-            body = JSON.stringify({
-              model:"claude-sonnet-4-5", max_tokens:2000,
-              system: buildSystem(ukRef.current),
-              messages:[{ role:"user", content:"Run full scan now. Return only the JSON array starting with [" }],
-              mcp_servers:[{ type:"url", url:"https://api.unusualwhales.com/api/mcp", name:"unusual-whales", authorization_token:ukRef.current }],
-            });
-          }
-          res = await fetch("https://api.anthropic.com/v1/messages", {
-            method:"POST",
-            signal: ctrl.signal,
-            headers:{
-              "Content-Type":"application/json",
-              "x-api-key":akRef.current,
-              "anthropic-version":"2023-06-01",
-              ...(directMode ? {} : {"anthropic-beta":"mcp-client-2025-04-04"}),
-              "anthropic-dangerous-direct-browser-access":"true"
-            },
-            body
-          });
-          clearTimeout(timer);
-          break;
-        } catch (netErr) {
-          clearTimeout(timer);
-          lastErr = netErr;
-          const aborted = netErr.name === "AbortError";
-          const why = aborted
-            ? `timed out after ${SCAN_TIMEOUT_MS/1000}s (MCP tool call probably hung)`
-            : !navigator.onLine
-              ? "you appear to be offline"
-              : `browser blocked the request — ${netErr.message} (likely CORS or invalid Anthropic key)`;
-          if (attempt < MAX_ATTEMPTS) {
-            const wait = 2000 * attempt;
-            addLog(`⏳ Attempt ${attempt}/${MAX_ATTEMPTS} failed (${why}) — retrying in ${wait/1000}s…`);
-            await new Promise(r=>setTimeout(r, wait));
-            continue;
-          }
-          throw new Error(`Network after ${MAX_ATTEMPTS} attempts: ${why}`);
-        }
-      }
-      if (!res) throw lastErr || new Error("No response");
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 75000);
+      let res;
+      try {
+        const raw = await fetchUWDirect(ukRef.current, ctrl.signal);
+        rawFetched = raw;
+        const { ichimokuByTicker: _ich, ...forClaude } = raw;
+        res = await fetch("https://api.anthropic.com/v1/messages", {
+          method:"POST", signal:ctrl.signal,
+          headers:{"Content-Type":"application/json","x-api-key":akRef.current,"anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},
+          body:JSON.stringify({model:"claude-sonnet-4-6",max_tokens:2500,system:buildSystemDirect(),messages:[{role:"user",content:`Pre-fetched UW data:\n${JSON.stringify(forClaude)}\n\nClassify and return only the JSON array starting with [`}]})
+        });
+        clearTimeout(timer);
+      } catch(netErr) { clearTimeout(timer); throw netErr; }
       if (!res.ok) {
         const e = await res.json().catch(()=>({}));
-        const msg = e?.error?.message || `HTTP ${res.status}`;
-        if (msg.includes("concurrents")||msg.includes("exceeded_limit")||res.status===429) {
-          addLog("⏳ Rate limit — waiting 45s…"); setError("Rate limited…");
-          await new Promise(r=>setTimeout(r,45000));
-          setError(""); isFetching.current=false; setLoading(false); return;
-        }
-        if (res.status===529 || res.status===503 || res.status===500) {
-          addLog(`⏳ Anthropic overloaded (HTTP ${res.status}) — waiting 60s…`); setError(`Anthropic ${res.status}…`);
-          await new Promise(r=>setTimeout(r,60000));
-          setError(""); isFetching.current=false; setLoading(false); return;
-        }
-        if (res.status===401) throw new Error("Invalid Anthropic API key (401)");
-        throw new Error(`HTTP ${res.status}: ${msg.slice(0,150)}`);
+        const msg = e?.error?.message||`HTTP ${res.status}`;
+        if (res.status===429){await new Promise(r=>setTimeout(r,45000));return;}
+        if (res.status>=500){await new Promise(r=>setTimeout(r,60000));return;}
+        throw new Error(msg.slice(0,120));
       }
       const data = await res.json();
-      const u = data.usage || {};
-      const inTok  = (u.input_tokens||0) + (u.cache_creation_input_tokens||0) + (u.cache_read_input_tokens||0);
-      const outTok = u.output_tokens||0;
-      if (inTok || outTok) {
-        setUsage(prev => ({ in: prev.in + inTok, out: prev.out + outTok, scans: prev.scans + 1 }));
-        const cost = (inTok*3 + outTok*15) / 1e6;
-        addLog(`Tokens: ${inTok} in / ${outTok} out · ~$${cost.toFixed(3)} this scan`);
-      }
-      const tools = (data.content||[]).filter(b=>b.type==="mcp_tool_use");
-      if (tools.length) addLog(`Tools used: ${[...new Set(tools.map(t=>t.name))].join(", ")}`);
-      const raw = ((data.content||[]).find(b=>b.type==="text")?.text)||"";
-      addLog(`Response: ${raw.length} chars`);
-      const prints = parseArr(raw);
-      if (!prints.length) { addLog("⚠ No valid JSON — will retry next cycle"); if(raw) addLog(`Snippet: ${raw.slice(0,100)}`); return; }
-      const freshIds = new Set();
-      const ichMap = rawFetched?.ichimokuByTicker || {};
+      const raw2 = (data.content||[]).find(b=>b.type==="text")?.text||"";
+      const prints = parseArr(raw2);
+      if (!prints.length){setError("No signals returned");return;}
+      const ichMap = rawFetched?.ichimokuByTicker||{};
       const fresh = prints
         .filter(p=>p.ticker&&p.sig)
         .map(p=>({
           ...p,
-          cat: ALL[p.sig]?.cat||(SQ[p.sqType]?"squeeze":FL[p.sqType]?"flush":"macro"),
-          trade_day: Math.max(1,Math.min(21,parseInt(p.trade_day||p.day||1))),
-          day: Math.max(1,Math.min(3,parseInt(p.day||1))),
-          size:parseInt(p.size)||0, oi:parseInt(p.oi)||0, premium:parseInt(p.premium)||0,
-          sweepOk:!!p.sweepOk, dpOk:!!p.dpOk,
-          staircase_days:parseInt(p.staircase_days)||0,
+          cat:ALL[p.sig]?.cat||(SQ[p.sqType]?"squeeze":FL[p.sqType]?"flush":"macro"),
+          trade_day:Math.max(1,Math.min(21,parseInt(p.trade_day||1))),
+          size:parseInt(p.size)||0,oi:parseInt(p.oi)||0,premium:parseInt(p.premium)||0,
+          sweepOk:!!p.sweepOk,dpOk:!!p.dpOk,staircase_days:parseInt(p.staircase_days)||0,
           time:p.time||new Date().toTimeString().slice(0,8),
           id:p.id||`${p.ticker}-${p.sig}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-          ichimoku: ichMap[p.ticker] || null,  // ← Ichimoku pre-computed client-side from 5m OHLC
+          ichimoku:ichMap[p.ticker]||null,
         }))
-        .map(p=>({...p, winProb:calcWinProb(p)}))
+        .map(p=>({...p,winProb:calcWinProb(p)}))
         .filter(p=>{
-          if (parseInt(p.premium||0) < minPrem) return false;
           const uid=`${p.ticker}-${p.sqType}-${p.strike}-${p.expiry}`;
-          if (seen.current.has(uid)) return false;
-          seen.current.add(uid); freshIds.add(p.id); return true;
+          if(seen.current.has(uid)) return false;
+          seen.current.add(uid); return true;
         });
-      if (fresh.length>0) {
-        if (soundOn&&fresh.some(p=>p.sweepOk&&p.dpOk&&(p.winProb||0)>=60)) beep();
-        setNewIds(freshIds); setTimeout(()=>setNewIds(new Set()),12000);
+      if (fresh.length>0){
+        if(soundOn&&fresh.some(p=>p.sweepOk&&p.dpOk&&(p.winProb||0)>=60)) beep();
         setFeed(prev=>[...fresh,...prev].slice(0,300));
-        // Record in 30-day localStorage memory
-        setHistory(prev => { const next = recordHist(fresh, prev); saveHist(next); return next; });
-        const types=[...new Set(fresh.map(p=>p.sqType).filter(Boolean))];
-        const sc=fresh.filter(p=>(p.staircase_days||0)>=3).length;
-        addLog(`✓ ${fresh.length} signals · ${types.join(", ")} · ${sc} staircase · recorded to 30d memory`);
+        setHistory(prev=>{const n=recordHist(fresh,prev);saveHist(n);return n;});
         setError("");
-      } else addLog(`Got ${prints.length} items — none passed filters`);
+      }
     } catch(e) {
-      setError(e.message.slice(0,100));
-      addLog(`✗ ${e.message.slice(0,150)}`);
+      setError(e.message?.slice(0,100)||"Scan failed");
     } finally { isFetching.current=false; setLoading(false); }
   }; });
 
-  useEffect(() => {
-    if (!ready) return;
-    const t = setTimeout(()=>fetchRef.current?.(),1200);
-    intv.current = setInterval(()=>{ if(!paused) fetchRef.current?.(); }, Math.max(pollSec,60)*1000);
-    return ()=>{ clearTimeout(t); clearInterval(intv.current); };
-  }, [ready, pollSec]);
+  useEffect(()=>{
+    if(!ready) return;
+    const t=setTimeout(()=>fetchRef.current?.(),1200);
+    intv.current=setInterval(()=>{if(!paused)fetchRef.current?.();},Math.max(pollSec,60)*1000);
+    return()=>{clearTimeout(t);clearInterval(intv.current);};
+  },[ready,pollSec]);
 
-  useEffect(()=>{ if(paused) clearInterval(intv.current); }, [paused]);
-  useEffect(() => { const id = setInterval(() => setNowMin(nowETMin()), 30000); return () => clearInterval(id); }, []);
+  useEffect(()=>{if(paused)clearInterval(intv.current);},[paused]);
 
-  const connect = (a, u) => {
-    akRef.current=a; ukRef.current=u;
-    isFetching.current=false; seen.current.clear(); setFeed([]);
-    setReady(true); addLog("Connected · scan starting…");
-  };
+  const connect=(a,u)=>{ akRef.current=a; ukRef.current=u; isFetching.current=false; seen.current.clear(); setFeed([]); setReady(true); };
+  const manualRefresh=()=>{isFetching.current=false;setTimeout(()=>fetchRef.current?.(),100);};
 
-  const manualFetch = () => { isFetching.current=false; setTimeout(()=>fetchRef.current?.(),100); };
-  const savePos = (id,pos) => setPositions(p=>({...p,[id]:pos}));
-  const toggle  = id => setOpenId(p=>p===id?null:id);
-  const effMinProb = gateOn ? Math.max(minProb, WIN_GATE) : minProb;
-  // Tickers in the current rolling feed that have at least one real sweep signal.
-  // Used to drop "useless" pure-DP prints (dp_buy/dp_sell) with no matching sweep.
-  const SWEEP_SIGS = new Set(["cs_dp","call_sweep","ps_dp","put_sweep"]);
-  const PURE_DP_SIGS = new Set(["dp_buy","dp_sell"]);
-  const tickersWithSweep = new Set(feed.filter(p => SWEEP_SIGS.has(p.sig)).map(p => p.ticker));
-  const doFilter = items => items
-    .filter(p =>
-      (p.winProb===null||p.winProb>=effMinProb) &&
-      (!confirmed||(p.sweepOk&&p.dpOk)) &&
-      (!ticker.trim()||p.ticker.includes(ticker.trim().toUpperCase())) &&
-      // Drop pure DP prints with no matching sweep on the same ticker in the recent window
-      (!PURE_DP_SIGS.has(p.sig) || tickersWithSweep.has(p.ticker))
-    )
-    .sort((a,b) => {
-      const ae=(a.staircase_days||0)>=3&&!a.sweepOk?-1:0, be=(b.staircase_days||0)>=3&&!b.sweepOk?-1:0;
-      if (ae!==be) return ae-be;
-      return (ALL[a.sig]?.tier||9)-(ALL[b.sig]?.tier||9)||(b.winProb||0)-(a.winProb||0);
-    });
-
-  if (!ready) return (
-    <div style={{ display:"flex", flexDirection:"column", height:"100vh", fontFamily:"'Inter','Segoe UI',system-ui,sans-serif", background:"#060b10" }}>
-      <Setup onConnect={connect}/>
-    </div>
-  );
-
-  const squeezes = doFilter(feed.filter(p=>p.cat==="squeeze"));
-  const flushes  = doFilter(feed.filter(p=>p.cat==="flush"));
-  const macros   = doFilter(feed.filter(p=>p.cat==="macro"));
-  const topSq    = topBuilds(history, "squeeze", sortMode, 10, gateOn);
-  const topFl    = topBuilds(history, "flush",   sortMode, 10, gateOn);
-  const topMc    = topBuilds(history, "macro",   sortMode, 10, gateOn);
-  const trackedCount = Object.keys(history||{}).length;
-  const stopHits = Object.entries(positions).filter(([,pp]) => {
-    const c = parseFloat(pp?.currentPrice), s = parseFloat(pp?.stopPrice);
-    return !isNaN(c) && !isNaN(s) && s > 0 && c <= s;
-  }).map(([id]) => feed.find(p=>p.id===id)).filter(Boolean);
-  const winLocks = Object.entries(positions).filter(([,pp]) => {
-    const e = parseFloat(pp?.entryPrice), c = parseFloat(pp?.currentPrice);
-    return !isNaN(e) && !isNaN(c) && e > 0 && ((c-e)/e) >= 0.5;
-  }).map(([id]) => feed.find(p=>p.id===id)).filter(Boolean);
-  const mBull = macros.filter(p=>p.sig==="macro_bull").length;
-  const mBear = macros.filter(p=>p.sig==="macro_bear").length;
-  const bias  = mBull>mBear?"BULLISH":mBear>mBull?"BEARISH":"NEUTRAL";
-  const biasC = {BULLISH:"#00ff88",BEARISH:"#ff3355",NEUTRAL:"#556677"}[bias];
-  const exitAlerts = Object.entries(positions).filter(([,p])=>p?.entryPrice).map(([id])=>feed.find(p=>p.id===id)).filter(p=>p&&getHoldStatus(parseInt(p.trade_day||1),p.sqType).action==="exit");
-  const earnAlerts = Object.entries(positions).filter(([,p])=>p?.entryPrice).map(([id])=>feed.find(p=>p.id===id)).filter(p=>p?.earnings?.within_14_days);
-  const hcCount = feed.filter(p=>p.sweepOk&&p.dpOk&&(p.winProb||0)>=65).length;
-  const scCount = feed.filter(p=>(p.staircase_days||0)>=3).length;
-  const gexShort = feed.filter(p=>p.gex?.bias==="short_gamma" && p.cat==="squeeze").length;
-  const gexLong  = feed.filter(p=>p.gex?.bias==="long_gamma"  && p.cat==="flush").length;
-  const gexAmp   = gexShort + gexLong;
+  if(!ready) return <SetupScreen onConnect={connect}/>;
 
   return (
-    <div style={{ fontFamily:"'Inter','Segoe UI',system-ui,sans-serif", background:"#05090e", height:"100vh", display:"flex", flexDirection:"column", overflow:"hidden", color:"#b0c4d8" }}>
-      {exitAlerts.length>0 && (
-        <div className="urgent" style={{ background:"#110600", borderBottom:"1px solid #ff335533", padding:"8px 20px", display:"flex", gap:12, alignItems:"center", flexShrink:0 }}>
-          <span style={{ fontSize:16 }}>⏰</span>
-          <div>
-            <div style={{ fontSize:11, color:"#ff3355", fontWeight:700 }}>EXIT ALERT — Max hold reached</div>
-            <div style={{ fontSize:10, color:"#663322" }}>{exitAlerts.map(p=>`${p?.ticker} @ $${positions[p?.id]?.entryPrice}`).join(" · ")} — Sell today.</div>
+    <div style={{ height:"100vh", display:"flex", flexDirection:"column", background:C.bg }}>
+      <div style={{ background:C.surface, borderBottom:`1px solid ${C.border}`, flexShrink:0 }}>
+        <div style={{ display:"flex", alignItems:"center", padding:"0 24px", height:56 }}>
+          <div style={{ marginRight:32 }}>
+            <span style={{ fontSize:16, fontWeight:800, color:C.text, letterSpacing:"-0.02em" }}>Income Edge</span>
+            <span style={{ fontSize:10, color:C.textMuted, marginLeft:10, letterSpacing:"0.1em" }}>BETA</span>
           </div>
+          {[{id:"scanner",label:"Scanner",icon:"📡"},{id:"income",label:"Income Plan",icon:"💰"},{id:"poly",label:"Polymarket",icon:"🎯"}].map(t=>(
+            <button key={t.id} onClick={()=>setTab(t.id)}
+              style={{ display:"flex", alignItems:"center", gap:6, padding:"0 16px", height:"100%", background:"transparent", border:"none", borderBottom:`2px solid ${tab===t.id?C.blue:"transparent"}`, color:tab===t.id?C.text:C.textMuted, fontSize:13, fontWeight:tab===t.id?600:400, cursor:"pointer", transition:"all .15s", marginRight:4 }}>
+              <span>{t.icon}</span>{t.label}
+            </button>
+          ))}
+          <div style={{ marginLeft:"auto", fontSize:11, color:C.textDim }}>{feed.length} signals · Not financial advice</div>
         </div>
-      )}
-      {earnAlerts.length>0 && (
-        <div style={{ background:"#0e0000", borderBottom:"1px solid #ff444422", padding:"6px 20px", display:"flex", gap:10, alignItems:"center", flexShrink:0 }}>
-          <span style={{ fontSize:12 }}>📅</span>
-          <div style={{ fontSize:9, color:"#cc3333" }}>{earnAlerts.map(p=>`${p?.ticker} earns ${p?.earnings?.next_date}`).join(" · ")} — Exit options before earnings.</div>
-        </div>
-      )}
-      {stopHits.length>0 && (
-        <div className="urgent" style={{ background:"#110005", borderBottom:"1px solid #ff3355", padding:"8px 20px", display:"flex", gap:12, alignItems:"center", flexShrink:0 }}>
-          <span style={{ fontSize:16 }}>🛑</span>
-          <div>
-            <div style={{ fontSize:11, color:"#ff3355", fontWeight:700 }}>STOP HIT — SELL NOW</div>
-            <div style={{ fontSize:10, color:"#663322" }}>{stopHits.map(p=>`${p?.ticker} @ stop $${positions[p?.id]?.stopPrice}`).join(" · ")}</div>
-          </div>
-        </div>
-      )}
-      {winLocks.length>0 && (
-        <div style={{ background:"#001a0e", borderBottom:"1px solid #00ff8844", padding:"6px 20px", display:"flex", gap:10, alignItems:"center", flexShrink:0 }}>
-          <span style={{ fontSize:12 }}>💰</span>
-          <div style={{ fontSize:9, color:"#00cc66" }}>
-            <b>LOCK THE WIN:</b> {winLocks.map(p=>p?.ticker).join(" · ")} at +50%+ — trim 50%, move stop to entry, let the rest ride.
-          </div>
-        </div>
-      )}
-      <div style={{ background:"#060b10", borderBottom:"1px solid #0e1a24", flexShrink:0 }}>
-        <div style={{ display:"flex", alignItems:"center", gap:0, padding:"0 20px", height:50 }}>
-          <div style={{ marginRight:20 }}>
-            <div style={{ fontSize:10, color:"#7591a8", letterSpacing:"0.2em", fontWeight:500 }}>UNUSUAL WHALES · PAID</div>
-            <div style={{ fontSize:16, fontWeight:700, color:"#eaf2ff", letterSpacing:"-0.005em" }}>⚡ Squeeze &amp; Flush Scanner</div>
-          </div>
-          <div style={{ width:1, height:30, background:"#1a2a3a", marginRight:20 }}/>
-          <div style={{ display:"flex", alignItems:"center", gap:8, marginRight:20 }}>
-            <div className={loading?"":"live"} style={{ width:8, height:8, borderRadius:"50%", background:error?"#ff3355":loading?"#ffe033":paused?"#6e88a0":"#00ff88", boxShadow:`0 0 8px ${error?"#ff3355":loading?"#ffe033":paused?"#6e88a0":"#00ff88"}66` }}/>
-            <span style={{ fontSize:11, fontWeight:600, color:error?"#ff3355":loading?"#ffe033":paused?"#8aa3b8":"#00ff88", letterSpacing:"0.1em" }}>{error?"ERROR":loading?"SCANNING…":paused?"PAUSED":"LIVE"}</span>
-          </div>
-          <div style={{ width:1, height:30, background:"#1a2a3a", marginRight:20 }}/>
-          <div style={{ marginRight:20 }}>
-            <div style={{ fontSize:10, color:"#7591a8", letterSpacing:"0.15em", fontWeight:500 }}>MARKET</div>
-            <div style={{ fontSize:13, fontWeight:700, color:biasC, letterSpacing:"0.03em" }}>{bias}</div>
-          </div>
-          {hcCount>0 && <div style={{ marginRight:8, padding:"4px 10px", background:"#ffe03318", border:"1px solid #ffe03344", fontSize:10, fontWeight:600, color:"#ffe033", borderRadius:3 }}>{hcCount} HIGH CONV</div>}
-          {scCount>0 && <div style={{ marginRight:8, padding:"4px 10px", background:"#00ddff18", border:"1px solid #00ddff44", fontSize:10, fontWeight:600, color:"#00ddff", borderRadius:3 }}>📊 {scCount} STAIRCASE</div>}
-          {gexAmp>0 && <div title={`GEX amplifying ${gexAmp} setup${gexAmp>1?"s":""} — dealers ${gexShort?"short gamma on "+gexShort+" squeeze"+(gexShort>1?"s":""):""}${gexShort&&gexLong?", ":""}${gexLong?"long gamma on "+gexLong+" flush"+(gexLong>1?"es":""):""}`} style={{ marginRight:8, padding:"4px 10px", background:"#ff88cc18", border:"1px solid #ff88cc55", fontSize:10, fontWeight:600, color:"#ff88cc", borderRadius:3 }}>🔥 {gexAmp} GEX{gexShort>0?` ↑${gexShort}`:""}{gexLong>0?` ↓${gexLong}`:""}</div>}
-          {trackedCount>0 && <div onClick={()=>setViewMode(v=>v==="top10"?"live":"top10")} title={viewMode==="top10" ? "Click to return to LIVE view" : "Click to open the 30-day backup list — pre-squeeze builds tracked across days"} style={{ marginRight:8, padding:"4px 10px", background: viewMode==="top10" ? "#66ccff33" : "#66ccff18", border:`1px solid ${viewMode==="top10" ? "#66ccff" : "#66ccff44"}`, fontSize:10, fontWeight:700, color:"#66ccff", borderRadius:3, cursor:"pointer", letterSpacing:"0.04em" }}>🧠 {trackedCount} TRACKED · {viewMode==="top10" ? "← BACK TO LIVE" : "VIEW 30D"}</div>}
-          {usage.scans>0 && (() => {
-            const cost = (usage.in*3 + usage.out*15) / 1e6;
-            const perScan = cost / usage.scans;
-            return <div title={`Session: ${usage.scans} scan${usage.scans>1?"s":""} · ${usage.in.toLocaleString()} in / ${usage.out.toLocaleString()} out tokens · ~$${perScan.toFixed(3)}/scan · model: claude-sonnet-4-5 ($3/M in, $15/M out)`} style={{ marginRight:8, padding:"4px 10px", background:"#ffcc6618", border:"1px solid #ffcc6644", fontSize:10, fontWeight:600, color:"#ffcc66", borderRadius:3 }}>💰 ${cost.toFixed(2)} · {usage.scans} scan{usage.scans>1?"s":""}</div>;
-          })()}
-          {error && <div style={{ padding:"3px 10px", background:"#ff000011", border:"1px solid #ff333322", fontSize:9, color:"#ff3355", maxWidth:200, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>✗ {error}</div>}
-          <div style={{ marginLeft:"auto", display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>
-            {/* Ticker search — bigger, with clear button */}
-            <div style={{ position:"relative", display:"flex", alignItems:"center" }}>
-              <input value={ticker} onChange={e=>setTicker(e.target.value.toUpperCase())} placeholder="🔎 TICKER"
-                style={{ width:140, background:"#080e16", border:`1px solid ${ticker?"#ffe03355":"#15212e"}`, color:"#d0deec", padding:"7px 28px 7px 12px", fontSize:13, outline:"none", borderRadius:4, letterSpacing:"0.05em", fontWeight:600 }}/>
-              {ticker && (
-                <button onClick={()=>setTicker("")} title="Clear" style={{ position:"absolute", right:4, top:"50%", transform:"translateY(-50%)", background:"transparent", border:"none", color:"#7591a8", fontSize:16, cursor:"pointer", padding:"0 6px", lineHeight:1 }}>✕</button>
-              )}
-            </div>
-            {/* Filter selects — readable font */}
-            <select value={minPrem} onChange={e=>setMinPrem(+e.target.value)} title="Minimum premium filter" style={{ background:"#080e16", border:"1px solid #15212e", color:"#9fb5c8", padding:"7px 8px", fontSize:12, outline:"none", cursor:"pointer", borderRadius:3 }}>
-              {[0,50000,100000,250000,500000].map(v=><option key={v} value={v}>{v===0?"Any $":v>=1e6?`$${v/1e6}M+`:`$${v/1e3}K+`}</option>)}
-            </select>
-            <select value={minProb} onChange={e=>setMinProb(+e.target.value)} title="Minimum win probability" style={{ background:"#080e16", border:"1px solid #15212e", color:"#9fb5c8", padding:"7px 8px", fontSize:12, outline:"none", cursor:"pointer", borderRadius:3 }}>
-              {[70,60,50,40,30,0].map(v=><option key={v} value={v}>{v===0?"Any win%":`Win ${v}%+`}</option>)}
-            </select>
-            <select value={pollSec} onChange={e=>setPollSec(+e.target.value)} title="Poll interval" style={{ background:"#080e16", border:"1px solid #15212e", color:"#9fb5c8", padding:"7px 8px", fontSize:12, outline:"none", cursor:"pointer", borderRadius:3 }}>
-              {[60,90,120,180].map(v=><option key={v} value={v}>{v}s poll</option>)}
-            </select>
-            {/* Toggle buttons — bigger fonts, tooltips */}
-            {[
-              { icon:"📡", label:"LIVE",   active:viewMode==="live",  onClick:()=>setViewMode("live"),  ac:"#00ff88", tip:"Live feed view" },
-              { icon:"🏆", label:"30D",   active:viewMode==="top10", onClick:()=>setViewMode("top10"), ac:"#66ccff", tip:"30-day backup — tracked builds" },
-              { icon:"🎯", label: gateOn?"70%":"OFF", active:gateOn, onClick:()=>setGateOn(g=>!g), ac:"#00ff88", tip:"70% win-prob gate" },
-              { icon:"⚡", label:"CONF", active:confirmed, onClick:()=>setConfirmed(p=>!p), ac:"#ffe033", tip:"Only confirmed (sweep + DP)" },
-              { icon:soundOn?"🔔":"🔕", label:"", active:soundOn, onClick:()=>setSoundOn(p=>!p), ac:"#00ff88", tip:"Sound alerts" },
-              { icon:"⟳", label:"", active:false, onClick:manualFetch, disabled:loading, tip:"Manual refresh" },
-              { icon:paused?"▶":"⏸", label:"", active:paused, onClick:()=>setPaused(p=>!p), ac:"#6080a0", tip:paused?"Resume":"Pause" },
-              { icon:"≡", label:"LOG", active:showLog, onClick:()=>setShowLog(p=>!p), ac:"#7aaed0", tip:"Activity log" },
-            ].map(({icon,label,active,onClick,disabled,ac="#ffe033",tip})=>(
-              <button key={icon+label} onClick={disabled?undefined:onClick} title={tip}
-                style={{ padding:"7px 11px", background:active?"#080e16":"transparent", border:`1px solid ${active?ac+"66":"#15212e"}`, color:disabled?"#3e5268":active?ac:"#7591a8", fontSize:12, fontWeight:600, cursor:disabled?"default":"pointer", display:"flex", alignItems:"center", gap:5, letterSpacing:"0.06em", borderRadius:3 }}>
-                {icon}{label&&<span>{label}</span>}
-              </button>
-            ))}
-          </div>
-        </div>
-        {(() => {
-          // PLAYBOOK BAR — current step (based on ET clock) + next step preview
-          let curIdx = -1;
-          for (let i = 0; i < PLAYBOOK.length; i++) { if (PLAYBOOK[i].t <= nowMin) curIdx = i; else break; }
-          const cur  = curIdx >= 0 ? PLAYBOOK[curIdx]  : null;
-          const nxt  = PLAYBOOK[curIdx + 1] || null;
-          const nowLabel = (() => { const h = Math.floor(nowMin/60), m = nowMin%60; const am = h<12; const hh = ((h+11)%12)+1; return `${hh}:${m.toString().padStart(2,"0")} ${am?"AM":"PM"} ET`; })();
-          return (
-            <div style={{ borderTop:"1px solid #0e1a24", background:"#04080c" }}>
-              <div onClick={()=>setPbOpen(o=>!o)} style={{ display:"flex", gap:14, padding:"7px 20px", cursor:"pointer", alignItems:"center", flexWrap:"wrap" }}>
-                <span style={{ fontSize:11, color:"#7591a8", letterSpacing:"0.12em", fontWeight:600 }}>📖 PLAYBOOK</span>
-                <span style={{ fontSize:10, color:"#5a7a92" }}>{nowLabel}</span>
-                {cur ? (
-                  <span style={{ fontSize:11, color:cur.color, fontWeight:600 }}>NOW · {cur.time} · {cur.title}</span>
-                ) : (
-                  <span style={{ fontSize:11, color:"#5a7a92", fontStyle:"italic" }}>Pre-market starts at 8:30 AM ET</span>
-                )}
-                {nxt && (
-                  <span style={{ fontSize:10, color:"#7591a8" }}>→ NEXT: <span style={{ color:nxt.color }}>{nxt.time} · {nxt.title}</span></span>
-                )}
-                <span style={{ marginLeft:"auto", display:"flex", gap:14, alignItems:"center" }}>
-                  <span style={{ fontSize:10, color:"#5a7a92" }}>{feed.length} signals</span>
-                  <span onClick={e=>{e.stopPropagation(); setShowLegend(s=>!s);}} title="Show/hide icon legend" style={{ fontSize:10, color:showLegend?"#ffe033":"#5a7a92", border:`1px solid ${showLegend?"#ffe03344":"#1a2a3a"}`, padding:"2px 7px", borderRadius:3, cursor:"pointer" }}>?</span>
-                  <span style={{ fontSize:10, color:"#7591a8" }}>{pbOpen ? "▴ collapse" : "▾ expand"}</span>
-                </span>
-              </div>
-              {pbOpen && (
-                <div style={{ padding:"12px 20px 16px", borderTop:"1px solid #0e1a24", background:"#06101a" }}>
-                  {cur && (
-                    <div style={{ background:"#080e16", border:`1px solid ${cur.color}55`, borderLeft:`3px solid ${cur.color}`, padding:"10px 14px", marginBottom:10, borderRadius:4 }}>
-                      <div style={{ fontSize:10, color:cur.color, fontWeight:700, letterSpacing:"0.12em", marginBottom:4 }}>NOW · {cur.phase.toUpperCase()}</div>
-                      <div style={{ fontSize:14, color:"#eaf2ff", fontWeight:700, marginBottom:6 }}>{cur.time} · {cur.title}</div>
-                      <div style={{ fontSize:12, color:"#b0c4d8", lineHeight:1.6 }}>{cur.body}</div>
-                    </div>
-                  )}
-                  {nxt && (
-                    <div style={{ background:"#04080c", border:`1px solid #0e1a24`, borderLeft:`3px solid ${nxt.color}88`, padding:"8px 14px", marginBottom:10, borderRadius:4, opacity:0.85 }}>
-                      <div style={{ fontSize:10, color:nxt.color, fontWeight:600, letterSpacing:"0.12em", marginBottom:3 }}>NEXT · {nxt.phase.toUpperCase()}</div>
-                      <div style={{ fontSize:12, color:"#cfdde9", fontWeight:600, marginBottom:4 }}>{nxt.time} · {nxt.title}</div>
-                      <div style={{ fontSize:11, color:"#9bb3c6", lineHeight:1.55 }}>{nxt.body}</div>
-                    </div>
-                  )}
-                  <div style={{ display:"flex", gap:6, flexWrap:"wrap", marginTop:10 }}>
-                    {PLAYBOOK.map((s, i) => {
-                      const isCur = i === curIdx, isPast = i < curIdx;
-                      return (
-                        <span key={s.t} style={{ fontSize:9, padding:"3px 7px", borderRadius:3, border:`1px solid ${isCur?s.color:"#1a2a3a"}`, background:isCur?s.color+"22":"transparent", color:isCur?s.color:isPast?"#3a5060":"#7591a8", textDecoration:isPast?"line-through":"none", letterSpacing:"0.04em" }} title={s.title}>
-                          {s.time}
-                        </span>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-              {showLegend && (
-                <div style={{ display:"flex", gap:18, padding:"6px 20px", borderTop:"1px solid #0e1a24", background:"#04080c", flexWrap:"wrap" }}>
-                  {[{i:"📊",t:"Staircase = 3+ day DP accumulation",c:"#00ddff"},{i:"👀",t:"Early = staircase, no sweep yet",c:"#22aacc"},{i:"⚡",t:"Both = sweep + DP confirmed",c:"#ffe033"},{i:"γ↑",t:"Short gamma = squeeze amplified",c:"#ff88cc"},{i:"γ↓",t:"Long gamma = flush amplified",c:"#ff6600"},{i:"⚠",t:"High IV = use spread",c:"#ffaa44"}].map(({i,t,c})=>(
-                    <span key={i} style={{ fontSize:10, display:"flex", gap:6, alignItems:"center" }}><span style={{color:c, fontWeight:700}}>{i}</span><span style={{color:"#7591a8"}}>{t}</span></span>
-                  ))}
-                </div>
-              )}
-            </div>
-          );
-        })()}
       </div>
-
-      <div style={{ display:"grid", gridTemplateColumns:showLog?"1fr 1fr 0.7fr 200px":"1fr 1fr 0.7fr", flex:1, overflow:"hidden", background:"#05090e" }}>
-        <Column title="🚀 SQUEEZES" color="#00ff88" items={squeezes} openId={openId} onToggle={toggle} positions={positions} onSave={savePos} newIds={newIds} viewMode={viewMode} sortMode={sortMode} topEntries={topSq} macroBias={bias}/>
-        <Column title="🩸 FLUSHES"  color="#ff3355" items={flushes}  openId={openId} onToggle={toggle} positions={positions} onSave={savePos} newIds={newIds} viewMode={viewMode} sortMode={sortMode} topEntries={topFl} macroBias={bias}/>
-        <Column title="📊 MACRO/ETF" color="#66ccff" items={macros}  openId={openId} onToggle={toggle} positions={positions} onSave={savePos} newIds={newIds} viewMode={viewMode} sortMode={sortMode} topEntries={topMc} macroBias={bias}/>
-        {showLog && (
-          <div style={{ display:"flex", flexDirection:"column", background:"#04080c", borderLeft:"1px solid #0e1a24" }}>
-            <div style={{ padding:"10px 14px", borderBottom:"1px solid #1a2a3a", fontSize:11, color:"#a7c0d4", letterSpacing:"0.14em", fontWeight:700 }}>ACTIVITY LOG</div>
-            <div style={{ overflowY:"auto", flex:1, padding:"10px 12px" }}>
-              {logs.map((l,i)=><div key={i} style={{ fontSize:11, color:l.includes("✓")?"#44ddaa":l.includes("✗")?"#ff7799":"#9bb3c6", marginBottom:5, lineHeight:1.6, paddingLeft:10, borderLeft:`2px solid ${l.includes("✓")?"#00ff8866":l.includes("✗")?"#ff335566":"#1a2a3a"}`, fontFamily:"'JetBrains Mono','SF Mono',Menlo,Consolas,monospace" }}>{l}</div>)}
-              {!logs.length && <div style={{ fontSize:11, color:"#7591a8", fontStyle:"italic" }}>Waiting for first scan…</div>}
-            </div>
-          </div>
-        )}
-      </div>
-
-      <div style={{ padding:"6px 20px", background:"#04080c", borderTop:"1px solid #0e1a24", fontSize:10, color:"#7591a8", display:"flex", justifyContent:"space-between", flexShrink:0, gap:12 }}>
-        <span>flow-alerts · darkpool · market-tide · earnings · congress · insider · news · fda · shorts · gex · vol · price-levels · 30d backup</span>
-        <span style={{whiteSpace:"nowrap", color:"#8aa3b8"}}>⚠ Education only · Not financial advice</span>
+      <div style={{ flex:1, overflow:"hidden" }}>
+        {tab==="scanner"&&<ScannerTab feed={feed} loading={loading} error={error} soundOn={soundOn} setSoundOn={setSoundOn} onRefresh={manualRefresh} paused={paused} setPaused={setPaused} pollSec={pollSec} setPollSec={setPollSec} ready={ready} history={history}/>}
+        {tab==="income"&&<div style={{ height:"100%", overflowY:"auto" }}><IncomePlanTab claudeKey={akRef.current}/></div>}
+        {tab==="poly"&&<div style={{ height:"100%", overflowY:"auto" }}><PolymarketTab claudeKey={akRef.current}/></div>}
       </div>
     </div>
   );
 }
 
 ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
-  </script>
+</script>
 </body>
 </html>
