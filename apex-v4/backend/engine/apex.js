@@ -17,9 +17,9 @@ export function calcApexScore(metrics) {
   if (earnRisk >= 3) s *= 0.60;
   else if (earnRisk >= 2) s *= 0.80;
 
-  const spread = quote?.spreadPct ?? 0;
-  if (spread > 1.0) s *= 0.80;
-  else if (spread > 0.5) s *= 0.90;
+  const spread = quote?.spreadPct;
+  if (Number.isFinite(spread) && spread > 1.0) s *= 0.80;
+  else if (Number.isFinite(spread) && spread > 0.5) s *= 0.90;
 
   if (stableScore?.adxPts === 0) s *= 0.85;
 

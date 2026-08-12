@@ -191,7 +191,10 @@ SmartFlow = clamp(raw, -100, +100)
 
 **Purpose**: Liquidity filter.
 
-**Inputs**: `/quote` endpoint → bid, ask fields.
+**Inputs**: Positive, non-crossed bid and ask fields from a two-sided stock quote.
+Twelve Data's `/quote` response is used for current price but does not reliably
+provide that market, so a missing side is `CHECK`/unverified rather than a
+manufactured spread.
 
 **Computation**:
 ```
@@ -201,7 +204,8 @@ spreadPct = spread / ((ask + bid) / 2) × 100
 
 **Bands**: TIGHT (<0.1%) · NORMAL (0.1–0.5%) · WIDE (0.5–1%) · ILLIQUID (>1%)
 
-**Filter**: spreadPct > 1% → APEX score penalty ×0.8; > 0.5% → ×0.9.
+**Filter**: verified spreadPct > 1% → APEX score penalty ×0.8; > 0.5% → ×0.9.
+Unknown spread is neutral in scoring and remains visibly unverified.
 
 ---
 
@@ -242,7 +246,7 @@ risk:
 
 **Penalties** applied after weighted sum:
 - Earnings risk 3 → ×0.6 | risk 2 → ×0.8
-- Spread > 1% → ×0.8 | > 0.5% → ×0.9
+- Verified spread > 1% → ×0.8 | > 0.5% → ×0.9; unknown stays unverified
 - ADX < 15 (chop) → ×0.85
 
 **Output**: 0–100. Elite ≥80 · Strong 65–79 · Moderate 50–64 · Weak 35–49 · Poor <35.

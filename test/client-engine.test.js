@@ -10,7 +10,7 @@ function loadEngine() {
   assert.ok(start >= 0 && end > start, "V4 engine block is present");
   const context = { console, Date, Math, Number, Object, Array, Set, String, JSON };
   vm.createContext(context);
-  vm.runInContext(`${html.slice(start, end)}\nglobalThis.computeV4 = computeV4; globalThis.historicalMoveAudit = historicalMoveAudit; globalThis.analyzeChartSetup = analyzeChartSetup; globalThis.buildOptionStrikeStudy = buildOptionStrikeStudy;`, context);
+  vm.runInContext(`${html.slice(start, end)}\nglobalThis.computeV4 = computeV4; globalThis.historicalMoveAudit = historicalMoveAudit; globalThis.analyzeChartSetup = analyzeChartSetup; globalThis.buildOptionStrikeStudy = buildOptionStrikeStudy; globalThis.buildOptionBudgetStudy = buildOptionBudgetStudy;`, context);
   return context;
 }
 
@@ -98,6 +98,8 @@ test("options lesson references a nearby observed call strike and chart support"
 
   assert.equal(study.observedCall.label, "$26C");
   assert.equal(study.callReferenceUsable, true);
+  assert.equal(study.directionalAction, "BUY CALL RESEARCH");
+  assert.equal(study.directionalContract.label, "$26C");
   assert.equal(study.stance, "research");
   assert.ok(study.putReference < 25);
   assert.equal(study.estimatedCashSecuredCollateral, Math.round(study.putReference * 100));
@@ -120,10 +122,38 @@ test("gamma flush requires short gamma, put buying, and falling price", () => {
   ], history);
   assert.equal(confirmed.flush.key, "gamma_flush");
   assert.equal(confirmed.stance, "avoid_bullish");
+  assert.equal(confirmed.directionalAction, "BUY PUT RESEARCH");
+  assert.equal(confirmed.directionalContract.label, "$24P");
 
   const dampened = engine.buildOptionStrikeStudy({ last:25, direction:-1, score:75 }, [
     { ...baseFlow, gex:{ bias:"long_gamma" } },
   ], history);
   assert.equal(dampened.flush.key, "gamma_unconfirmed");
   assert.match(dampened.flush.label, /UNCONFIRMED/);
+  assert.equal(dampened.directionalContract, null);
+});
+
+test("option budget converts a $50 limit into a one-contract ask ceiling", () => {
+  const engine = loadEngine();
+  const optionStudy = {
+    directionalAction:"BUY CALL RESEARCH",
+    directionalContract:{ label:"$65C", expiry:"Sep 18" },
+  };
+
+  const fullRisk = engine.buildOptionBudgetStudy(optionStudy, 50, 100);
+  assert.equal(fullRisk.maxPremium, 50);
+  assert.equal(fullRisk.maxAskPerShare, 0.5);
+  assert.equal(fullRisk.ready, true);
+
+  const dangerZone = engine.buildOptionBudgetStudy(optionStudy, 50, 30);
+  assert.equal(dangerZone.maxPremium, 15);
+  assert.equal(dangerZone.maxAskPerShare, 0.15);
+});
+
+test("option budget never invents a contract", () => {
+  const engine = loadEngine();
+  const study = engine.buildOptionBudgetStudy({}, 50, 100);
+  assert.equal(study.contract, null);
+  assert.equal(study.action, null);
+  assert.equal(study.ready, false);
 });

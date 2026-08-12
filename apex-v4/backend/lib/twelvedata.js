@@ -88,7 +88,9 @@ export class TwelveDataClient {
     );
   }
 
-  // Latest quote with bid/ask for spread calculation.
+  // Latest price/volume quote. Twelve Data does not provide a dependable
+  // two-sided US stock bid/ask here, so callers must leave spread unverified
+  // unless both positive, non-crossed fields are explicitly present.
   // Correct endpoint is /quote (NOT /quotes — that returns 404).
   async getQuote(symbols) {
     const sym  = Array.isArray(symbols) ? symbols.join(',') : symbols;

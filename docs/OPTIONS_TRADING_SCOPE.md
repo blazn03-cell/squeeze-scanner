@@ -56,32 +56,32 @@ An alert is a rules match, not confirmation that the trade is “right.” Forwa
 ## Position sizing in the app
 
 The simple view asks how much money the reader is using and how much they are
-willing to lose on one trade, then sizes each candidate against that.
+willing to lose on one trade. It converts that into a **maximum long-option
+premium**, not a share count:
 
-It sizes **shares of the underlying only.** If licensed flow reports recent
-ask-side call buying, the screen may repeat the observed strike and expiry as a
-research reference. It does not choose a different contract or mark the observed
-contract actionable, because Gate B above cannot be satisfied without a live
-contract quote source. The scope note is shown to the reader in the app, not just
-recorded here.
+```text
+maximum premium = option budget × maximum loss percentage
+maximum displayed option ask for one contract = maximum premium / 100
+```
+
+If licensed flow reports a recent ask-side call that agrees with a bullish
+underlying setup, the screen may repeat that exact strike and expiry as a
+`BUY CALL RESEARCH` reference. A confirmed gamma-flush setup may similarly repeat
+the exact observed put as `BUY PUT RESEARCH`. It does not choose a cheaper strike,
+estimate fair value, or mark either contract actionable, because Gate B cannot be
+satisfied without a live option quote source.
 
 Rules the implementation follows:
 
-- **A zero result is never rounded up to one.** If the budget does not cover a
-  single share, the answer is zero and the screen says why.
-- **Two independent limits**, and the smaller wins: what the budget can buy, and
-  what the stated risk-per-trade allows.
-- **The stop distance is 1.5 × ATR** — a stated convention meaning "further than
-  this stock's normal daily swing", not a prediction. The app says so in plain
-  words, and says that a gap through the stop loses more than the figure shown.
-- **No ATR, no risk figure.** If volatility is unavailable the app sizes on the
-  budget alone and reports no dollars-at-risk rather than inventing one.
+- **No observed contract, no strike.** The screen does not invent an option
+  contract from the stock price alone.
+- **The premium ceiling is not a quote.** A broker ask above it means skip; an ask
+  below it still requires the Gate B spread, freshness, volume, and open-interest
+  checks.
+- **Only defined-premium long options are budgeted.** Naked short options and
+  undefined-risk combinations are not sized or recommended.
 - **The amount never leaves the device.** It is kept in localStorage; there is no
   server to send it to.
-
-Ranking follows from this: a high-scoring setup the reader cannot afford is not
-the best option *for them*, so affordable candidates are listed first and the
-rest carry the reason they were excluded.
 
 ## 0DTE and 1DTE
 

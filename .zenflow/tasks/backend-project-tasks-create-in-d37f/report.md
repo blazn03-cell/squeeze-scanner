@@ -11,18 +11,22 @@
 - Added a 1%-100% planned loss control with escalating warnings and a red danger zone at 30% or more.
 - Corrected gamma-flush classification to require short-gamma GEX, ask-side put flow, and falling price; long gamma is now described as usually dampening moves.
 - Added beginner call-strike references from recent licensed ask-side flow and cash-secured/defined-risk put-selling lessons around chart support, without an execution path.
+- Replaced the `$64 per share` affordability message with an option research setup that repeats only a qualifying observed call or put contract.
+- Converted the local budget and planned-loss percentage into a maximum long-option premium and one-contract displayed ask ceiling; `$50` at `100%` now shows `$50` total and `$0.50` per option unit.
+- Stopped APEX from filling a missing bid with zero and an ask with the last price. One-sided quotes now return `spreadPct: null`, display `CHECK`, and do not receive a false tight-spread label or wide-spread penalty.
 - Corrected Twelve Data batching documentation: batching reduces requests, but credits are counted per symbol.
 
 ## Verification results
 
 - `npm install`: passed with zero reported vulnerabilities.
-- `npm test`: 11 of 11 tests passed.
+- `npm test`: 20 of 20 tests passed.
 - `npm run check:release`: passed.
 - Node syntax checks: passed.
 - JSX parse: passed.
 - Local smoke test: home page returned 200 and `/api/health` returned `ok: true`.
 - APEX Render smoke test: `npm ci` passed; `/api/health` returned `ok: true` without a key and `/api/scan` returned `NO_PROVIDER_CONFIGURED` without crashing.
 - Missing-key smoke test: `/api/bars` returned the expected visible `NO_PROVIDER_CONFIGURED` state without crashing the server.
+- Beginner-view browser check: `$50` at `100%` rendered a `$50` premium ceiling and `$0.50` maximum displayed option ask, with no share-cost rejection.
 - `git diff --check`: passed; Git only reported existing line-ending notices.
 
 ## Challenges

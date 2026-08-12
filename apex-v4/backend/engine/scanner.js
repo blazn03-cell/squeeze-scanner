@@ -9,6 +9,7 @@ import { calcStableScore } from './stableScore.js';
 import { calcEarlyEntry }  from './earlyEntry.js';
 import { calcEarningsRisk } from './earnings.js';
 import { calcApexScore, calcDirection, calcConfidence, calcRegime } from './apex.js';
+import { normalizeStockQuote } from './quote.js';
 
 export async function scanSymbol(symbol, tdClient, opts = {}) {
   const { withEarnings = false } = opts;
@@ -26,11 +27,7 @@ export async function scanSymbol(symbol, tdClient, opts = {}) {
   if (!ind) return null;
 
   const q = (Array.isArray(quoteRaw) ? quoteRaw[0] : quoteRaw) ?? {};
-  const bid        = parseFloat(q.bid) || 0;
-  const ask        = parseFloat(q.ask) || ind.price;
-  const mid        = (ask + bid) / 2;
-  const spreadPct  = mid > 0 ? ((ask - bid) / mid) * 100 : 0;
-  const quote      = { bid, ask, spreadPct: +spreadPct.toFixed(3), last: parseFloat(q.close) || ind.price };
+  const quote = normalizeStockQuote(q, ind.price);
 
   const atrPct      = calcAtrPct(ind);
   const relVol      = calcRelVol(ind);
@@ -71,6 +68,7 @@ export async function scanSymbol(symbol, tdClient, opts = {}) {
     flow:         smartFlow?.flow    ?? null,
     flowBand:     smartFlow?.band    ?? null,
     spreadPct:    quote.spreadPct,
+    spreadVerified: quote.spreadVerified,
     earningsRisk: earnings.risk,
     earningsDate: earnings.date,
     earningsDays: earnings.daysToEarnings,

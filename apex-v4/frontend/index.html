@@ -378,7 +378,8 @@ function _renderRows(rows) {
     const cfc  = scoreColor(r.confidence, 75, 50);
     const sqzC = sqzColor(r.sqzState);
     const flC  = (r.flow??0) > 25 ? 'var(--green)' : (r.flow??0) < -25 ? 'var(--red)' : 'var(--muted)';
-    const spC  = (r.spreadPct??0) > 1 ? 'var(--red)' : (r.spreadPct??0) > 0.5 ? 'var(--orange)' : 'var(--muted)';
+    const hasSpread = Number.isFinite(r.spreadPct);
+    const spC  = !hasSpread ? 'var(--muted)' : r.spreadPct > 1 ? 'var(--red)' : r.spreadPct > 0.5 ? 'var(--orange)' : 'var(--green)';
     const id   = r.symbol;
     return `<tr data-id="${id}" onclick="toggleRow('${id}')">
       <td class="sym">${r.symbol}</td>
@@ -392,7 +393,7 @@ function _renderRows(rows) {
       <td>${r.darvasState ? pill(r.darvasState, r.darvasState==='BREAKOUT' ? 'var(--yellow)' : 'var(--muted)') : '<span style="color:var(--dim)">—</span>'}</td>
       <td>${r.sqzState ? pill(r.sqzState, sqzC) : '<span style="color:var(--dim)">—</span>'}</td>
       <td><span class="num" style="color:${flC}">${r.flow??'—'}</span></td>
-      <td><span style="color:${spC}">${r.spreadPct!=null ? r.spreadPct.toFixed(2)+'%' : '—'}</span></td>
+      <td><span style="color:${spC}">${hasSpread ? r.spreadPct.toFixed(2)+'%' : 'CHECK'}</span></td>
       <td>${earnBadge(r.earningsRisk)}</td>
     </tr>
     <tr id="dr-${id}" style="display:none"><td colspan="13"><div class="detail-inner" id="di-${id}"></div></td></tr>`;
@@ -501,7 +502,7 @@ async function lookupSymbol() {
         ['VWAP',       r.vwap?'$'+r.vwap:'—', 'var(--blue)'],
       ]},
       { title:'Risk', rows:[
-        ['Spread',        r.spreadPct!=null?r.spreadPct+'%':'—',   r.spreadPct>1?'var(--red)':'var(--green)'],
+        ['Spread',        Number.isFinite(r.spreadPct)?r.spreadPct+'%':'Unverified', Number.isFinite(r.spreadPct)?(r.spreadPct>1?'var(--red)':'var(--green)'):'var(--muted)'],
         ['Earnings Date', r.earningsDate||'CLEAR',                  r.earningsRisk===3?'var(--red)':r.earningsRisk>=1?'var(--yellow)':'var(--green)'],
         ['Earn Risk',     ['CLEAR','WATCH','CAUTION','DANGER'][r.earningsRisk??0], r.earningsRisk===3?'var(--red)':r.earningsRisk>=1?'var(--yellow)':'var(--green)'],
         ['Early Signals', r.earlySignals?.join(', ')||'none',       'var(--muted)'],

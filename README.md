@@ -31,7 +31,7 @@ in [docs/RENDER_DEPLOY.md](docs/RENDER_DEPLOY.md).
 
 - The daily-bar engine ranks the **underlying stock**. It does not select or validate an option contract.
 - Price and volume can label a generic squeeze/flush proxy. A gamma-flush label requires recent ask-side put flow, short-gamma GEX, and falling price from the optional licensed feed; candles alone never claim gamma positioning.
-- When recent ask-side call flow includes a strike, the beginner view repeats that same/near strike as a research reference only. It still lacks live option bid/ask, delta, IV, volume, and open-interest validation.
+- When qualifying flow agrees with direction, the beginner view repeats the observed call or put strike as a research reference and converts the user's loss limit into a maximum premium/ask ceiling. It still lacks live option bid/ask, delta, IV, volume, and open-interest validation.
 - Selling puts is shown only as a cash-secured or defined-risk lesson around chart support. The app does not submit short-option orders or approve naked short puts.
 - Every surfaced stock must be at least $10 with at least $25M estimated average daily dollar volume.
 - A live stock spread at or below 0.25% is marked `TIGHT`; missing quotes are marked `CHECK`, never assumed liquid.

@@ -13,6 +13,8 @@
 - Added educational candle charts, pattern explanations, study zones, and invalidation lines.
 - Expanded planned loss-per-trade input through 100% with a danger-zone warning beginning at 30%.
 - Corrected gamma-flush mechanics and added observed-strike call/cash-secured-put research lessons.
+- Replaced the beginner share-affordability message with observed-contract call/put research and a budget-derived option-premium ceiling.
+- Made missing or one-sided bid/ask data visibly unverified instead of manufacturing a spread from the last price.
 - Pointed the Render Blueprint at `apex-v4` and verified non-crashing startup before provider configuration.
-- Added pattern tests and verified install, tests, release checks, JSX parsing, startup, home page, and health endpoint.
+- Added pattern, option-budget, and quote-normalization tests and verified install, tests, release checks, JSX parsing, startup, home page, and health endpoint.
 - Recorded the completed work in `report.md`.
