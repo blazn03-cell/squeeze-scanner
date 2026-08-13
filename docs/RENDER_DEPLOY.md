@@ -1,6 +1,27 @@
-# Put APEX V4 on Render
+# APEX V4 on Render
 
-The existing `wallstreethustler.com` site is live on Vercel. Keep it there while the new Render service is tested. Buying or registering a domain through Vercel does not lock the domain to Vercel hosting; DNS can point to Render later.
+## Current production state (2026-08-13)
+
+- Render service: `squeeze-scanner-apex-v4`
+- Canonical domain: `https://wallstreethustler.com`
+- Render fallback: `https://squeeze-scanner-apex-v4.onrender.com`
+- Health endpoint: `/api/health`
+- Git branch: `main`, auto-deploy enabled
+- Vercel no longer serves the production alias. It remains the registrar and DNS
+  provider for the domain.
+
+The DNS records are:
+
+```text
+@    A       216.24.57.1
+www  CNAME   squeeze-scanner-apex-v4.onrender.com
+```
+
+Do not restore a Vercel project alias or its default apex record unless intentionally
+rolling back hosting.
+
+The migration is complete. Buying or registering the domain through Vercel does not
+lock hosting to Vercel; Vercel nameservers can continue serving the Render records.
 
 ## Easiest setup: Blueprint
 
@@ -59,14 +80,15 @@ Expected result after adding the key:
 
 Then open the normal Render URL and run a scan. A free Twelve Data key loads a limited number of symbols per minute, so a full scan takes longer.
 
-## Domain move without downtime
+## Domain migration/rollback procedure
 
-1. Keep `wallstreethustler.com` on Vercel while testing Render.
-2. In Render, add `apex.wallstreethustler.com` as a custom domain first.
-3. In the Vercel Domains DNS page, add the CNAME value Render displays.
-4. Test the scanner at the new `apex` address.
-5. Only after it works, add `wallstreethustler.com` in Render and change the root DNS records to the exact values Render displays.
-6. Wait for Render's TLS certificate and verify the site before removing the domain from the old Vercel project.
+1. Verify the `onrender.com` URL and `/api/health` first.
+2. Verify the apex and `www` domains in Render and wait for both TLS certificates.
+3. Confirm the root A and `www` CNAME records shown above.
+4. Confirm the production health response identifies `apex-v4`.
+5. Keep the Render subdomain enabled as an emergency diagnostic path.
+6. For rollback only, restore the prior hosting records and re-add a project alias;
+   do not run two competing apex records simultaneously.
 
 The domain can remain registered and billed through Vercel even when its DNS points to Render.
 

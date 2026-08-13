@@ -1,31 +1,50 @@
-# WallstreetHustler / Squeeze Scanner
+# WallstreetHustler / APEX V4 Squeeze Scanner
 
-An educational **options-candidate research** dashboard plus a separately tested
-Thinkorswim underlying-stock scanner package.
+An educational **options-candidate research** system. The production application is
+APEX V4 on Render; the repository also retains the larger research dashboard,
+Thinkorswim scripts, validators, and evidence archive so the audit trail is not lost.
+
+## Production architecture
+
+| Component | Location | Purpose |
+|---|---|---|
+| Production web app/API | `apex-v4/` | Canonical Render service and multi-factor scanner |
+| Research dashboard | repository root | Broader experimental interface; not the production entry point |
+| Thinkorswim package | `evidence/thinkorswim/` and `FINAL_V4/` | Install candidates, reference scripts, and audit evidence |
+| Deployment definition | `render.yaml` | Single authoritative hosting configuration |
+
+Production: [wallstreethustler.com](https://wallstreethustler.com)
+
+Render health check: `https://wallstreethustler.com/api/health`
 
 The beginner view includes daily candlestick charts, volume, support and resistance,
 plain-English pattern lessons, an educational study zone, and a safety/invalidation
 line. These are learning aids, not guaranteed entries or personalized trade advice.
 
-## Run locally
+## Run the production application locally
 
 ```bash
-npm install
+cd apex-v4
+npm ci
 npm start
 ```
 
-Open `http://localhost:10000`. Verify the backend at
-`http://localhost:10000/api/health`; it should return `{ "ok": true }`.
+Open `http://localhost:3000`. Verify the backend at
+`http://localhost:3000/api/health`; it should return `ok: true` and identify
+`service: "apex-v4"`.
 
-A missing data key prints a warning but does not crash the server. Environment
-variables and provider choices are explained in `.env.example` and `docs/DATA_SETUP.md`.
+A missing data key does not crash the server, but scans fail visibly rather than
+fabricating an empty result. Environment variables are explained in
+`apex-v4/.env.example` and `docs/DATA_SETUP.md`.
 
 ## Deploy on Render
 
 Use the included root `render.yaml` Blueprint; it points Render at `apex-v4`
 automatically. For a manually created Web Service, set **Root Directory** to
-`apex-v4`. Render supplies `PORT` automatically. Follow the beginner walkthrough
-in [docs/RENDER_DEPLOY.md](docs/RENDER_DEPLOY.md).
+`apex-v4`. Render supplies `PORT` automatically. Follow
+[docs/RENDER_DEPLOY.md](docs/RENDER_DEPLOY.md). Vercel deployment files were removed
+after the production domain was migrated; Vercel remains only the domain registrar
+and DNS provider.
 
 ## Important scope
 

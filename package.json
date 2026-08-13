@@ -1,7 +1,7 @@
 {
-  "name": "uw-premarket-scanner",
+  "name": "wallstreethustler-scanner-research",
   "version": "1.0.0",
-  "description": "Automated pre-market squeeze scanner — runs on cron, logs candidates to Google Sheets",
+  "description": "Research dashboard, tests, and evidence supporting the Render-hosted APEX V4 scanner",
   "type": "module",
   "main": "index.js",
   "scripts": {
