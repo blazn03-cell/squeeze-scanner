@@ -58,7 +58,16 @@
         --chip-bg:#e2edf6;
       }
     }
-    body{background:#05090e;overflow:hidden;font-family:'Inter','Segoe UI',system-ui,-apple-system,sans-serif;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;color:#cfdcec;font-size:14px;line-height:1.55}
+    body{background:#05090e;overflow:hidden;font-family:'Inter','Segoe UI',system-ui,-apple-system,sans-serif;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;color:#cfdcec;font-size:16px;line-height:1.6}
+    /* Readability floor: the scanner carries a lot of dense inline labels. Keep
+       secondary information compact without letting it fall below a useful size. */
+    body [style*="font-size: 8px"],
+    body [style*="font-size: 9px"]{font-size:12px!important;line-height:1.45}
+    body [style*="font-size: 10px"],
+    body [style*="font-size: 10.5px"]{font-size:13px!important;line-height:1.45}
+    body [style*="font-size: 11px"]{font-size:14px!important;line-height:1.5}
+    body [style*="font-size: 12px"],
+    body [style*="font-size: 12.5px"]{font-size:15px!important;line-height:1.55}
     code,kbd,.mono{font-family:'JetBrains Mono','SF Mono',Menlo,Consolas,monospace}
     ::-webkit-scrollbar{width:8px;height:8px}
     ::-webkit-scrollbar-track{background:transparent}
@@ -71,16 +80,16 @@
     .urgent{animation:urgent 0.9s ease-in-out infinite}
     .slide-in{animation:slideIn 0.25s ease-out}
     button{font-family:inherit}
-    input,select,textarea{font-family:inherit;font-size:13px}
+    input,select,textarea,button{font-family:inherit;font-size:15px}
     /* Readable defaults — no text smaller than 11px, body text at least 13px */
-    .sec-label{font-size:11px;font-weight:700;letter-spacing:0.18em;color:#8aabc2;text-transform:uppercase}
-    .hdr{font-size:12px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase}
-    .label{font-size:12px;color:#8aabc2;letter-spacing:0.04em}
+    .sec-label{font-size:13px;font-weight:700;letter-spacing:0.14em;color:#8aabc2;text-transform:uppercase}
+    .hdr{font-size:14px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase}
+    .label{font-size:14px;color:#8aabc2;letter-spacing:0.04em}
     .value{font-size:15px;font-weight:700;color:#e4edf7}
-    .body-text{font-size:13px;line-height:1.7;color:#b5c8dc}
-    .body-text-lg{font-size:14px;line-height:1.75;color:#c4d5e8}
+    .body-text{font-size:15px;line-height:1.7;color:#b5c8dc}
+    .body-text-lg{font-size:16px;line-height:1.75;color:#c4d5e8}
     .stat-num{font-size:18px;font-weight:700;letter-spacing:-0.01em}
-    .mini{font-size:11px;color:#8aabc2}
+    .mini{font-size:13px;color:#8aabc2}
     .verdict-big{font-size:28px;font-weight:800;letter-spacing:0.02em}
   </style>
 </head>
