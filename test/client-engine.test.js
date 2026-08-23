@@ -10,7 +10,7 @@ function loadEngine() {
   assert.ok(start >= 0 && end > start, "V4 engine block is present");
   const context = { console, Date, Math, Number, Object, Array, Set, String, JSON };
   vm.createContext(context);
-  vm.runInContext(`${html.slice(start, end)}\nglobalThis.computeV4 = computeV4; globalThis.historicalMoveAudit = historicalMoveAudit; globalThis.analyzeChartSetup = analyzeChartSetup; globalThis.buildOptionStrikeStudy = buildOptionStrikeStudy; globalThis.buildOptionBudgetStudy = buildOptionBudgetStudy;`, context);
+  vm.runInContext(`${html.slice(start, end)}\nglobalThis.computeV4 = computeV4; globalThis.historicalMoveAudit = historicalMoveAudit; globalThis.historicalStockBacktest = historicalStockBacktest; globalThis.analyzeChartSetup = analyzeChartSetup; globalThis.buildOptionStrikeStudy = buildOptionStrikeStudy; globalThis.buildOptionBudgetStudy = buildOptionBudgetStudy;`, context);
   return context;
 }
 
@@ -44,6 +44,28 @@ test("historical audit labels a liquid three-session squeeze from its prior pric
   assert.equal(audit.events[0].ticker, "TEST");
   assert.equal(audit.events[0].priorClose, 25);
   assert.ok(audit.events[0].movePct >= 12);
+});
+
+test("stock backtest enters after the signal and classifies a profitable trade", () => {
+  const engine = loadEngine();
+  const start = Date.parse("2026-01-01T14:30:00.000Z");
+  const history = Array.from({ length:100 }, (_, index) => {
+    const price = index < 65 ? 25 : 25 + (index - 65) * 0.5;
+    return {
+      t:new Date(start + index * 24 * 60 * 60 * 1000).toISOString(),
+      o:price, h:price * 1.015, l:price * 0.99, c:price * 1.01,
+      v:Math.max(2_000_000, 1_000_000 + index * 20_000),
+    };
+  });
+  const result = engine.historicalStockBacktest({ TEST:history });
+  assert.equal(result.total, 1);
+  assert.equal(result.winners, 1);
+  assert.equal(result.losers, 0);
+  assert.equal(result.winRate, 100);
+  assert.equal(result.trades[0].signalDate, "2026-03-08");
+  assert.equal(result.trades[0].entryDate, "2026-03-09");
+  assert.equal(result.trades[0].exitDate, "2026-03-11");
+  assert.ok(result.trades[0].returnPct > 0);
 });
 
 test("chart guide recognizes a confirmed breakout and marks a study zone", () => {

@@ -988,6 +988,63 @@ function historicalMoveAudit(barsByTicker) {
   };
 }
 
+
+// ── HISTORICAL STOCK BACKTEST ───────────────────────────────────────────────
+// Long-only, daily-bar simulation. The signal is computed using only bars through
+// the signal close; entry is the next session's open and exit is the third
+// session's close. This deliberately excludes option P&L, dividends, fees,
+// slippage, and historical bid/ask data.
+function historicalStockBacktest(barsByTicker) {
+  const trades = [];
+  let coveredSymbols = 0;
+  for (const [ticker, raw] of Object.entries(barsByTicker || {})) {
+    const bars = (Array.isArray(raw) ? raw : []).map(bar => ({
+      t:bar.t, o:+bar.o, h:+bar.h, l:+bar.l, c:+bar.c, v:+bar.v,
+    })).filter(bar => bar.o > 0 && bar.h > 0 && bar.l > 0 && bar.c > 0)
+      .sort((a, b) => Date.parse(a.t) - Date.parse(b.t));
+    if (bars.length < 85) continue;
+    coveredSymbols++;
+    let lastTradeIndex = -4;
+    for (let index = 60; index <= bars.length - 4; index++) {
+      if (index - lastTradeIndex < 4) continue;
+      const signal = computeV4(bars.slice(0, index + 1));
+      const qualified = signal && signal.direction > 0 && signal.timing >= 0
+        && signal.liquidity >= STOCK_QUALITY.minDollarVolume
+        && (signal.score >= 65 || signal.early >= 60);
+      if (!qualified) continue;
+      const entry = bars[index + 1];
+      const exit = bars[index + 3];
+      const returnPct = 100 * (exit.c / entry.o - 1);
+      trades.push({
+        ticker,
+        signalDate:String(bars[index].t).slice(0, 10),
+        entryDate:String(entry.t).slice(0, 10),
+        exitDate:String(exit.t).slice(0, 10),
+        entryPrice:entry.o,
+        exitPrice:exit.c,
+        returnPct,
+        score:signal.score,
+        early:signal.early,
+      });
+      lastTradeIndex = index;
+    }
+  }
+  trades.sort((a, b) => Date.parse(b.signalDate) - Date.parse(a.signalDate));
+  const winners = trades.filter(trade => trade.returnPct > 0);
+  const losers = trades.filter(trade => trade.returnPct < 0);
+  const breakeven = trades.length - winners.length - losers.length;
+  return {
+    coveredSymbols,
+    total:trades.length,
+    winners:winners.length,
+    losers:losers.length,
+    breakeven,
+    winRate:(winners.length + losers.length) ? 100 * winners.length / (winners.length + losers.length) : null,
+    averageReturn:trades.length ? trades.reduce((sum, trade) => sum + trade.returnPct, 0) / trades.length : null,
+    trades,
+  };
+}
+
 const BAR_CACHE_KEY = "wsh_daily_bars_v2";
 const BAR_CACHE_MAX_AGE_MS = 36 * 60 * 60 * 1000;
 
@@ -3252,7 +3309,7 @@ function Setup({ onConnect }) {
 // The FINAL_V4 watchlist, rendered from the same numbers ThinkorSwim would show.
 // One row per ticker (deduped), sorted by SCORE. Read left to right: is it
 // tradeable → which side → do the signals agree → how strong → early or late.
-function V4Grid({ feed, onClose, modeResult, mode, quoteStatus, historyAudit }) {
+function V4Grid({ feed, onClose, modeResult, mode, quoteStatus, historyAudit, stockBacktest }) {
   const seenT = new Set();
   const all = [];
   feed.forEach(p => {
@@ -3371,8 +3428,27 @@ function V4Grid({ feed, onClose, modeResult, mode, quoteStatus, historyAudit }) 
           </tbody>
         </table>
       )}
-      {historyAudit?.total > 0 && (
+      {(historyAudit?.total > 0 || stockBacktest?.coveredSymbols > 0) && (
         <div style={{ borderTop:"1px solid #162431", padding:"14px 20px", background:"#061019" }}>
+          {stockBacktest?.coveredSymbols > 0 && (
+            <div style={{ marginBottom:14, paddingBottom:14, borderBottom:"1px solid #162431" }}>
+              <div style={{ display:"flex", gap:12, alignItems:"center", flexWrap:"wrap", marginBottom:8 }}>
+                <b style={{ fontSize:11, letterSpacing:"0.14em", color:"#66ccff" }}>STOCK BACKTEST</b>
+                <span style={{ fontSize:11, color:"#8aabc2" }}>{stockBacktest.coveredSymbols} liquid symbols · {stockBacktest.total} trades</span>
+                {stockBacktest.total > 0 ? <>
+                  <span style={{ fontSize:11, color:"#00ff88" }}>WINNERS {stockBacktest.winners}</span>
+                  <span style={{ fontSize:11, color:"#ff6677" }}>LOSERS {stockBacktest.losers}</span>
+                  {stockBacktest.breakeven > 0 && <span style={{ fontSize:11, color:"#8aabc2" }}>FLAT {stockBacktest.breakeven}</span>}
+                  <span style={{ fontSize:11, color:"#66ccff" }}>WIN RATE {stockBacktest.winRate.toFixed(1)}%</span>
+                  <span style={{ fontSize:11, color:stockBacktest.averageReturn >= 0 ? "#00ff88" : "#ff6677" }}>AVG {stockBacktest.averageReturn >= 0 ? "+" : ""}{stockBacktest.averageReturn.toFixed(2)}%</span>
+                </> : <span style={{ fontSize:11, color:"#8aabc2" }}>NO QUALIFYING TRADES</span>}
+              </div>
+              <div style={{ fontSize:10.5, color:"#5f788d" }}>
+                Long-only daily-bar simulation: qualified bullish signal at close, next-session open entry, third-session close exit. No fees, slippage, dividends, historical bid/ask, or option P&L. Results are research only, not a profitability claim.
+              </div>
+            </div>
+          )}
+          {historyAudit?.total > 0 && <>
           <div style={{ display:"flex", gap:12, alignItems:"center", flexWrap:"wrap", marginBottom:10 }}>
             <b style={{ fontSize:11, letterSpacing:"0.14em", color:"#66ffcc" }}>HISTORY AUDIT</b>
             <span style={{ fontSize:11, color:"#8aabc2" }}>{historyAudit.coveredSymbols} liquid symbols · {historyAudit.total} objective 3-day moves</span>
@@ -3393,6 +3469,7 @@ function V4Grid({ feed, onClose, modeResult, mode, quoteStatus, historyAudit }) 
           <div style={{ fontSize:10.5, color:"#5f788d", marginTop:9 }}>
             Event label = ±12% within 3 sessions on ≥1.5× volume, with prior price ≥$10 and ≥$25M average dollar volume. This is a price/volume event study, not proof of short covering; historical NBBO is not available in this feed.
           </div>
+          </>}
         </div>
       )}
       <div style={{ padding:"8px 20px", fontSize:11, color:"#7591a8", borderTop:"1px solid #0e1a24", lineHeight:1.7 }}>
@@ -5591,6 +5668,7 @@ function App() {
   const [barData,   setBarData]   = useState(() => loadBarDataCache());
   const barRows = React.useMemo(() => scoreBarData(barData), [barData]);
   const historyAudit = React.useMemo(() => historicalMoveAudit(barData), [barData]);
+  const stockBacktest = React.useMemo(() => historicalStockBacktest(barData), [barData]);
   const [barStatus, setBarStatus] = useState({ state:"idle" });
   const [stockQuotes, setStockQuotes] = useState({});
   const [quoteStatus, setQuoteStatus] = useState({ state:"idle" });
@@ -6002,7 +6080,7 @@ function App() {
       {showIntel && <IntelTab onClose={()=>setShowIntel(false)} events={catalystEvents} feed={feed}
                               calendar={scheduled} macroRiskScore={brain.macroRisk} stats={intelStats}
                               now={nowMs} ingestStatus={ingestStatus}/>}
-      {showV4 && <V4Grid feed={scanFeed} onClose={()=>setShowV4(false)} modeResult={modeResult} mode={tradeMode} quoteStatus={quoteStatus} historyAudit={historyAudit}/>}
+      {showV4 && <V4Grid feed={scanFeed} onClose={()=>setShowV4(false)} modeResult={modeResult} mode={tradeMode} quoteStatus={quoteStatus} historyAudit={historyAudit} stockBacktest={stockBacktest}/>}
       {showIncome && <IncomeTab onClose={()=>setShowIncome(false)}/>}
       <SimpleHome
         brain={brain} zones={zones} zone={activeZone(zones, nowMs)} calendar={scheduled}
@@ -6242,7 +6320,7 @@ function App() {
       {showIntel && <IntelTab onClose={()=>setShowIntel(false)} events={catalystEvents} feed={feed}
                               calendar={scheduled} macroRiskScore={brain.macroRisk} stats={intelStats}
                               now={nowMs} ingestStatus={ingestStatus}/>}
-      {showV4 && <V4Grid feed={scanFeed} onClose={()=>setShowV4(false)} modeResult={modeResult} mode={tradeMode} quoteStatus={quoteStatus} historyAudit={historyAudit}/>}
+      {showV4 && <V4Grid feed={scanFeed} onClose={()=>setShowV4(false)} modeResult={modeResult} mode={tradeMode} quoteStatus={quoteStatus} historyAudit={historyAudit} stockBacktest={stockBacktest}/>}
       {showIncome && <IncomeTab onClose={()=>setShowIncome(false)}/>}
 
       <div style={{ display:"grid", gridTemplateColumns:showLog?"1fr 1fr 0.7fr 200px":"1fr 1fr 0.7fr", flex:1, overflow:"hidden", background:"#05090e" }}>
