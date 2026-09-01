@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { scanSymbol } from '../engine/scanner.js';
+import { buildQqqCascadeSnapshot } from '../engine/cascade.js';
 
 const VIEWS = {
   apex_long:    r => r.apexScore >= 70 && r.direction >= 1,
@@ -51,6 +52,17 @@ export function createApiRouter(tdClient, decisionLog, universeSymbols) {
       console.error('[scan] Error:', e.message);
     } finally {
       scanRunning = false;
+    }
+  });
+
+  router.get('/cascade/qqq', async (req, res) => {
+    try {
+      let qqq = lastScan?.results?.find(r => r.symbol === 'QQQ') ?? null;
+      if (!qqq) qqq = await scanSymbol('QQQ', tdClient, { withEarnings: false });
+      if (!qqq) return res.status(404).json({ error: 'QQQ data unavailable' });
+      res.json(buildQqqCascadeSnapshot(qqq));
+    } catch (e) {
+      res.status(500).json({ error: e.message });
     }
   });
 
