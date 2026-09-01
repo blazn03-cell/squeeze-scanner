@@ -33,7 +33,9 @@
     #nav-brand {
       display: flex; align-items: center; font-size: 15px; font-weight: 800;
       letter-spacing: -.02em; color: var(--text); margin-right: 16px; flex-shrink: 0;
+      text-decoration: none;
     }
+    #nav-brand:hover { opacity: .8; }
     #nav-brand span { color: var(--blue); margin-left: 3px; }
 
     /* Page tabs in nav */
@@ -202,7 +204,7 @@
 
   <!-- TOP NAV -->
   <nav id="nav">
-    <div id="nav-brand">APEX<span>V4</span></div>
+    <a id="nav-brand" href="/" title="Back to WallStreetHustler">APEX<span>V4</span></a>
     <button class="page-tab active" data-page="scanner">Scanner</button>
     <button class="page-tab" data-page="detail">Symbol Detail</button>
     <div id="nav-right">
@@ -250,6 +252,10 @@
               <th data-col="apexScore">APEX<span class="arr">↕</span></th>
               <th data-col="direction">DIR<span class="arr">↕</span></th>
               <th data-col="confidence">CONF<span class="arr">↕</span></th>
+              <th data-col="entryLow">ENTRY<span class="arr">↕</span></th>
+              <th data-col="stop">STOP<span class="arr">↕</span></th>
+              <th data-col="target">TARGET<span class="arr">↕</span></th>
+              <th data-col="riskPct">RISK<span class="arr">↕</span></th>
               <th data-col="stable">STABLE<span class="arr">↕</span></th>
               <th data-col="atrPct">ATR%<span class="arr">↕</span></th>
               <th data-col="relVol">RVOL<span class="arr">↕</span></th>
@@ -380,6 +386,9 @@ function _renderRows(rows) {
     const flC  = (r.flow??0) > 25 ? 'var(--green)' : (r.flow??0) < -25 ? 'var(--red)' : 'var(--muted)';
     const hasSpread = Number.isFinite(r.spreadPct);
     const spC  = !hasSpread ? 'var(--muted)' : r.spreadPct > 1 ? 'var(--red)' : r.spreadPct > 0.5 ? 'var(--orange)' : 'var(--green)';
+    // Levels only exist when direction is non-neutral; never fabricate them.
+    const hasLv = Number.isFinite(r.stop) && Number.isFinite(r.entryLow);
+    const riskC = !hasLv ? 'var(--dim)' : r.riskPct > 8 ? 'var(--red)' : r.riskPct > 5 ? 'var(--orange)' : 'var(--muted)';
     const id   = r.symbol;
     return `<tr data-id="${id}" onclick="toggleRow('${id}')">
       <td class="sym">${r.symbol}</td>
@@ -387,6 +396,10 @@ function _renderRows(rows) {
       <td><span class="num" style="color:${apc};font-size:14px;font-weight:800">${fI(r.apexScore)}</span></td>
       <td><span style="color:${dirC};font-size:11px;font-weight:700">${dirTxt}</span></td>
       <td><span class="num" style="color:${cfc}">${fI(r.confidence)}%</span></td>
+      <td><span class="num">${hasLv ? '$'+r.entryLow.toFixed(2)+'–'+r.entryHigh.toFixed(2) : '<span style="color:var(--dim)">—</span>'}</span></td>
+      <td><span class="num" style="color:${hasLv?'var(--red)':'var(--dim)'}">${hasLv ? '$'+r.stop.toFixed(2) : '—'}</span></td>
+      <td><span class="num" style="color:${hasLv?'var(--green)':'var(--dim)'}">${hasLv ? '$'+r.target.toFixed(2) : '—'}</span></td>
+      <td><span class="num" style="color:${riskC}">${hasLv ? r.riskPct.toFixed(2)+'%' : '—'}</span></td>
       <td><span class="num" style="color:${stc}">${fI(r.stable)}</span>${r.stableBand ? `<span style="font-size:9px;color:var(--dim);margin-left:3px">${r.stableBand}</span>` : ''}</td>
       <td><span class="num" style="color:${scoreColor(r.atrPct,2,1)}">${fP(r.atrPct)}</span></td>
       <td><span class="num" style="color:${scoreColor((r.relVol||0)*50,100,75)}">${fN(r.relVol)}x</span></td>
@@ -396,7 +409,7 @@ function _renderRows(rows) {
       <td><span style="color:${spC}">${hasSpread ? r.spreadPct.toFixed(2)+'%' : 'CHECK'}</span></td>
       <td>${earnBadge(r.earningsRisk)}</td>
     </tr>
-    <tr id="dr-${id}" style="display:none"><td colspan="13"><div class="detail-inner" id="di-${id}"></div></td></tr>`;
+    <tr id="dr-${id}" style="display:none"><td colspan="17"><div class="detail-inner" id="di-${id}"></div></td></tr>`;
   }).join('');
 }
 
@@ -416,8 +429,13 @@ function toggleRow(id) {
   const r = allResults.find(x => x.symbol === id);
   if (!r) { inner.innerHTML = '<div class="dc" style="color:var(--muted)">No data</div>'; return; }
 
+  const hasLv = Number.isFinite(r.stop) && Number.isFinite(r.entryLow);
   const cells = [
     ['REGIME',       r.regimeLabel || r.regime || '—',        regimeColor(r.regime),   ''],
+    ['ENTRY ZONE',   hasLv ? '$'+r.entryLow.toFixed(2)+' – $'+r.entryHigh.toFixed(2) : 'no bias', hasLv?'var(--text)':'var(--dim)', hasLv?'':'neutral direction — no levels'],
+    ['STOP',         hasLv ? '$'+r.stop.toFixed(2) : '—',     hasLv?'var(--red)':'var(--dim)',   hasLv ? (r.stopBasis||'').toLowerCase()+' stop' : ''],
+    ['TARGET',       hasLv ? '$'+r.target.toFixed(2) : '—',   hasLv?'var(--green)':'var(--dim)', hasLv ? '2.0R' : ''],
+    ['RISK / SHARE', hasLv ? r.riskPct.toFixed(2)+'%' : '—',  hasLv?(r.riskPct>8?'var(--red)':'var(--text)'):'var(--dim)', hasLv ? 'entry to stop' : ''],
     ['EARLY ENTRY',  (r.earlyEntry??'—') + '',                scoreColor(r.earlyEntry,70,40), r.earlyBand||''],
     ['RSI 14',       r.rsi14??'—',                            r.rsi14>70?'var(--red)':r.rsi14<30?'var(--green)':'var(--text)', r.rsi14>70?'overbought':r.rsi14<30?'oversold':'neutral'],
     ['ADX 14',       r.adx14??'—',                            (r.adx14||0)>30?'var(--green)':(r.adx14||0)>20?'var(--yellow)':'var(--muted)', (r.adx14||0)>30?'strong trend':(r.adx14||0)>20?'trending':'chop'],
@@ -500,6 +518,14 @@ async function lookupSymbol() {
         ['Squeeze',    (r.sqzState||'—')+(r.sqzPct?' '+r.sqzPct+'%':''), sqzColor(r.sqzState)],
         ['EMA 9/20/50','$'+(r.ema9??'—')+' / $'+(r.ema20??'—')+' / $'+(r.ema50??'—'), 'var(--text)'],
         ['VWAP',       r.vwap?'$'+r.vwap:'—', 'var(--blue)'],
+      ]},
+      { title:'Trade levels', rows: (Number.isFinite(r.stop) && Number.isFinite(r.entryLow)) ? [
+        ['Entry zone',    '$'+r.entryLow.toFixed(2)+' – $'+r.entryHigh.toFixed(2), 'var(--text)'],
+        ['Stop',          '$'+r.stop.toFixed(2)+'  ('+(r.stopBasis||'').toLowerCase()+')', 'var(--red)'],
+        ['Target',        '$'+r.target.toFixed(2)+'  (2.0R)',      'var(--green)'],
+        ['Risk to stop',  r.riskPct.toFixed(2)+'%',                r.riskPct>8?'var(--red)':'var(--text)'],
+      ] : [
+        ['Levels',        'None — direction is neutral',           'var(--dim)'],
       ]},
       { title:'Risk', rows:[
         ['Spread',        Number.isFinite(r.spreadPct)?r.spreadPct+'%':'Unverified', Number.isFinite(r.spreadPct)?(r.spreadPct>1?'var(--red)':'var(--green)'):'var(--muted)'],

@@ -1,0 +1,752 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>WallStreetHustler — Market Intelligence Engine</title>
+<meta name="description" content="A market intelligence engine that ranks the market by setup quality — squeeze state, regime, relative volume, liquidity and event risk — and shows you why each name scored what it did."/>
+<meta property="og:title" content="WallStreetHustler — Market Intelligence Engine"/>
+<meta property="og:description" content="Screeners give you a list. This gives you a ranked list with a reason attached to every row."/>
+<meta property="og:type" content="website"/>
+<style>
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+  :root{
+    --bg:#0d1117; --surface:#161b22; --surface2:#1c2128; --surface3:#21262d;
+    --border:#21262d; --border2:#30363d;
+    --text:#e6edf3; --muted:#8b949e; --dim:#6e7681;
+    --green:#3fb950; --red:#f85149; --blue:#58a6ff;
+    --yellow:#d29922; --purple:#bc8cff; --orange:#f0883e;
+    --maxw:1180px;
+  }
+  html{scroll-behavior:smooth}
+  body{background:var(--bg);color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+    font-size:16px;line-height:1.65;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:var(--maxw);margin:0 auto;padding:0 24px}
+  a{color:var(--blue);text-decoration:none}
+  a:hover{text-decoration:underline}
+  ::-webkit-scrollbar{width:8px;height:8px}
+  ::-webkit-scrollbar-thumb{background:var(--border2);border-radius:4px}
+  ::-webkit-scrollbar-track{background:transparent}
+
+  /* ── NAV ── */
+  nav{position:sticky;top:0;z-index:50;background:rgba(13,17,23,.85);
+    backdrop-filter:blur(12px);border-bottom:1px solid var(--border)}
+  .nav-in{max-width:var(--maxw);margin:0 auto;padding:0 24px;height:58px;
+    display:flex;align-items:center;gap:24px}
+  .brand{font-weight:800;font-size:16px;letter-spacing:-.02em;flex-shrink:0}
+  .brand span{color:var(--blue)}
+  .nav-links{display:flex;gap:20px;margin-left:auto;align-items:center}
+  /* :not(.btn) so these do not outrank .btn-primary's own colour on the CTA */
+  .nav-links a:not(.btn){color:var(--muted);font-size:14px;font-weight:500}
+  .nav-links a:not(.btn):hover{color:var(--text);text-decoration:none}
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;
+    padding:10px 20px;border-radius:7px;font-size:14px;font-weight:600;
+    border:1px solid transparent;cursor:pointer;font-family:inherit;
+    transition:background .15s,border-color .15s}
+  .btn-primary{background:var(--blue);color:#06121f;border-color:var(--blue)}
+  .btn-primary:hover{background:#79b8ff;text-decoration:none}
+  .btn-ghost{background:transparent;color:var(--text);border-color:var(--border2)}
+  .btn-ghost:hover{background:var(--surface2);border-color:var(--dim);text-decoration:none}
+  .btn-sm{padding:7px 14px;font-size:13px}
+
+  /* ── SECTIONS ── */
+  section{padding:80px 0;border-bottom:1px solid var(--border)}
+  .eyebrow{font-size:12px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;
+    color:var(--blue);margin-bottom:14px}
+  h1{font-size:clamp(34px,5.2vw,56px);line-height:1.1;font-weight:800;
+    letter-spacing:-.03em;margin-bottom:22px}
+  h2{font-size:clamp(26px,3.4vw,36px);line-height:1.2;font-weight:800;
+    letter-spacing:-.02em;margin-bottom:16px}
+  h3{font-size:19px;font-weight:700;margin-bottom:8px;letter-spacing:-.01em}
+  .lede{font-size:19px;color:var(--muted);max-width:70ch}
+  .sec-intro{max-width:70ch;margin-bottom:40px}
+  .sec-intro p{color:var(--muted);font-size:17px}
+
+  /* ── HERO ── */
+  #hero{padding:90px 0 70px;border-bottom:1px solid var(--border);
+    background:radial-gradient(900px 400px at 12% -10%,rgba(88,166,255,.10),transparent 70%)}
+  .hero-tag{display:inline-flex;align-items:center;gap:8px;padding:5px 13px;
+    border:1px solid var(--border2);border-radius:100px;background:var(--surface);
+    font-size:12px;font-weight:600;color:var(--muted);margin-bottom:26px}
+  .hero-tag b{color:var(--yellow);font-weight:700}
+  #hero .lede{font-size:21px;margin-bottom:34px}
+  .hero-ctas{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:20px}
+  .hero-note{font-size:14px;color:var(--dim)}
+
+  /* ── ANSWER STRIP ── */
+  .qa-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:1px;
+    background:var(--border);border:1px solid var(--border);border-radius:10px;overflow:hidden}
+  .qa{background:var(--surface);padding:22px}
+  .qa .q{font-size:13px;font-weight:700;color:var(--blue);margin-bottom:8px}
+  .qa .a{font-size:15px;color:var(--muted)}
+  .qa .a strong{color:var(--text);font-weight:600}
+
+  /* ── DASHBOARD DEMO ── */
+  .demo-shell{border:1px solid var(--border2);border-radius:12px;overflow:hidden;
+    background:var(--surface);box-shadow:0 18px 50px rgba(0,0,0,.45)}
+  .demo-bar{display:flex;align-items:center;gap:12px;padding:11px 16px;
+    background:var(--surface2);border-bottom:1px solid var(--border);flex-wrap:wrap}
+  .demo-dots{display:flex;gap:6px;flex-shrink:0}
+  .demo-dots i{width:11px;height:11px;border-radius:50%;background:var(--border2);display:block}
+  .demo-title{font-size:12px;color:var(--muted);font-weight:600;font-family:ui-monospace,monospace}
+  .demo-right{margin-left:auto;display:flex;align-items:center;gap:10px}
+  .sample-tag{font-size:10px;font-weight:800;letter-spacing:.1em;padding:3px 9px;
+    border-radius:4px;color:var(--yellow);background:rgba(210,153,34,.14);
+    border:1px solid rgba(210,153,34,.4)}
+  #replay{padding:5px 13px;border-radius:5px;border:1px solid var(--green);
+    background:rgba(63,185,80,.12);color:var(--green);font-size:11px;font-weight:700;
+    cursor:pointer;font-family:inherit;white-space:nowrap}
+  #replay:hover{background:rgba(63,185,80,.22)}
+  #replay:disabled{opacity:.5;cursor:default}
+  #scan-line{font-size:11px;color:var(--dim);font-family:ui-monospace,monospace;
+    padding:7px 16px;border-bottom:1px solid var(--border);background:var(--bg);
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+  /* The right-edge fade signals that the widest columns keep going on narrow screens. */
+  .tbl-wrap{position:relative}
+  .tbl-wrap::after{content:'';position:absolute;top:0;right:0;bottom:0;width:38px;
+    pointer-events:none;opacity:0;transition:opacity .2s;
+    background:linear-gradient(to right,transparent,var(--surface))}
+  .tbl-wrap.overflowing::after{opacity:1}
+  .tbl-scroll{overflow-x:auto;max-height:none}
+  table{width:100%;border-collapse:collapse;min-width:1020px}
+  thead th{position:sticky;top:0;z-index:2;background:var(--surface2);
+    padding:9px 6px;text-align:left;font-size:10px;font-weight:700;color:var(--muted);
+    letter-spacing:.05em;text-transform:uppercase;white-space:nowrap;
+    border-bottom:1px solid var(--border2)}
+  thead th.gated{color:var(--purple)}
+  tbody tr.row{border-bottom:1px solid var(--border);cursor:pointer;transition:background .1s}
+  tbody tr.row:hover{background:var(--surface2)}
+  tbody tr.row.open{background:var(--surface2)}
+  td{padding:10px 6px;font-size:12.5px;white-space:nowrap;vertical-align:middle}
+  td.sym{font-family:ui-monospace,monospace;font-weight:800;font-size:14px}
+  .num{font-family:ui-monospace,monospace;font-weight:600}
+  .score{font-family:ui-monospace,monospace;font-size:17px;font-weight:800}
+  .pill{display:inline-flex;align-items:center;padding:2px 7px;border-radius:4px;
+    font-size:10px;font-weight:700;letter-spacing:.03em}
+  .lock{color:var(--dim);font-size:11px;font-style:italic}
+  .bar{position:relative;width:30px;height:5px;border-radius:3px;background:var(--surface3);
+    display:inline-block;vertical-align:middle;margin-right:6px;overflow:hidden}
+  .bar i{position:absolute;left:0;top:0;bottom:0;display:block;border-radius:3px}
+
+  /* row detail drawer */
+  tr.drawer>td{padding:0;background:var(--bg)}
+  .dw{padding:20px;border-top:1px solid var(--border2);
+    border-bottom:1px solid var(--border2)}
+  .dw-head{display:flex;align-items:baseline;gap:12px;margin-bottom:16px;flex-wrap:wrap}
+  .dw-head h4{font-size:17px;font-weight:800;font-family:ui-monospace,monospace}
+  .dw-head .verdict{font-size:14px;color:var(--muted)}
+  .dw-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(215px,1fr));gap:14px;
+    margin-bottom:18px}
+  .fac{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:12px 14px}
+  .fac-top{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:7px;gap:8px}
+  .fac-name{font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+  .fac-w{font-size:10px;color:var(--dim);font-family:ui-monospace,monospace;flex-shrink:0}
+  .fac-val{font-size:16px;font-weight:700;font-family:ui-monospace,monospace}
+  .fac-note{font-size:12px;color:var(--muted);margin-top:4px;white-space:normal;line-height:1.45}
+  .dw-note{font-size:13px;color:var(--muted);background:var(--surface);
+    border-left:2px solid var(--border2);padding:11px 14px;border-radius:0 6px 6px 0;
+    white-space:normal;line-height:1.6}
+  .dw-note b{color:var(--text)}
+  .gate-box{margin-top:14px;border:1px dashed var(--border2);border-radius:8px;padding:13px 15px;
+    background:rgba(188,140,255,.045)}
+  .gate-box .gt{font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;
+    color:var(--purple);margin-bottom:7px}
+  .gate-row{display:flex;justify-content:space-between;gap:14px;font-size:13px;
+    padding:4px 0;white-space:normal}
+  .gate-row span:first-child{color:var(--muted)}
+  .gate-row span:last-child{color:var(--dim);font-style:italic;text-align:right}
+
+  .demo-foot{padding:13px 16px;background:var(--surface2);border-top:1px solid var(--border);
+    font-size:12px;color:var(--dim);display:flex;justify-content:space-between;
+    gap:14px;flex-wrap:wrap;align-items:center}
+
+  /* ── COMPARISON ── */
+  .cmp-scroll{overflow-x:auto;border:1px solid var(--border);border-radius:10px}
+  table.cmp{min-width:760px;border-collapse:collapse;width:100%}
+  table.cmp th,table.cmp td{padding:14px 16px;text-align:left;font-size:14px;
+    border-bottom:1px solid var(--border);vertical-align:top;white-space:normal}
+  table.cmp thead th{background:var(--surface2);font-size:11px;font-weight:700;
+    letter-spacing:.08em;text-transform:uppercase;color:var(--muted);white-space:nowrap}
+  table.cmp thead th.us{color:var(--blue)}
+  table.cmp td:first-child{color:var(--muted);font-weight:600;width:20%}
+  table.cmp td.us{color:var(--text);background:rgba(88,166,255,.05);font-weight:500}
+  table.cmp td.them{color:var(--dim)}
+  table.cmp tbody tr:last-child td{border-bottom:none}
+
+  /* ── STACK ── */
+  .tier{margin-bottom:34px}
+  .tier-head{display:flex;align-items:center;gap:11px;margin-bottom:16px;flex-wrap:wrap}
+  .tier-head h3{margin:0}
+  .tier-badge{font-size:10px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;
+    padding:3px 9px;border-radius:4px}
+  .tb-live{color:var(--green);background:rgba(63,185,80,.13);border:1px solid rgba(63,185,80,.35)}
+  .tb-gated{color:var(--purple);background:rgba(188,140,255,.13);border:1px solid rgba(188,140,255,.35)}
+  .layers{display:grid;grid-template-columns:repeat(auto-fill,minmax(255px,1fr));gap:12px}
+  .layer{border:1px solid var(--border);border-radius:9px;padding:15px 17px;background:var(--surface)}
+  .layer.off{background:transparent;border-style:dashed}
+  .layer h4{font-size:14px;font-weight:700;margin-bottom:5px}
+  .layer p{font-size:13px;color:var(--muted);line-height:1.55}
+  .layer.off h4{color:var(--muted)}
+
+  /* ── ACCESS ── */
+  .steps{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:18px;
+    margin-bottom:34px}
+  .step{border:1px solid var(--border);border-radius:10px;padding:20px;background:var(--surface)}
+  .step-n{width:27px;height:27px;border-radius:50%;background:rgba(88,166,255,.14);
+    color:var(--blue);display:flex;align-items:center;justify-content:center;
+    font-size:13px;font-weight:800;margin-bottom:11px}
+  .step p{font-size:14px;color:var(--muted)}
+
+  /* ── STATUS / DISCLAIMER ── */
+  #status{background:var(--surface)}
+  .warn{border:1px solid rgba(210,153,34,.35);background:rgba(210,153,34,.06);
+    border-radius:10px;padding:22px 24px;margin-bottom:22px}
+  .warn h3{color:var(--yellow);font-size:16px;margin-bottom:10px}
+  .warn p,.warn li{font-size:14px;color:var(--muted);line-height:1.7}
+  .warn ul{margin:9px 0 0 20px}
+  .fineprint{font-size:13px;color:var(--dim);line-height:1.75;max-width:80ch}
+
+  footer{padding:36px 0;font-size:13px;color:var(--dim)}
+  .foot-in{display:flex;justify-content:space-between;gap:18px;flex-wrap:wrap;align-items:center}
+  .foot-links{display:flex;gap:18px;flex-wrap:wrap}
+
+  @media(max-width:720px){
+    section{padding:56px 0}
+    #hero{padding:60px 0 50px}
+    .nav-links a:not(.btn){display:none}
+    .dw-grid{grid-template-columns:1fr}
+  }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-in">
+    <div class="brand">WallStreet<span>Hustler</span></div>
+    <div class="nav-links">
+      <a href="#dashboard">The dashboard</a>
+      <a href="#different">Why it's different</a>
+      <a href="#stack">What's inside</a>
+      <a href="#access">Access</a>
+      <a class="btn btn-primary btn-sm" href="/app">Open the engine</a>
+    </div>
+  </div>
+</nav>
+
+<!-- ══ HERO ══ -->
+<header id="hero">
+  <div class="wrap">
+    <div class="hero-tag">&#9679; <b>BETA</b> &nbsp;·&nbsp; Research &amp; paper trading only</div>
+    <h1>A market intelligence engine,<br/>not another stock screener.</h1>
+    <p class="lede">
+      A screener hands you a list of tickers that matched your filters and leaves you to work out
+      what they mean. This reads the whole universe every session, scores each name on volatility
+      structure, squeeze state, market regime, relative volume, liquidity and event risk — then
+      shows you <em>why</em> it ranked what it ranked, with the risk levels already drawn.
+    </p>
+    <div class="hero-ctas">
+      <a class="btn btn-primary" href="#dashboard">See what it actually outputs &darr;</a>
+      <a class="btn btn-ghost" href="/app">Open the live engine</a>
+    </div>
+    <p class="hero-note">No signup to look. The sample output below is interactive — click any row.</p>
+  </div>
+</header>
+
+<!-- ══ FAST ANSWERS ══ -->
+<section id="answers">
+  <div class="wrap">
+    <div class="qa-grid">
+      <div class="qa">
+        <div class="q">What is it?</div>
+        <div class="a">A <strong>multi-factor ranking engine</strong> for US equities. It scores every
+          symbol in your universe 0–100 on setup quality and explains the score factor by factor.</div>
+      </div>
+      <div class="qa">
+        <div class="q">How is it different?</div>
+        <div class="a">Screeners <strong>filter</strong>. This one <strong>interprets</strong> —
+          it classifies the market regime, weighs the evidence, and penalizes names it doesn't trust.</div>
+      </div>
+      <div class="qa">
+        <div class="q">Can I try it now?</div>
+        <div class="a">Yes — <strong>scroll down</strong>. A full sample scan is on this page,
+          interactive, no account needed.</div>
+      </div>
+      <div class="qa">
+        <div class="q">How do I get access?</div>
+        <div class="a">Open beta while it's in <strong>paper-trading validation</strong>.
+          <a href="#access">Three steps &rarr;</a></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══ THE DASHBOARD ══ -->
+<section id="dashboard">
+  <div class="wrap">
+    <div class="eyebrow">The output</div>
+    <h2>This is what it puts on your screen.</h2>
+    <div class="sec-intro">
+      <p>Every row is one ranked candidate. Click any of them to open the full factor breakdown —
+        the same drawer the live engine renders. Numbers below are a saved sample so the page works
+        without a data key; the columns, the scoring weights and the level math are the real ones.</p>
+    </div>
+
+    <div class="demo-shell">
+      <div class="demo-bar">
+        <div class="demo-dots"><i></i><i></i><i></i></div>
+        <span class="demo-title">apex-v4 · master view · 25-symbol universe</span>
+        <div class="demo-right">
+          <span class="sample-tag">SAMPLE OUTPUT</span>
+          <button id="replay">&#9654; Replay scan</button>
+        </div>
+      </div>
+      <div id="scan-line">Ready.</div>
+      <div class="tbl-wrap" id="tblwrap">
+        <div class="tbl-scroll" id="tblscroll">
+          <table>
+            <thead>
+              <tr>
+                <th title="Ticker">Ticker</th>
+                <th title="APEX setup-quality score, 0-100">Score</th>
+                <th title="Market direction">Dir</th>
+                <th title="Confidence — share of factors agreeing with direction">Conf</th>
+                <th title="Market regime">Regime</th>
+                <th title="Squeeze type and state">Squeeze</th>
+                <th title="Relative volume vs its own 30-day baseline">RVol</th>
+                <th title="Smart flow — price/volume proxy, not licensed options flow">Flow</th>
+                <th title="Liquidity — live bid/ask spread">Spread</th>
+                <th title="Entry zone">Entry</th>
+                <th title="Stop">Stop</th>
+                <th title="Target (2R)">Target</th>
+                <th title="Risk from entry to stop">Risk</th>
+                <th title="Catalyst — earnings proximity">Catalyst</th>
+                <th class="gated" title="Dark pool — requires licensed feed">Dark pool</th>
+                <th class="gated" title="Gamma risk — requires licensed feed">Gamma</th>
+              </tr>
+            </thead>
+            <tbody id="tb"></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="demo-foot">
+        <span>Score is a technical ranking of setup quality — not a probability of profit, and not a recommendation.</span>
+        <span>Levels are ATR- and structure-derived reference points.</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══ DIFFERENT ══ -->
+<section id="different">
+  <div class="wrap">
+    <div class="eyebrow">The difference</div>
+    <h2>Why not just use TradingView or Finviz?</h2>
+    <div class="sec-intro">
+      <p>Use them — they're good at what they do. Finviz is the best fast filter on the internet and
+        TradingView is the best charting surface. Neither is trying to answer the question this engine
+        is built around: <em>out of everything moving today, which setups are actually worth the risk,
+        and why?</em></p>
+    </div>
+    <div class="cmp-scroll">
+      <table class="cmp">
+        <thead>
+          <tr><th></th><th>Finviz</th><th>TradingView</th><th class="us">WallStreetHustler</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>What you give it</td>
+            <td class="them">Filter criteria you chose</td>
+            <td class="them">A symbol and your indicators</td>
+            <td class="us">Nothing. It ranks the universe unprompted.</td>
+          </tr>
+          <tr>
+            <td>What comes back</td>
+            <td class="them">Every ticker matching the filters, unordered by quality</td>
+            <td class="them">A chart you interpret yourself</td>
+            <td class="us">A ranked list with a 0–100 quality score and a reason per row</td>
+          </tr>
+          <tr>
+            <td>Squeeze detection</td>
+            <td class="them">Not native</td>
+            <td class="them">Install a community script and read it manually</td>
+            <td class="us">Native — state, duration in bars, and fire detection as columns</td>
+          </tr>
+          <tr>
+            <td>Market context</td>
+            <td class="them">You infer it</td>
+            <td class="them">You infer it</td>
+            <td class="us">Each name is classified into a regime (trend / squeeze / chop / high-vol)</td>
+          </tr>
+          <tr>
+            <td>Risk levels</td>
+            <td class="them">None</td>
+            <td class="them">You draw them by hand</td>
+            <td class="us">Entry zone, stop, target and R:R computed per row from ATR and structure</td>
+          </tr>
+          <tr>
+            <td>Disqualifiers</td>
+            <td class="them">You check earnings and spreads yourself</td>
+            <td class="them">You check earnings and spreads yourself</td>
+            <td class="us">Earnings proximity and wide spreads automatically cut the score</td>
+          </tr>
+          <tr>
+            <td>Why this name?</td>
+            <td class="them">Because it matched your filter</td>
+            <td class="them">Because you decided it did</td>
+            <td class="us">Full factor breakdown, each with its weight in the score</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- ══ STACK ══ -->
+<section id="stack">
+  <div class="wrap">
+    <div class="eyebrow">Under the hood</div>
+    <h2>The layers that produce a score.</h2>
+    <div class="sec-intro">
+      <p>Nine layers run on every symbol, every scan. Three more are built into the data model but
+        stay dark until a licensed options feed is connected — they're marked as such rather than
+        filled with guesses.</p>
+    </div>
+
+    <div class="tier">
+      <div class="tier-head">
+        <h3>Running on every scan</h3>
+        <span class="tier-badge tb-live">Live</span>
+      </div>
+      <div class="layers">
+        <div class="layer"><h4>Technical structure</h4><p>EMA 9/20/50 stack, VWAP position, ADX and directional index, RSI — the skeleton of the trend.</p></div>
+        <div class="layer"><h4>Market regime</h4><p>Each name is classified: strong trend, squeeze building, breakout, high volatility, reversal or chop. Context before signal.</p></div>
+        <div class="layer"><h4>Squeeze context</h4><p>Bollinger/Keltner compression with state, bar count and fire detection — plus a historical hit-rate replay of the same objective condition.</p></div>
+        <div class="layer"><h4>Relative volume</h4><p>Volume against its own 30-day baseline, banded — so a heavy tape on a quiet name isn't hidden by a big name's raw volume.</p></div>
+        <div class="layer"><h4>Volatility sizing</h4><p>ATR% banded from dead to extreme. Names too quiet to move and too wild to size are both penalized.</p></div>
+        <div class="layer"><h4>Liquidity</h4><p>Live bid/ask spread as a percentage. Wide spreads cut the score directly; missing quotes are marked CHECK, never assumed tight.</p></div>
+        <div class="layer"><h4>Event risk</h4><p>Days to earnings. Inside the danger window the score is multiplied down by up to 40% — a good chart in front of a print is not a good setup.</p></div>
+        <div class="layer"><h4>Risk framework</h4><p>Entry zone, volatility or structure stop, 2R target, and risk as a percentage of entry — computed per row, not drawn by hand.</p></div>
+        <div class="layer"><h4>Setup quality ranking</h4><p>Everything above is weighted into one 0–100 score, then sorted, so the top of the list is the top of the list for a stated reason.</p></div>
+      </div>
+    </div>
+
+    <div class="tier">
+      <div class="tier-head">
+        <h3>Modeled, waiting on the licensed options feed</h3>
+        <span class="tier-badge tb-gated">Not live</span>
+      </div>
+      <div class="layers">
+        <div class="layer off"><h4>Dark pool activity</h4><p>Off-exchange print volume and level clustering. Requires a licensed feed — shown as locked rather than approximated from candles.</p></div>
+        <div class="layer off"><h4>Institutional options flow</h4><p>Ask-side sweeps, block prints and strike concentration. The current Smart Flow column is a price/volume proxy and is labeled as one.</p></div>
+        <div class="layer off"><h4>Gamma exposure</h4><p>Dealer positioning and gamma flip levels. Candles alone can never establish gamma positioning, so the engine refuses to claim it.</p></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══ ACCESS ══ -->
+<section id="access">
+  <div class="wrap">
+    <div class="eyebrow">Access</div>
+    <h2>How to get in.</h2>
+    <div class="sec-intro">
+      <p>The engine is in open beta while forward paper-trading evidence is collected. There's no
+        paywall right now — there's a validation gate, and it's being run in public.</p>
+    </div>
+    <div class="steps">
+      <div class="step">
+        <div class="step-n">1</div>
+        <h3>Look first</h3>
+        <p>The sample scan on this page is the real output format. Nothing to install, nothing to sign.</p>
+      </div>
+      <div class="step">
+        <div class="step-n">2</div>
+        <h3>Open the engine</h3>
+        <p>The live scanner runs at <a href="/app">/app</a> — ten pre-built views, symbol lookup and the full factor drawer.</p>
+      </div>
+      <div class="step">
+        <div class="step-n">3</div>
+        <h3>Paper trade it</h3>
+        <p>Log what it finds against your own results while the forward evidence set is built. That's the whole point of the beta.</p>
+      </div>
+    </div>
+    <div class="hero-ctas">
+      <a class="btn btn-primary" href="/app">Open the engine</a>
+      <a class="btn btn-ghost" href="#dashboard">Replay the sample scan</a>
+    </div>
+  </div>
+</section>
+
+<!-- ══ STATUS ══ -->
+<section id="status">
+  <div class="wrap">
+    <div class="eyebrow">Straight answers</div>
+    <h2>What this is not.</h2>
+    <div class="warn">
+      <h3>&#9888; Beta — research and paper trading only</h3>
+      <p>Profitability has <strong>not</strong> been demonstrated. The historical evidence sets
+        collected so far have confidence intervals that include zero, and the ticker selection in
+        those replays carries survivorship bias. Before any non-beta claim is made, the project
+        requires:</p>
+      <ul>
+        <li>At least 100 forward paper observations per frozen configuration</li>
+        <li>After-cost confidence intervals above zero, clustered by symbol</li>
+        <li>No single symbol contributing more than 20% of positive aggregate R</li>
+        <li>Acceptable slippage across multiple market regimes</li>
+      </ul>
+    </div>
+    <p class="fineprint">
+      A score is a technical ranking of setup quality — <b>not</b> a probability of profit, a win
+      rate, or a recommendation. The engine ranks the <b>underlying stock</b>; it does not select or
+      validate an option contract, and it has no live option bid/ask, delta, IV, or open-interest
+      validation. Entry, stop and target are reference levels derived from ATR and recent structure,
+      not instructions. Squeeze and flush labels describe price and volume conditions — they are not
+      proof of short covering, and a gamma label is never inferred from candles. Dark pool, options
+      flow and gamma columns stay locked until a licensed feed supplies them. No part of this system
+      places orders or connects to a brokerage. Educational use only. Not financial advice.
+    </p>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap foot-in">
+    <span>&copy; WallStreetHustler — market research tooling. Educational use only. Not financial advice.</span>
+    <span class="foot-links">
+      <a href="/app">Engine</a>
+      <a href="/api/health">Status</a>
+      <a href="#status">Disclosures</a>
+    </span>
+  </div>
+</footer>
+
+<script>
+// ── Sample scan output ────────────────────────────────────────────────────────
+// Level values here were generated by the production engine/levels.js so the
+// arithmetic on this page matches what the live scanner computes.
+const ROWS = [
+  { sym:'SMCI', price:42.18, score:87, dir:2, conf:83, regime:'Squeeze Fire', regimeK:'BREAKOUT',
+    sqz:'FIRING', sqzPct:100, rvol:3.4, flow:62, flowBand:'STRONG BUY', spread:0.08,
+    entryLow:41.68, entryHigh:42.69, stop:39.60, target:45.83, riskPct:4.98, stopBasis:'STRUCTURE',
+    earn:0, earnTxt:'Clear', atrPct:4.79, stable:78, darvas:'BREAKOUT', adx:34.2, rsi:64.1, early:72,
+    note:'Compression fired on a <b>3.4x volume</b> expansion while price broke the Darvas box top. Because a real box floor exists at 39.80, the stop is placed on structure rather than on raw ATR — that tightens risk to 4.98% and is what lifts this to the top of the ranking.' },
+
+  { sym:'MARA', price:18.44, score:81, dir:2, conf:80, regime:'Darvas Breakout', regimeK:'BREAKOUT',
+    sqz:'FIRING', sqzPct:100, rvol:4.1, flow:55, flowBand:'STRONG BUY', spread:0.11,
+    entryLow:18.15, entryHigh:18.73, stop:16.99, target:20.49, riskPct:6.43, stopBasis:'STRUCTURE',
+    earn:1, earnTxt:'Watch · 9d', atrPct:6.24, stable:71, darvas:'BREAKOUT', adx:29.8, rsi:68.3, early:69,
+    note:'Highest relative volume in the scan at <b>4.1x</b>, with the squeeze firing. Scored below SMCI on two counts: ATR% of 6.24 sits in the extreme band, and earnings in nine days applies a watch flag. Wider volatility means wider risk — 6.43% to the stop.' },
+
+  { sym:'PLTR', price:31.62, score:76, dir:1, conf:75, regime:'Strong Trend', regimeK:'TREND',
+    sqz:'ACTIVE', sqzPct:62, rvol:1.8, flow:41, flowBand:'BUY', spread:0.05,
+    entryLow:31.37, entryHigh:31.88, stop:29.84, target:34.43, riskPct:4.88, stopBasis:'ATR',
+    earn:0, earnTxt:'Clear', atrPct:3.23, stable:74, darvas:'APPROACHING', adx:31.5, rsi:61.2, early:64,
+    note:'The cleanest structure on the board — full EMA stack, ADX 31.5, tightest spread at 0.05%. It ranks below the breakouts because the squeeze is still <b>building, not fired</b>: 62% compression with no expansion yet. This is the patient entry, not the momentum one.' },
+
+  { sym:'COIN', price:186.30, score:73, dir:1, conf:67, regime:'Trend', regimeK:'TREND',
+    sqz:'ACTIVE', sqzPct:48, rvol:2.2, flow:38, flowBand:'BUY', spread:0.09,
+    entryLow:184.20, entryHigh:188.40, stop:175.16, target:202.28, riskPct:4.91, stopBasis:'STRUCTURE',
+    earn:2, earnTxt:'Caution · 4d', atrPct:4.51, stable:69, darvas:'IN_BOX', adx:24.6, rsi:58.4, early:51,
+    note:'Would have scored in the low 90s on structure alone. <b>Earnings in four days multiplies the score down by 20%</b> — a good chart in front of a print is not a good setup. The engine does not hide the trade, it prices the risk of holding through the event.' },
+
+  { sym:'UPST', price:33.75, score:71, dir:-2, conf:82, regime:'Strong Trend', regimeK:'TREND',
+    sqz:'ACTIVE', sqzPct:55, rvol:2.9, flow:-58, flowBand:'STRONG SELL', spread:0.12,
+    entryLow:33.11, entryHigh:34.39, stop:37.16, target:28.85, riskPct:8.05, stopBasis:'STRUCTURE',
+    earn:3, earnTxt:'Danger · 1d', atrPct:7.56, stable:66, darvas:'IN_BOX', adx:33.7, rsi:31.4, early:58,
+    note:'Strongest bearish agreement in the scan — <b>82% of factors point the same way</b>. It still only reaches 71 because earnings land tomorrow, which applies the maximum 40% penalty, and 7.56% ATR puts risk at 8.05% per share. High conviction, badly timed.' },
+
+  { sym:'GME', price:24.10, score:68, dir:1, conf:67, regime:'High Volatility', regimeK:'HIGH_VOL',
+    sqz:'FIRING', sqzPct:100, rvol:5.7, flow:33, flowBand:'BUY', spread:0.21,
+    entryLow:23.64, entryHigh:24.56, stop:20.86, target:29.19, riskPct:11.74, stopBasis:'ATR',
+    earn:0, earnTxt:'Clear', atrPct:7.68, stable:52, darvas:'NO_BOX', adx:22.1, rsi:71.5, early:44,
+    note:'The loudest name on the tape — <b>5.7x volume</b>, squeeze fired — and deliberately not the top ranked. No Darvas structure to anchor a stop, so risk falls back to raw ATR at <b>11.74%</b>, RSI is stretched at 71.5, and the spread is the widest here. Volume is not quality.' },
+
+  { sym:'RIVN', price:11.28, score:64, dir:-1, conf:71, regime:'Trend', regimeK:'TREND',
+    sqz:'OFF', sqzPct:0, rvol:1.6, flow:-44, flowBand:'SELL', spread:0.14,
+    entryLow:11.13, entryHigh:11.43, stop:12.36, target:9.57, riskPct:8.13, stopBasis:'ATR',
+    earn:0, earnTxt:'Clear', atrPct:5.50, stable:61, darvas:'IN_BOX', adx:26.3, rsi:38.2, early:39,
+    note:'A clean short read — EMA stack inverted, flow negative at -44, ADX confirming the trend. The box top at 12.40 sat just <i>outside</i> the ATR stop, so the engine kept the wider volatility stop rather than shaving risk on a level that would not have held.' },
+
+  { sym:'HOOD', price:22.90, score:44, dir:0, conf:50, regime:'Choppy / No Trend', regimeK:'CHOP',
+    sqz:'OFF', sqzPct:0, rvol:0.9, flow:4, flowBand:'NEUTRAL', spread:0.07,
+    entryLow:null, entryHigh:null, stop:null, target:null, riskPct:null, stopBasis:null,
+    earn:0, earnTxt:'Clear', atrPct:4.28, stable:38, darvas:'NO_BOX', adx:12.4, rsi:49.6, early:21,
+    note:'Included on purpose. ADX 12.4 means no trend, volume is below its own average, and the factors disagree with each other. Direction resolves to neutral — so the engine returns <b>no entry, no stop, no target at all</b>. It would rather show you nothing than invent a level.' },
+];
+
+// ── helpers ───────────────────────────────────────────────────────────────────
+const $ = s => document.querySelector(s);
+const c = { green:'var(--green)', red:'var(--red)', blue:'var(--blue)', yellow:'var(--yellow)',
+            purple:'var(--purple)', orange:'var(--orange)', muted:'var(--muted)', dim:'var(--dim)',
+            text:'var(--text)' };
+
+const scoreCol = v => v >= 80 ? c.green : v >= 65 ? c.yellow : c.muted;
+const dirTxt = d => d === 2 ? ['&#9650;&#9650; STRONG', c.green] : d === 1 ? ['&#9650; BULL', c.green]
+              : d === 0 ? ['&mdash; NEUTRAL', c.dim] : d === -1 ? ['&#9660; BEAR', c.red]
+              : ['&#9660;&#9660; STRONG', c.red];
+const sqzCol = s => s === 'FIRING' ? c.yellow : s === 'ACTIVE' ? c.blue : c.dim;
+const regCol = k => ({BREAKOUT:c.yellow, SQUEEZE:c.blue, TREND:c.green, HIGH_VOL:c.orange,
+                      REVERSAL:c.purple, CHOP:c.dim}[k] || c.muted);
+const earnCol = r => r === 3 ? c.red : r === 2 ? c.orange : r === 1 ? c.yellow : c.dim;
+const pill = (t, col) => `<span class="pill" style="color:${col};background:${col}1f;border:1px solid ${col}55">${t}</span>`;
+const bar  = (pct, col) => `<span class="bar"><i style="width:${Math.max(0,Math.min(100,pct))}%;background:${col}"></i></span>`;
+const money = v => v == null ? '&mdash;' : '$' + v.toFixed(2);
+
+// ── row rendering ─────────────────────────────────────────────────────────────
+function rowHtml(r, i) {
+  const [dt, dc] = dirTxt(r.dir);
+  const flowCol = r.flow > 25 ? c.green : r.flow < -25 ? c.red : c.muted;
+  const spCol   = r.spread > 0.25 ? c.orange : c.green;
+  const hasLv   = r.stop != null;
+  return `
+  <tr class="row" data-i="${i}">
+    <td class="sym">${r.sym}</td>
+    <td><span class="score" style="color:${scoreCol(r.score)}">${r.score}</span></td>
+    <td><span style="color:${dc};font-size:11px;font-weight:700">${dt}</span></td>
+    <td>${bar(r.conf, scoreCol(r.conf))}<span class="num" style="color:${scoreCol(r.conf)}">${r.conf}%</span></td>
+    <td><span style="color:${regCol(r.regimeK)};font-size:12px;font-weight:600">${r.regime}</span></td>
+    <td>${r.sqz === 'OFF' ? '<span style="color:var(--dim)">&mdash;</span>'
+          : pill(r.sqz + (r.sqzPct ? ' ' + r.sqzPct + '%' : ''), sqzCol(r.sqz))}</td>
+    <td><span class="num" style="color:${r.rvol >= 2 ? c.green : r.rvol >= 1.5 ? c.yellow : c.muted}">${r.rvol.toFixed(1)}x</span></td>
+    <td><span class="num" style="color:${flowCol}">${r.flow > 0 ? '+' : ''}${r.flow}</span></td>
+    <td><span class="num" style="color:${spCol}">${r.spread.toFixed(2)}%</span></td>
+    <td><span class="num">${hasLv ? money(r.entryLow) + '&ndash;' + r.entryHigh.toFixed(2) : '&mdash;'}</span></td>
+    <td><span class="num" style="color:${hasLv ? c.red : c.dim}">${money(r.stop)}</span></td>
+    <td><span class="num" style="color:${hasLv ? c.green : c.dim}">${money(r.target)}</span></td>
+    <td><span class="num" style="color:${!hasLv ? c.dim : r.riskPct > 8 ? c.red : r.riskPct > 5 ? c.orange : c.muted}">${hasLv ? r.riskPct.toFixed(2) + '%' : '&mdash;'}</span></td>
+    <td>${r.earn ? pill(r.earnTxt, earnCol(r.earn)) : '<span style="color:var(--dim);font-size:12px">Clear</span>'}</td>
+    <td><span class="lock">&#128274; feed</span></td>
+    <td><span class="lock">&#128274; feed</span></td>
+  </tr>
+  <tr class="drawer" id="dw-${i}" style="display:none"><td colspan="16"><div class="dw" id="dwi-${i}"></div></td></tr>`;
+}
+
+function drawerHtml(r) {
+  const [dt, dc] = dirTxt(r.dir);
+  const fac = (name, weight, val, col, note) => `
+    <div class="fac">
+      <div class="fac-top"><span class="fac-name">${name}</span><span class="fac-w">${weight}</span></div>
+      <div class="fac-val" style="color:${col}">${val}</div>
+      <div class="fac-note">${note}</div>
+    </div>`;
+
+  const rr = r.stop != null
+    ? `${money(r.entryLow)}&ndash;${r.entryHigh.toFixed(2)} &rarr; stop ${money(r.stop)} &rarr; target ${money(r.target)} &nbsp;·&nbsp; <b>2.0R</b>, ${r.riskPct.toFixed(2)}% risk, stop on ${r.stopBasis.toLowerCase()}`
+    : 'No directional bias &rarr; <b>no levels issued</b>';
+
+  return `
+    <div class="dw-head">
+      <h4>${r.sym} &nbsp;<span style="color:var(--muted);font-weight:600">$${r.price.toFixed(2)}</span></h4>
+      <span class="verdict">Score <b style="color:${scoreCol(r.score)}">${r.score}</b>
+        &nbsp;·&nbsp; <span style="color:${dc}">${dt}</span>
+        &nbsp;·&nbsp; ${r.conf}% factor agreement
+        &nbsp;·&nbsp; <span style="color:${regCol(r.regimeK)}">${r.regime}</span></span>
+    </div>
+    <div class="dw-grid">
+      ${fac('Stable score','25% weight', r.stable, scoreCol(r.stable), 'Multi-dimension setup quality from independent evidence only.')}
+      ${fac('Squeeze','20% weight', r.sqz === 'OFF' ? 'OFF' : r.sqz + ' ' + r.sqzPct + '%', sqzCol(r.sqz), r.sqz === 'FIRING' ? 'Compression released — expansion underway.' : r.sqz === 'ACTIVE' ? 'Still compressing. No expansion yet.' : 'No compression present.')}
+      ${fac('Relative volume','15% weight', r.rvol.toFixed(1) + 'x', r.rvol >= 2 ? c.green : c.muted, 'Measured against its own 30-day baseline.')}
+      ${fac('Smart flow','15% weight', (r.flow > 0 ? '+' : '') + r.flow + ' ' + r.flowBand, r.flow > 25 ? c.green : r.flow < -25 ? c.red : c.muted, 'Price/volume proxy — not licensed options flow.')}
+      ${fac('Darvas structure','10% weight', r.darvas, r.darvas === 'BREAKOUT' ? c.yellow : c.muted, r.darvas === 'NO_BOX' ? 'No box — nothing to anchor a structural stop to.' : 'Non-repainting box detection.')}
+      ${fac('Early entry','10% weight', r.early, scoreCol(r.early), 'How early in the move this candidate is.')}
+      ${fac('ATR %','5% weight', r.atrPct.toFixed(2) + '%', r.atrPct > 6 ? c.red : r.atrPct >= 2 ? c.green : c.muted, r.atrPct > 6 ? 'Extreme band — size down or skip.' : r.atrPct < 1 ? 'Too quiet to move.' : 'Tradeable range.')}
+      ${fac('Earnings risk','score multiplier', r.earnTxt, earnCol(r.earn), r.earn === 3 ? 'Danger window — score multiplied by 0.60.' : r.earn === 2 ? 'Caution window — score multiplied by 0.80.' : r.earn === 1 ? 'On the radar, no penalty yet.' : 'No print in the risk window.')}
+      ${fac('Liquidity','score multiplier', r.spread.toFixed(2) + '%', r.spread > 0.25 ? c.orange : c.green, r.spread <= 0.25 ? 'Tight — verified from live quote.' : 'Wide enough to erode the edge.')}
+      ${fac('ADX / RSI','structure check', r.adx.toFixed(1) + ' / ' + r.rsi.toFixed(1), r.adx > 25 ? c.green : c.muted, r.adx < 15 ? 'Below 15 — no trend to trade.' : r.rsi > 70 ? 'Trend confirmed but RSI stretched.' : 'Trend strength confirmed.')}
+    </div>
+    <div class="dw-note"><b>Why it ranked here:</b> ${r.note}</div>
+    <div class="dw-note" style="margin-top:10px;border-left-color:${r.stop != null ? 'var(--blue)' : 'var(--border2)'}">
+      <b>Risk framework:</b> ${rr}
+    </div>
+    <div class="gate-box">
+      <div class="gt">&#128274; Requires licensed options feed</div>
+      <div class="gate-row"><span>Dark pool print volume &amp; level clustering</span><span>not connected</span></div>
+      <div class="gate-row"><span>Institutional options flow (sweeps, blocks, strikes)</span><span>not connected</span></div>
+      <div class="gate-row"><span>Gamma exposure &amp; dealer positioning</span><span>not connected</span></div>
+    </div>`;
+}
+
+// ── interaction ───────────────────────────────────────────────────────────────
+let openIdx = null;
+
+function paint(rows) {
+  $('#tb').innerHTML = rows.map((r, i) => rowHtml(r, ROWS.indexOf(r))).join('');
+  $('#tb').querySelectorAll('tr.row').forEach(tr => {
+    tr.addEventListener('click', () => toggle(+tr.dataset.i));
+  });
+  syncFade();
+}
+
+function toggle(i) {
+  const drawer = document.getElementById('dw-' + i);
+  const row    = $(`tr.row[data-i="${i}"]`);
+  if (!drawer || !row) return;
+
+  if (openIdx !== null && openIdx !== i) {
+    const prevD = document.getElementById('dw-' + openIdx);
+    const prevR = $(`tr.row[data-i="${openIdx}"]`);
+    if (prevD) prevD.style.display = 'none';
+    if (prevR) prevR.classList.remove('open');
+  }
+  if (openIdx === i) {
+    drawer.style.display = 'none';
+    row.classList.remove('open');
+    openIdx = null;
+    return;
+  }
+  document.getElementById('dwi-' + i).innerHTML = drawerHtml(ROWS[i]);
+  drawer.style.display = '';
+  row.classList.add('open');
+  openIdx = i;
+}
+
+// Staggered "scan" replay — cosmetic, but it shows the ranking assembling.
+let replaying = false;
+function replay() {
+  if (replaying) return;
+  replaying = true;
+  openIdx = null;
+  const btn = $('#replay');
+  btn.disabled = true;
+  $('#tb').innerHTML = '';
+  const shown = [];
+  let n = 0;
+
+  const tick = () => {
+    if (n >= ROWS.length) {
+      $('#scan-line').textContent =
+        `Scan complete · 25 symbols · ${ROWS.length} ranked · 8.4s · sorted by score`;
+      btn.disabled = false;
+      replaying = false;
+      return;
+    }
+    const r = ROWS[n++];
+    $('#scan-line').textContent =
+      `Scanning ${r.sym}… structure · regime · squeeze · volume · liquidity · event risk  →  score ${r.score}`;
+    shown.push(r);
+    paint(shown);
+    setTimeout(tick, 260);
+  };
+  setTimeout(tick, 200);
+}
+
+$('#replay').addEventListener('click', replay);
+
+// Show the edge fade only while there is actually more table to the right.
+const sc = $('#tblscroll'), wr = $('#tblwrap');
+function syncFade() {
+  const more = sc.scrollWidth - sc.clientWidth - sc.scrollLeft > 2;
+  wr.classList.toggle('overflowing', more);
+}
+sc.addEventListener('scroll', syncFade, { passive: true });
+window.addEventListener('resize', syncFade);
+
+// First paint: full table, then let the visitor replay it.
+paint(ROWS);
+$('#scan-line').textContent =
+  `Scan complete · 25 symbols · ${ROWS.length} ranked · 8.4s · sorted by score`;
+syncFade();
+</script>
+</body>
+</html>
