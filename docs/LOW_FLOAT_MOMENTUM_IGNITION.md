@@ -1,32 +1,26 @@
 # Low-Float Momentum Ignition V2
 
-A research-only WallStreetHustler engine for detecting *developing* low-float momentum before a move becomes obviously extended, then ranking the candidates so the closest/highest-quality setup appears first.
+A research-only WallStreetHustler engine for detecting developing low-float momentum before a move becomes obviously extended, then ranking the candidates so the strongest *current explosive-potential* setup appears first.
 
 ## State machine
 
 `DORMANT -> BUILDING -> ARMED -> IGNITION -> EXTENDED`
 
 - **DORMANT**: insufficient verified participation / scarcity.
-- **BUILDING**: low-float candidate with improving abnormal participation.
+- **BUILDING**: abnormal participation is developing.
 - **ARMED**: multiple conditions align; watch closely, not a buy command.
-- **IGNITION**: high score plus price confirmation above VWAP / opening-range high when those inputs are available.
-- **EXTENDED**: anti-chase gate. A vertical move can have a high raw score but should not be presented as a fresh setup.
+- **IGNITION**: high score plus price confirmation above VWAP / opening-range high when available.
+- **EXTENDED**: anti-chase gate. A vertical move is not presented as a fresh setup.
 
-## One-scanner ranking
+## Most-potential-first scanner
 
-`rankLowFloatCandidates()` sorts by a dedicated **Ignition Priority Score**, then proximity, then core score and float turnover. `selectTopLowFloatCandidate()` returns the single first result.
+The primary low-float list should use `rankMostPotentialFirst()` from `lib/low-float-workday.js`. This creates an `explosivePotentialScore` and sorts the scanner so the name with the strongest combination of fresh ignition state, proximity, float scarcity, RVOL, float turnover, 5-minute acceleration, pre-market turnover, catalyst evidence, option confirmation and squeeze pressure appears first.
 
-Each row exposes:
+The score deliberately penalizes dilution/offering flags, low confidence, wide-risk conditions and especially `EXTENDED_DO_NOT_CHASE`. A name that is already vertical cannot win the list simply because its raw volume is enormous.
 
-- `rank`
-- `topPick`
-- `priorityScore` — 0-100 ordering score
-- `proximityScore` — how close the candidate is to its next valid state
-- `score` — core low-float ignition evidence score
-- `confidence` — HIGH / MEDIUM / LOW based on missing inputs
-- `probabilityStatus: UNTRAINED_NOT_A_PROBABILITY`
+`selectMostPotentialCandidate()` returns the single #1 candidate. Every result exposes `potentialIsProbability:false`; this is an ordering score, not a statistical chance of profit.
 
-The priority score is deliberately **not** called a win probability. A statistical probability should only be published after enough timestamped forward observations exist to calibrate score buckets against actual outcomes.
+The existing `priorityScore`, `proximityScore`, core `score`, `confidence`, and empirical probability-calibration rules remain in force. A percentage may be labeled probability only after enough timestamped forward outcomes exist for the relevant score bucket and the outcome definition/sample size are shown.
 
 ## Low-float universe
 
@@ -35,133 +29,76 @@ The priority score is deliberately **not** called a win probability. A statistic
 - Primary low float: <= 20M
 - Extended research universe: <= 50M
 
-For the optionable lane, $5-$20 receives a small ranking preference because that range often balances share scarcity with usable option markets. It is a preference, not a hard rule.
+For the optionable lane, $5-$20 receives a small ranking preference. `optionableOnly:true` excludes unknown/non-optionable names rather than guessing.
 
-## Required / preferred inputs
+## Evidence inputs
 
-### Core evidence
-- `price`
-- `floatShares` — verified public float, never estimated from volume
-- `volume`
-- `avgVolume20`
+Core: verified public float, price, current volume and 20-day average volume.
 
-### Intraday ignition
-- `volume5m`, `priorVolume5m`
-- `changePct`, `change5mPct`
-- `vwap`
-- `openingRangeHigh`
-- `dayHigh`
+Intraday: 5-minute volume and prior 5-minute volume, change, VWAP, opening-range high and day high.
 
-### Pre-market
-- `preMarketVolume`
-- `preMarketChangePct`
-- `preMarketHigh`
+Pre-market: pre-market volume, change and high. The engine derives pre-market float turnover and pre-market-high confirmation.
 
-The engine calculates pre-market float turnover and whether price has cleared the pre-market high.
+Catalyst: confirmed catalyst plus age. Price action never invents a catalyst.
 
-### Catalyst
-- `catalystConfirmed`
-- `catalystAgeMinutes`
+Squeeze: sourced short-interest percentage, borrow fee and shortable status when available.
 
-Do not infer a catalyst from price action. If news/filing data is unavailable, leave it false/unknown.
+Option/gamma confirmation: verified optionability, option/call/put volume, near-OTM call volume and open interest, option spread, strike distance, DTE and IV when available. Options evidence confirms the stock setup; it does not manufacture ignition by itself.
 
-### Squeeze pressure
-- `shortInterestPct`
-- `borrowFeePct`
-- `shortable`
-
-These must be sourced. They are optional and add no points when unavailable.
-
-### Optionable / gamma-confirmation lane
-- `optionable`
-- `optionVolume`
-- `callVolume`, `putVolume`
-- `nearOtmCallVolume`
-- `nearOtmCallOpenInterest`
-- `optionSpreadPct`
-- `nearestOtmStrikePct`
-- `daysToExpiry`
-- `impliedVolatilityPct`
-
-Options activity is a **confirmation layer**, not the source of the stock ignition score. The engine looks for verified near-OTM call-volume concentration, volume/OI expansion, nearby strikes and short DTE, while penalizing unusable option spreads. It never assumes that call volume equals bullish opening flow.
-
-`rankLowFloatCandidates(rows, { optionableOnly:true })` restricts the list to names explicitly verified as optionable. Unknown optionability is excluded rather than guessed.
-
-### Dilution / execution risk
-- `offeringRisk`
-- `dilutionRisk`
-- `reverseSplitRisk`
-- `spreadPct`
-- `haltCount`
-
-Offering/dilution flags should be backed by SEC filing/corporate-action data rather than keyword guesses alone.
+Risk: offering, dilution, reverse split, spread and halt flags. Offering/dilution flags should be backed by SEC/corporate-action evidence.
 
 ## Core calculations
 
-- **RVOL** = current cumulative volume / 20-day average volume.
-- **Float turnover** = current cumulative volume / public float.
-- **Pre-market turnover** = pre-market volume / public float.
-- **5m volume acceleration** = current 5m volume / previous 5m volume.
-- **VWAP displacement** = price / VWAP - 1.
-- **ORB break** = price / opening-range high - 1.
-- **Near-OTM call volume/OI** = near-OTM call volume / prior open interest when both are verified.
+- RVOL = current cumulative volume / 20-day average volume.
+- Float turnover = current cumulative volume / public float.
+- Pre-market turnover = pre-market volume / public float.
+- 5m acceleration = current 5m volume / previous 5m volume.
+- VWAP displacement = price / VWAP - 1.
+- ORB break = price / opening-range high - 1.
+- Near-OTM call volume/OI uses verified near-OTM call volume and prior open interest.
 
-## Core ignition score
+## 9-to-5 / workday text alerts
 
-100-point pre-penalty stock model:
-- Float scarcity: 20
-- RVOL: 20
-- Float turnover: 15
-- 5m volume acceleration: 10
-- Price/VWAP/ORB structure: 15
-- Fresh verified catalyst: 10
-- Verified short/borrow pressure: 10
+`buildWorkdayTextAlert()` creates a concise SMS payload for traders who cannot keep the scanner open during work. The text identifies the #1 ranked symbol, state, explosive-potential score, RVOL, float turnover and the next confirmation to watch. It always says the message is a research alert, not a buy signal.
 
-Pre-market evidence and option/gamma evidence influence the separate **priority ranking**, so weak or missing options data cannot manufacture an ignition state.
+`shouldSendWorkdayText()` is the anti-spam gate. A text is eligible only for **ARMED** or **IGNITION**, not LOW-confidence or EXTENDED setups. After the first text, another message is sent only when the top symbol changes, the state changes, or the explosive-potential score improves materially (currently 8+ points).
 
-Penalties apply for offering/dilution/reverse-split risk, wide stock spreads, repeated halts, sub-$0.50 names, wide option spreads, and anti-chase extension.
+Example:
+
+```
+WSH 9-TO-5 | #1 ABCD ARMED | Potential 91/100 | RVOL 4.9x | Turnover 0.74x | Next: clear and hold ORH. Research alert, not a buy signal.
+```
+
+Actual SMS delivery should be connected only in the canonical production source after production-source recovery and with a configured messaging provider; the current feature branch supplies ranking, gating and message payloads without touching the existing live production backend.
 
 ## Recommended scanner display
 
 Show one dominant card first, then the ranked queue:
 
 ```
-#1 TOP IGNITION CANDIDATE
+#1 MOST POTENTIAL NOW
 Ticker: ABCD
 State: ARMED
-Ignition Priority: 91/100
-Core Score: 68/100
+Explosive Potential: 91/100
+Ignition Priority: 88/100
 Proximity: 96/100
+Core Score: 68/100
 Float: 7.8M
 RVOL: 4.9x
 Float Turnover: 0.74x
-5m Volume Acceleration: 2.6x
-VWAP: +1.8%
-ORB: 0.3% below trigger
+5m Acceleration: 2.6x
 Catalyst: CONFIRMED
-Options: VERIFIED / near-OTM call activity elevated
-Dilution Risk: LOW / VERIFIED
+Options: VERIFIED if available
 Data Confidence: HIGH
-Next proof: hold above ORH with volume
+Next proof: clear and hold ORH / VWAP with volume
 ```
 
-This answers the product question directly: **which low-float name is highest quality and closest to ignition right now?**
+## Production safety
 
-## Data integration requirement
+GitHub `main` still does not contain the complete source used by the current CLI-deployed Vercel production application. Production was built from 214 deployment files with a much larger build cache than the GitHub preview. Do not promote this branch over the production domains until that canonical source is recovered/synchronized and parity-tested.
 
-The GitHub `main` repository currently exposes `api/bars.js`, which supplies daily OHLCV and does **not** supply verified public float, intraday VWAP/5m bars, borrow data, SEC dilution flags, or complete option-chain metrics. The engine therefore reports missing fields rather than inventing them.
-
-The current Vercel production deployment is a materially newer CLI-deployed application than GitHub `main`: production built from **214 deployment files** and a roughly **22.43 MB build cache**, while the current GitHub preview build is roughly **1.20 MB**. Do not promote a GitHub preview over production until the CLI-deployed production source is recovered/synchronized into version control.
-
-To activate the full engine in the production scanner, the canonical production source must first be synchronized, then connect verified providers for:
-1. reference/fundamental data (public float / shares outstanding / market cap),
-2. intraday 1m or 5m bars/trades and pre-market volume,
-3. news + SEC filings/corporate actions,
-4. short interest / borrow availability when licensed,
-5. optionability and option-chain volume/OI/spread/expiry data when licensed.
-
-The UI should display source timestamps and degrade confidence when fields are unavailable.
+The current repository also lacks complete verified public float, intraday/pre-market bars, borrow/short data, SEC dilution flags and option-chain fields. Missing fields remain missing; the engine does not fabricate them.
 
 ## Alert policy
 
-Only `ARMED` and `IGNITION` are alert eligible. `EXTENDED` is explicitly anti-chase. Alerts should say **review**, **watch**, or **setup changed**, never guarantee an outcome or say a user should buy.
+Only meaningful ARMED/IGNITION changes should notify. EXTENDED is explicitly anti-chase. Alerts use **review**, **watch**, **armed**, **ignition**, or **setup changed** language and never guarantee an outcome or tell a user to buy.
