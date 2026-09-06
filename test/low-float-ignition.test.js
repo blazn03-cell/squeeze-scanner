@@ -1,12 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { computeLowFloatIgnition, rankLowFloatCandidates } from '../lib/low-float-ignition.js';
+import { computeLowFloatIgnition, rankLowFloatCandidates, selectTopLowFloatCandidate } from '../lib/low-float-ignition.js';
 
 test('does not fabricate missing float or RVOL inputs', () => {
   const row = computeLowFloatIgnition({ symbol:'TEST', price:4.2 });
   assert.equal(row.metrics.floatShares, null);
   assert.equal(row.metrics.rvol, null);
   assert.equal(row.alertEligible, false);
+  assert.equal(row.probabilityStatus, 'UNTRAINED_NOT_A_PROBABILITY');
   assert.ok(row.missing.includes('floatShares'));
 });
 
@@ -15,13 +16,20 @@ test('strong verified low-float setup can reach ignition', () => {
     symbol:'ABCD', price:6.4, floatShares:4_000_000,
     volume:16_000_000, avgVolume20:1_000_000,
     volume5m:1_200_000, priorVolume5m:300_000,
+    preMarketVolume:3_000_000, preMarketChangePct:18, preMarketHigh:6.1,
     changePct:38, change5mPct:4, vwap:5.9, openingRangeHigh:6.1,
     dayHigh:6.6, catalystConfirmed:true, catalystAgeMinutes:30,
     shortInterestPct:25, borrowFeePct:50, spreadPct:0.7,
+    optionable:true, optionVolume:20_000, callVolume:16_000, putVolume:4_000,
+    nearOtmCallVolume:6_000, nearOtmCallOpenInterest:1_000,
+    optionSpreadPct:7, nearestOtmStrikePct:8, daysToExpiry:5,
   });
   assert.equal(row.stage, 'IGNITION');
   assert.equal(row.alertEligible, true);
   assert.ok(row.score >= 70);
+  assert.ok(row.priorityScore >= 70);
+  assert.equal(row.metrics.optionable, true);
+  assert.ok(row.components.optionGammaScore > 0);
 });
 
 test('anti-chase gate overrides a high raw score', () => {
@@ -34,6 +42,7 @@ test('anti-chase gate overrides a high raw score', () => {
   });
   assert.equal(row.stage, 'EXTENDED');
   assert.equal(row.alertEligible, false);
+  assert.equal(row.proximityScore, 0);
   assert.ok(row.riskFlags.includes('EXTENDED_DO_NOT_CHASE'));
 });
 
@@ -48,12 +57,37 @@ test('offering and dilution risk reduce score', () => {
   const clean = computeLowFloatIgnition(base);
   const risky = computeLowFloatIgnition({ ...base, offeringRisk:true, dilutionRisk:true });
   assert.ok(risky.score < clean.score);
+  assert.ok(risky.priorityScore < clean.priorityScore);
 });
 
-test('ranking is score descending', () => {
+test('ranking chooses closest/highest-quality ignition as top pick', () => {
   const rows = rankLowFloatCandidates([
     { symbol:'SLOW', price:5, floatShares:20_000_000, volume:2_000_000, avgVolume20:1_500_000 },
-    { symbol:'FAST', price:5, floatShares:5_000_000, volume:10_000_000, avgVolume20:1_000_000, catalystConfirmed:true },
+    { symbol:'FAST', price:7, floatShares:5_000_000, volume:10_000_000, avgVolume20:1_000_000,
+      volume5m:900_000, priorVolume5m:300_000, vwap:6.8, openingRangeHigh:6.95,
+      catalystConfirmed:true, optionable:true, optionVolume:8_000, nearOtmCallVolume:2_500,
+      nearOtmCallOpenInterest:500, optionSpreadPct:8, nearestOtmStrikePct:7, daysToExpiry:4 },
   ]);
   assert.equal(rows[0].symbol, 'FAST');
+  assert.equal(rows[0].rank, 1);
+  assert.equal(rows[0].topPick, true);
+  assert.equal(rows[1].topPick, false);
+});
+
+test('optionable-only mode excludes stocks without verified options', () => {
+  const rows = rankLowFloatCandidates([
+    { symbol:'NOOPT', price:6, floatShares:4_000_000, volume:8_000_000, avgVolume20:1_000_000, optionable:false },
+    { symbol:'OPT', price:8, floatShares:9_000_000, volume:5_000_000, avgVolume20:1_000_000, optionable:true },
+    { symbol:'UNKNOWN', price:9, floatShares:8_000_000, volume:6_000_000, avgVolume20:1_000_000 },
+  ], { optionableOnly:true });
+  assert.deepEqual(rows.map(row => row.symbol), ['OPT']);
+});
+
+test('selectTopLowFloatCandidate returns a single first scanner result', () => {
+  const top = selectTopLowFloatCandidate([
+    { symbol:'A', price:5, floatShares:18_000_000, volume:2_000_000, avgVolume20:1_000_000 },
+    { symbol:'B', price:9, floatShares:6_000_000, volume:9_000_000, avgVolume20:1_000_000, catalystConfirmed:true },
+  ]);
+  assert.equal(top.symbol, 'B');
+  assert.equal(top.topPick, true);
 });
