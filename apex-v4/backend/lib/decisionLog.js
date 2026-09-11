@@ -1,4 +1,6 @@
-// Decision log — JSONL file recording every scan result for transparency + debugging.
+// Decision log — JSONL file recording scan results and APEX state transitions
+// for transparency + debugging. Render's local filesystem is not a durable
+// database, so this log is append-only for the current service instance.
 import { writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -38,6 +40,30 @@ export class DecisionLog {
       earlyEntry:  result.earlyEntry,
       earningsRisk: result.earningsRisk,
       spreadPct:   result.spreadPct,
+    });
+  }
+
+  logCascade(snapshot, reason = 'state_change') {
+    if (!snapshot) return;
+    this._write({
+      event: 'apex_cascade',
+      reason,
+      signalId: snapshot.signalId ?? null,
+      symbol: snapshot.symbol,
+      state: snapshot.state,
+      direction: snapshot.direction,
+      price: snapshot.technical?.price ?? null,
+      triggerPrice: snapshot.event?.triggerPrice ?? null,
+      invalidationPrice: snapshot.event?.invalidationPrice ?? null,
+      catalyst: snapshot.event?.catalyst ?? null,
+      pressureBuild: snapshot.pressureBuild,
+      dataConfidence: snapshot.dataConfidence,
+      expansionRegime: snapshot.expansionRegime,
+      expansionTier: snapshot.expansion?.tier ?? null,
+      confirmedInputs: snapshot.confirmations?.confirmed ?? 0,
+      availableInputs: snapshot.confirmations?.available ?? 0,
+      failedInputs: snapshot.confirmations?.failed ?? 0,
+      generatedAt: snapshot.generatedAt,
     });
   }
 
