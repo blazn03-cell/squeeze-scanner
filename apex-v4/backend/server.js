@@ -25,9 +25,17 @@ const UNIVERSE = process.env.UNIVERSE
 const tdClient    = TD_KEY ? new TwelveDataClient(TD_KEY, CREDITS_PER_MINUTE) : null;
 const decisionLog = new DecisionLog(process.env.DECISION_LOG !== 'false');
 
+const FRONTEND = join(__dirname, '../frontend');
+const LANDING  = join(FRONTEND, 'landing.html');
+const APP_HTML = join(FRONTEND, 'index.html');
+
 const app = express();
 app.use(express.json());
-app.use(express.static(join(__dirname, '../frontend')));
+
+// The marketing landing page owns '/'; the scanner lives at '/app'.
+// index:false stops express.static from serving index.html as the directory index.
+app.get('/', (_, res) => res.sendFile(LANDING));
+app.use(express.static(FRONTEND, { index: false }));
 
 const health = (_, res) => res.json({
   ok: true,
@@ -50,7 +58,11 @@ if (tdClient) {
   }));
 }
 
-app.get('*', (_, res) => res.sendFile(join(__dirname, '../frontend/index.html')));
+app.get(['/app', '/app/*'], (_, res) => res.sendFile(APP_HTML));
+
+// Anything else falls back to the landing page rather than dropping a first-time
+// visitor into an empty scanner table.
+app.get('*', (_, res) => res.sendFile(LANDING));
 
 app.listen(PORT, () => {
   console.log(`[server] APEX V4 on http://localhost:${PORT}`);

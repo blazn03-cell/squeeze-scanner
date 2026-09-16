@@ -9,6 +9,7 @@ import { calcStableScore } from './stableScore.js';
 import { calcEarlyEntry }  from './earlyEntry.js';
 import { calcEarningsRisk } from './earnings.js';
 import { calcApexScore, calcDirection, calcConfidence, calcRegime } from './apex.js';
+import { calcLevels }         from './levels.js';
 import { normalizeStockQuote } from './quote.js';
 
 export async function scanSymbol(symbol, tdClient, opts = {}) {
@@ -48,6 +49,7 @@ export async function scanSymbol(symbol, tdClient, opts = {}) {
   const direction  = calcDirection(ind, smartFlow, darvas, squeezeHit);
   const confidence = calcConfidence(ind, relVol, smartFlow, darvas, squeezeHit, direction);
   const regimeObj  = calcRegime(ind, atrPct, squeezeHit, darvas);
+  const levels     = calcLevels(ind, direction, darvas);
 
   return {
     symbol,
@@ -81,6 +83,13 @@ export async function scanSymbol(symbol, tdClient, opts = {}) {
     ema20:        ind.ema20 !== null ? +ind.ema20.toFixed(2) : null,
     ema50:        ind.ema50 !== null ? +ind.ema50.toFixed(2) : null,
     vwap:         ind.vwap  !== null ? +ind.vwap.toFixed(2)  : null,
+    levels,
+    entryLow:     levels?.entryLow     ?? null,
+    entryHigh:    levels?.entryHigh    ?? null,
+    stop:         levels?.stop         ?? null,
+    target:       levels?.target       ?? null,
+    riskPct:      levels?.riskPct      ?? null,
+    stopBasis:    levels?.stopBasis    ?? null,
     scannedAt:    new Date().toISOString(),
   };
 }
