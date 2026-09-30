@@ -4704,6 +4704,50 @@ function PolyTab({ onClose, markets, catalystEvents, now }) {
   );
 }
 
+function FeatureGuide({ onClose }) {
+  const features = [
+    ["Technical scanner", "Ranks stocks with technical quality, direction, confidence, timing, liquidity, relative volume, volatility, Darvas structure, and squeeze state."],
+    ["Focused views", "Filters the active scan into long, short, breakout, squeeze-fire, momentum, reversal, high-relative-volume, stable, and early-entry candidates."],
+    ["Market context", "Market Brain, catalyst intelligence, and Danger Zones identify market regime, scheduled-event risk, breaking news, and technical-versus-catalyst conflicts."],
+    ["Research tools", "Provides chart pattern lessons, support and resistance, a study zone, confirmation and invalidation levels, historical event audit, and a 30-day tracker."],
+    ["Options research", "Can surface observed qualifying flow as a call or put research reference and calculate a user-entered maximum premium ceiling."],
+    ["Income and prediction research", "Includes an assumption-based income ETF lab and read-only prediction-market analytics with modeled costs, liquidity, and settlement-risk checks."],
+  ];
+  const boundaries = [
+    "Beta and paper-trading only; scores are technical rankings, not win probabilities or trade recommendations.",
+    "No brokerage connection, trade execution, wallet signing, custody, or prediction-market order submission.",
+    "A stock setup is not an actionable option trade: live option bid/ask, Greeks, IV, volume, open interest, and freshness still require independent validation.",
+    "Options flow, news, and quote features depend on configured data feeds. Missing data is shown as unavailable rather than treated as a negative signal.",
+  ];
+  const S = { position:"fixed", inset:0, zIndex:95, background:"rgba(2,7,12,.84)", display:"flex", justifyContent:"center", overflowY:"auto", padding:"28px 16px", fontFamily:"'Inter','Segoe UI',system-ui,sans-serif" };
+  const panel = { width:"min(760px, 100%)", height:"fit-content", background:"#08111a", border:"1px solid #27445b", borderRadius:12, color:"#d9e7f2", boxShadow:"0 24px 80px rgba(0,0,0,.5)" };
+  return <div role="dialog" aria-modal="true" aria-label="Scanner feature guide" style={S} onMouseDown={e=>{ if (e.target === e.currentTarget) onClose(); }}>
+    <section style={panel}>
+      <header style={{ padding:"22px 24px 16px", borderBottom:"1px solid #1d3445", display:"flex", gap:16, alignItems:"start" }}>
+        <div style={{ flex:1 }}>
+          <div style={{ color:"#66ccff", fontSize:11, fontWeight:700, letterSpacing:".12em" }}>FEATURE GUIDE</div>
+          <h1 style={{ margin:"6px 0", fontSize:24, color:"#f0f7fc" }}>What this scanner can do</h1>
+          <p style={{ margin:0, color:"#9bb3c6", lineHeight:1.6, fontSize:14 }}>A research workflow for finding, explaining, and monitoring technical setups—not an execution or advisory system.</p>
+        </div>
+        <button onClick={onClose} aria-label="Close feature guide" style={{ background:"transparent", color:"#9bb3c6", border:"1px solid #36546a", borderRadius:6, padding:"6px 10px", cursor:"pointer", fontSize:13 }}>Close</button>
+      </header>
+      <main style={{ padding:"20px 24px 24px" }}>
+        <h2 style={{ margin:"0 0 10px", fontSize:15, color:"#f0f7fc" }}>Included capabilities</h2>
+        <div style={{ display:"grid", gap:9 }}>
+          {features.map(([title, text]) => <article key={title} style={{ padding:"12px 14px", border:"1px solid #1d3445", borderRadius:8, background:"#0a1620" }}>
+            <div style={{ fontWeight:700, color:"#bfe7ff", marginBottom:4, fontSize:14 }}>{title}</div>
+            <div style={{ color:"#a5bacb", lineHeight:1.55, fontSize:13 }}>{text}</div>
+          </article>)}
+        </div>
+        <h2 style={{ margin:"22px 0 10px", fontSize:15, color:"#f0f7fc" }}>Important boundaries</h2>
+        <ul style={{ margin:0, paddingLeft:20, color:"#a5bacb", display:"grid", gap:8, lineHeight:1.55, fontSize:13 }}>
+          {boundaries.map(item => <li key={item}>{item}</li>)}
+        </ul>
+      </main>
+    </section>
+  </div>;
+}
+
 // ── SIMPLE VIEW ──────────────────────────────────────────────────────────────
 // The default screen. One column, big type, short sentences, numbered steps.
 // It reads from exactly the same engines as the expert view — nothing here
@@ -5080,6 +5124,7 @@ function SimpleHome({ brain, zones, zone, calendar, liveMode, dataStatus, nowMs,
             { k:"income", icon:"💵", label:"Income",  hint:"High-payout funds, explained simply" },
             { k:"intel",  icon:"📡", label:"News",    hint:"What just happened and which way it points" },
             { k:"poly",   icon:"◈",  label:"Markets", hint:"Prediction markets. Research only." },
+            { k:"guide",  icon:"i",  label:"Guide",   hint:"Features, workflows, and limits" },
           ].map(o => (
             <button key={o.k} onClick={()=>onOpen(o.k)} title={o.hint} aria-label={o.label}
               style={{ flex:"1 1 auto", minWidth:92, background:V.surface, border:`1px solid ${V.line}`,
@@ -5558,6 +5603,7 @@ function App() {
   const [directMode,setDirectMode]= useState(true);                      // true = REST direct (fast), false = MCP (slower)
   const [showV4,    setShowV4]    = useState(false);                     // V4 quant grid panel
   const [showIncome,setShowIncome]= useState(false);                     // income ETF lab panel
+  const [showGuide, setShowGuide] = useState(false);                     // scanner capability guide
   const [showBrain, setShowBrain] = useState(true);                      // Market Brain — first thing you see
   const [showIntel, setShowIntel] = useState(false);                     // live catalyst intelligence
   const [tradeMode, setTradeMode] = useState("pro");                     // "safe" | "pro" — changes what is surfaced
@@ -6004,6 +6050,7 @@ function App() {
                               now={nowMs} ingestStatus={ingestStatus}/>}
       {showV4 && <V4Grid feed={scanFeed} onClose={()=>setShowV4(false)} modeResult={modeResult} mode={tradeMode} quoteStatus={quoteStatus} historyAudit={historyAudit}/>}
       {showIncome && <IncomeTab onClose={()=>setShowIncome(false)}/>}
+      {showGuide && <FeatureGuide onClose={()=>setShowGuide(false)}/>}
       <SimpleHome
         brain={brain} zones={zones} zone={activeZone(zones, nowMs)} calendar={scheduled}
         liveMode={liveMode} dataStatus={barStatus} nowMs={nowMs} feed={scanFeed} barData={barData}
@@ -6012,7 +6059,7 @@ function App() {
         budget={moneyPrefs.budget} riskPct={moneyPrefs.riskPct} onMoney={setMoneyPrefs}
         onExpert={()=>setUi("expert")}
         onOpen={k => { if (k==="v4") setShowV4(true); else if (k==="income") setShowIncome(true);
-                       else if (k==="intel") setShowIntel(true); else if (k==="poly") setShowPoly(true); }}/>
+                       else if (k==="intel") setShowIntel(true); else if (k==="poly") setShowPoly(true); else if (k==="guide") setShowGuide(true); }}/>
     </div>
   );
 
