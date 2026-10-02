@@ -1,5 +1,7 @@
 # APEX V4 on Render
 
+> **Unverified as of 2026-10-02.** Codex compared the live homepage at wallstreethustler.com byte-for-byte with an external `site-source/home.html` deployed to Vercel project `prj_EsW68gxH0jhSOoOfruADd5rRagLr`, not with this repo. The "current production state" below may be out of date. Check the Vercel and Render dashboards before relying on it. The root `vercel.json` turns off Vercel git deployments for `main`, so merging here cannot replace that hand-deployed page. Branch previews still build.
+
 ## Current production state (2026-08-13)
 
 - Render service: `squeeze-scanner-apex-v4`
