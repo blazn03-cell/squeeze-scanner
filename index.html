@@ -1097,6 +1097,125 @@ function analyzeChartSetup(rawBars, v4 = {}) {
   };
 }
 
+// ── BEGINNER PATH HELPERS ───────────────────────────────────────────────────
+// Pure functions behind the Simple view's guided path. They only re-word what
+// analyzeChartSetup / computeV4 already decided; nothing here adds a signal,
+// and nothing here produces a win probability. A percentage chance of success
+// stays off the beginner path until the outcome grader has measured one.
+
+const barDate = bar => String(bar?.t ?? "").slice(0, 10);
+const money2 = n => `$${Number(n).toFixed(2)}`;
+
+// What the state means, what is missing, why that matters, and the one thing
+// that would justify looking again. Keyed on the same status analyzeChartSetup returns.
+function explainSetupState(setup) {
+  if (!setup) return null;
+  const key = setup.status.key === "wait" && setup.side === "none" ? "noside" : setup.status.key;
+  const floor = Number.isFinite(setup.support) ? money2(setup.support) : "the floor";
+  const ceiling = Number.isFinite(setup.resistance) ? money2(setup.resistance) : "the ceiling";
+  const zone = `${money2(setup.zoneLow)}–${money2(setup.zoneHigh)}`;
+  const volumeOk = setup.volumeRatio >= 1.1;
+  const map = {
+    blocked: {
+      means:"A safety check failed before the chart even matters.",
+      missing:["A tradable price, enough daily dollar volume, a fresh quote and a tight spread"],
+      why:"If a stock is thin or the quote is stale, you can be stuck or filled far from the price you saw.",
+      next:"Nothing to do on this one today. Look again only after it passes the safety gate on a new scan.",
+    },
+    noside: {
+      means:"The checks do not agree on a direction.",
+      missing:["A clear direction (trend, momentum and volume pointing the same way)"],
+      why:"Without a side, there is no honest place to put a safety line.",
+      next:`Look again if price closes above ${ceiling} or below ${floor} on stronger volume.`,
+    },
+    avoid: {
+      means:"The chart leans down. Study it, do not trade it.",
+      missing:["A new base: price holding a floor for several days"],
+      why:"Catching a falling stock is how beginners take their biggest losses. Shorting is not part of this path.",
+      next:`Look again after price stops making new lows and holds above ${floor}.`,
+    },
+    chase: {
+      means:"The move already left the study zone.",
+      missing:["Price back near the study zone"],
+      why:`Buying here puts the safety line much farther away, so being wrong costs more per share.`,
+      next:`Look again only if price pulls back into ${zone} and holds there.`,
+    },
+    watch: {
+      means:"Price is in the study zone, but it has not proved anything yet.",
+      missing:[
+        "A daily close that holds the zone",
+        ...(volumeOk ? [] : ["Stronger volume than a normal day"]),
+      ],
+      why:"A zone is only a floor if buyers defend it. One candle inside it is not proof.",
+      next:`Check after today's close: did it close inside or above ${zone}${volumeOk ? "" : " with above-normal volume"}?`,
+    },
+    wait: {
+      means:"The direction leans up, but price is not at a good spot yet.",
+      missing:["Price in the study zone", ...(volumeOk ? [] : ["Stronger volume than a normal day"])],
+      why:"Entering away from the zone means a bigger loss if the idea fails.",
+      next:`Look again if price comes into ${zone}.`,
+    },
+  };
+  return { key, label:setup.status.label, color:setup.status.color, ...(map[key] || map.wait) };
+}
+
+// Concrete, hypothetical share risk. Assumes a fill exactly at entry and at the
+// line, with zero costs; real gaps and slippage can lose more. This is
+// arithmetic on the reader's own numbers, not a sizing recommendation.
+function shareRiskExample({ entry, invalidation, shares, budget, riskPct }) {
+  const e = Number(entry), stop = Number(invalidation), n = Math.floor(Number(shares));
+  if (!(e > 0) || !(stop > 0) || e === stop || !(n > 0)) return null;
+  const perShare = Math.abs(e - stop);
+  const cap = Number(budget) > 0 && Number(riskPct) > 0 ? Number(budget) * Number(riskPct) / 100 : null;
+  return {
+    perShare:+perShare.toFixed(2),
+    pctOfEntry:+(100 * perShare / e).toFixed(2),
+    shares:n,
+    cost:+(n * e).toFixed(2),
+    loss:+(n * perShare).toFixed(2),
+    cap:cap === null ? null : +cap.toFixed(2),
+    sharesWithinCap:cap === null ? null : Math.floor(cap / perShare),
+    overCap:cap !== null && n * perShare > cap,
+  };
+}
+
+// A real past event from the bars already loaded, replayed with only the bars
+// available before it. Nothing is invented: no bars, no example.
+function pickPracticeExample(barsByTicker) {
+  const audit = historicalMoveAudit(barsByTicker);
+  for (const event of audit.events) {
+    const raw = (barsByTicker[event.ticker] || []).slice()
+      .sort((a, b) => Date.parse(a.t) - Date.parse(b.t));
+    const index = raw.findIndex(bar => barDate(bar) === event.date);
+    if (index < 60) continue;
+    const before = raw.slice(0, index);
+    const v4 = computeV4(before);
+    const setup = analyzeChartSetup(before, v4 || {});
+    if (!setup) continue;
+    const forward = raw.slice(index, index + 3).map(bar => ({ date:barDate(bar), h:+bar.h, l:+bar.l, c:+bar.c }));
+    const crossedLine = Number.isFinite(setup.invalidation) && forward.some(bar =>
+      setup.side === "down" ? bar.h >= setup.invalidation : bar.l <= setup.invalidation);
+    return {
+      ticker:event.ticker,
+      decisionDate:barDate(before[before.length - 1]),
+      eventDate:event.date,
+      setup,
+      state:explainSetupState(setup),
+      score:v4?.score ?? null,
+      outcome:{
+        type:event.type,
+        movePct:+event.movePct.toFixed(1),
+        priorClose:event.priorClose,
+        forward,
+        crossedLine,
+        captured:event.captured,
+        missReasons:event.missReasons,
+      },
+    };
+  }
+  return null;
+}
+
 // ── V4 display helpers ───────────────────────────────────────────────────────
 const OPTION_FLOW_MAX_STRIKE_DISTANCE_PCT = 8;
 
@@ -5013,6 +5132,223 @@ function BeginnerPriceChart({ ticker, bars, v4, V }) {
   );
 }
 
+// ── BEGINNER PATH ───────────────────────────────────────────────────────────
+// One route through the Simple view: find a stock → check the evidence → make a
+// paper plan → review later. Everything it shows comes from the helpers above;
+// the expert view and every existing fold are unchanged.
+
+const PRACTICE_KEY = "wsh_practice_done_v1";
+const readPracticeDone = () => { try { return localStorage.getItem(PRACTICE_KEY) === "1"; } catch (_) { return false; } };
+const writePracticeDone = () => { try { localStorage.setItem(PRACTICE_KEY, "1"); } catch (_) {} };
+
+function BeginnerPathStrip({ V, steps }) {
+  const tone = s => s === "done" ? V.good : s === "now" ? V.accent : V.text4;
+  return (
+    <ol aria-label="Beginner path" style={{ listStyle:"none", display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(130px, 1fr))",
+                 gap:6, margin:"0 0 8px", padding:0 }}>
+      {steps.map(s => (
+        <li key={s.n} aria-current={s.state === "now" ? "step" : undefined}
+          style={{ border:`1px solid ${s.state === "now" ? V.accentLine : V.line}`, background:s.state === "now" ? V.chipBg : V.surface,
+                   borderRadius:9, padding:"10px 11px" }}>
+          <div style={{ fontSize:11, fontWeight:800, letterSpacing:"0.06em", color:tone(s.state) }}>
+            {s.state === "done" ? "✓" : s.state === "locked" ? "🔒" : s.n}. {s.label.toUpperCase()}
+          </div>
+          <div style={{ fontSize:12.5, color:V.text3, lineHeight:1.5, marginTop:3 }}>{s.note}</div>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+function DecisionCard({ b, bars, V, budget, riskPct, open, onToggle }) {
+  const setup = React.useMemo(() => analyzeChartSetup(bars, b), [bars, b]);
+  const state = explainSetupState(setup);
+  const [shares, setShares] = useState("10");
+  if (!setup || !state) return (
+    <div style={{ marginTop:9, fontSize:12.5, color:V.text4, lineHeight:1.6 }}>
+      Not enough daily candles to build a decision card for {b.t}. Treat it as unchecked.
+    </div>
+  );
+  const asOf = barDate(setup.bars[setup.bars.length - 1]);
+  const risk = shareRiskExample({ entry:setup.last, invalidation:setup.invalidation, shares, budget, riskPct });
+  // Same line, entered from the top of the study zone instead: the concrete
+  // lesson in why entry distance, not just the idea, sets the loss.
+  const zoneRisk = setup.side === "up" && Math.abs(setup.last - setup.zoneHigh) > 0.005
+    ? shareRiskExample({ entry:setup.zoneHigh, invalidation:setup.invalidation, shares, budget, riskPct }) : null;
+  const usd2 = n => "$" + Number(n).toLocaleString("en-US", { minimumFractionDigits:2, maximumFractionDigits:2 });
+  const evidence = [
+    // 55 is the skip line in PLAIN.score; 65 is where the audit calls a setup ready.
+    { ok:b.score >= 65 ? true : b.score >= 55 ? null : false,
+      text:`Setup score ${b.score}/100${b.score >= 65 ? "" : b.score >= 55 ? " — borderline" : " — below the skip line"}` },
+    { ok:b.confidence >= 60, text:b.confidence >= 60 ? "The checks agree with each other" : "The checks disagree with each other" },
+    { ok:b.timing > -1, text:b.timing > -1 ? "Not extended yet" : "Already extended — late" },
+    { ok:setup.volumeRatio >= 1.1, text:`Volume ${setup.volumeRatio.toFixed(1)}× a normal day` },
+    { ok:b.quality?.verified ? b.quality.eligible : null,
+      text:b.quality?.verified ? (b.quality.eligible ? "Spread and liquidity verified" : "Failed a liquidity/spread gate") : "Spread not verified — check your broker" },
+  ];
+  const cell = { padding:"9px 10px", border:`1px solid ${V.lineSoft}`, borderRadius:7 };
+  const head = { fontSize:11, color:V.text4, fontWeight:800, letterSpacing:"0.06em" };
+
+  return (
+    <div style={{ marginTop:10, padding:"12px 13px", border:`1px solid ${state.color}55`, borderRadius:10, background:V.raised }}>
+      <div style={{ display:"flex", alignItems:"baseline", gap:8, flexWrap:"wrap" }}>
+        <span style={{ fontSize:11, fontWeight:800, letterSpacing:"0.08em", color:state.color,
+                       border:`1px solid ${state.color}66`, borderRadius:5, padding:"2px 7px" }}>{state.label}</span>
+        <span style={{ fontSize:13.5, color:V.text, fontWeight:650 }}>{state.means}</span>
+      </div>
+
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(150px, 1fr))", gap:7, marginTop:10 }}>
+        <div style={cell}>
+          <div style={head}>1. SETUP</div>
+          <div style={{ fontSize:13, color:V.text2, marginTop:3 }}>{setup.patternName}: {setup.patternPlain}</div>
+        </div>
+        <div style={cell}>
+          <div style={head}>2. EVIDENCE · daily close {asOf}</div>
+          {evidence.map((e, i) => (
+            <div key={i} style={{ fontSize:12.5, lineHeight:1.55, color:e.ok === true ? V.text2 : e.ok === false ? V.warnText : V.text3 }}>
+              {e.ok === true ? "✓" : e.ok === false ? "✕" : "△"} {e.text}
+            </div>
+          ))}
+        </div>
+        <div style={cell}>
+          <div style={head}>3. IDEA IS WRONG BELOW</div>
+          <div style={{ fontSize:15, color:V.bad, fontWeight:750, marginTop:3 }}>
+            {Number.isFinite(setup.invalidation) ? money2(setup.invalidation) : "No line"}
+          </div>
+          <div style={{ fontSize:12, color:V.text4, lineHeight:1.5 }}>
+            {setup.side === "down" ? "For a down idea this line is above price." : "Decide this before anything else."}
+          </div>
+        </div>
+        <div style={cell}>
+          <div style={head}>4. NEXT CHECK</div>
+          <div style={{ fontSize:13, color:V.text2, marginTop:3, lineHeight:1.55 }}>{state.next}</div>
+        </div>
+      </div>
+
+      <div style={{ fontSize:12.5, color:V.text3, lineHeight:1.6, marginTop:9 }}>
+        <b style={{ color:V.text2 }}>Missing:</b> {state.missing.join(" · ")}. <span style={{ color:V.text4 }}>{state.why}</span>
+      </div>
+
+      {risk && setup.side === "up" && (
+        <div style={{ marginTop:10, padding:"10px 11px", border:`1px solid ${risk.overCap ? V.bad + "66" : V.line}`, borderRadius:8,
+                      background:risk.overCap ? `${V.bad}10` : V.surface }}>
+          <div style={head}>PAPER PLAN · WHAT BEING WRONG COSTS</div>
+          <div style={{ display:"flex", alignItems:"center", gap:7, flexWrap:"wrap", fontSize:13, color:V.text2, marginTop:5 }}>
+            <span>If you paper-bought</span>
+            <input inputMode="numeric" value={shares} aria-label={`Practice shares of ${b.t}`}
+              onChange={e => setShares(e.target.value.replace(/[^0-9]/g, "").slice(0, 6))}
+              style={{ width:64, background:V.raised, border:`1px solid ${V.line}`, color:V.text, padding:"5px 8px",
+                       fontSize:14, fontWeight:700, borderRadius:6, outline:"none" }}/>
+            <span>shares at today's close {money2(setup.last)} ({usd2(risk.cost)}) and it fell to {money2(setup.invalidation)}:</span>
+          </div>
+          <div style={{ fontSize:14, marginTop:6, color:risk.overCap ? V.bad : V.text }}>
+            Hypothetical loss <b>{usd2(risk.loss)}</b> — {money2(risk.perShare)} per share, {risk.pctOfEntry}% of the price.
+          </div>
+          {zoneRisk && (
+            <div style={{ fontSize:13, color:V.text2, marginTop:4, lineHeight:1.6 }}>
+              From the top of the study zone ({money2(setup.zoneHigh)}) the same line would cost <b>{usd2(zoneRisk.loss)}</b>
+              {" "}({money2(zoneRisk.perShare)} per share){zoneRisk.loss < risk.loss ? " — less, because the entry is closer to the line." : " — more, because the entry is farther from the line."}
+            </div>
+          )}
+          <div style={{ fontSize:12.5, color:V.text3, marginTop:4, lineHeight:1.6 }}>
+            {risk.cap === null
+              ? "Enter an amount and loss % above to compare this with your own limit."
+              : risk.overCap
+                ? `That is more than your ${usd2(risk.cap)} limit. At this distance, ${risk.sharesWithinCap} share${risk.sharesWithinCap === 1 ? "" : "s"} would stay inside it.`
+                : `Inside your ${usd2(risk.cap)} limit. A farther line would cost more per share for the same idea.`}
+          </div>
+          <div style={{ fontSize:11.5, color:V.text4, marginTop:4 }}>
+            Assumes fills exactly at these prices and zero costs. Overnight gaps and slippage can lose more. Arithmetic, not advice.
+          </div>
+        </div>
+      )}
+
+      <button onClick={onToggle}
+        style={{ width:"100%", marginTop:10, padding:"8px 11px", borderRadius:8, border:`1px solid ${V.line}`,
+                 background:"transparent", color:V.text3, cursor:"pointer", fontWeight:650, textAlign:"left", fontFamily:"inherit" }}>
+        {open ? "▾ Hide the detail" : "▸ Explain more: chart, zone and lines"}
+      </button>
+      {open && <BeginnerPriceChart ticker={b.t} bars={bars} v4={b} V={V}/>}
+    </div>
+  );
+}
+
+function PracticeReplay({ V, barData, onDone }) {
+  const example = React.useMemo(() => {
+    try { return pickPracticeExample(barData || {}); } catch (_) { return null; }
+  }, [barData]);
+  const [stage, setStage] = useState(0);   // 0 = what the card said, 1 = your call, 2 = what happened
+  const [choice, setChoice] = useState(null);
+
+  if (!example) return (
+    <div style={{ fontSize:13.5, color:V.text3, lineHeight:1.7 }}>
+      No saved example yet. Practice needs 85+ days of real daily candles containing a big move,
+      and the loaded history does not have one. Nothing is made up to fill the gap — check back after prices load.
+    </div>
+  );
+  const { setup, state, outcome } = example;
+  const up = outcome.type === "squeeze";
+  return (
+    <div style={{ fontSize:13.5, color:V.text3, lineHeight:1.7 }}>
+      <div style={{ marginBottom:8 }}>
+        A real past case from the loaded prices: <b style={{ color:V.text }}>{example.ticker}</b>, as it looked at the close
+        on <b style={{ color:V.text }}>{example.decisionDate}</b>. Only candles up to that day are used.
+      </div>
+      <div style={{ padding:"10px 12px", border:`1px solid ${state.color}55`, borderRadius:8, background:V.raised }}>
+        <div><b style={{ color:state.color }}>{state.label}</b> — {state.means}</div>
+        <div>Setup: {setup.patternName}. {example.score != null ? `Score ${example.score}/100.` : ""}</div>
+        <div>Idea is wrong below: <b style={{ color:V.bad }}>{Number.isFinite(setup.invalidation) ? money2(setup.invalidation) : "no line"}</b></div>
+        <div>Missing then: {state.missing.join(" · ")}</div>
+      </div>
+
+      {stage === 0 && (
+        <div style={{ marginTop:10 }}>
+          <div style={{ color:V.text2, marginBottom:6 }}>With only this, what would your paper plan be?</div>
+          <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
+            {[["wait", "Wait for the next check"], ["plan", "Paper-buy with the line above"], ["skip", "Skip it"]].map(([k, label]) => (
+              <button key={k} onClick={() => { setChoice(k); setStage(2); }}
+                style={{ flex:"1 1 150px", padding:"9px 10px", borderRadius:8, border:`1px solid ${V.line}`, background:V.surface,
+                         color:V.text2, cursor:"pointer", fontFamily:"inherit", fontWeight:650 }}>{label}</button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {stage === 2 && (
+        <div style={{ marginTop:10, padding:"10px 12px", border:`1px solid ${V.line}`, borderRadius:8, background:V.surface }}>
+          <div style={{ color:V.text, fontWeight:700 }}>What happened next (from {outcome.forward[0]?.date})</div>
+          <div>
+            Within three sessions it moved <b style={{ color:up ? V.good : V.bad }}>{outcome.movePct > 0 ? "+" : ""}{outcome.movePct}%</b> from
+            the {money2(outcome.priorClose)} close{up ? " — a big move up." : " — a big move down."}
+          </div>
+          <div>
+            {Number.isFinite(setup.invalidation)
+              ? outcome.crossedLine ? "Price crossed the safety line on the way, so a plan that respected the line would have exited."
+                                    : "Price never crossed the safety line in those three sessions."
+              : "There was no safety line, so there was no plan to follow."}
+          </div>
+          <div>
+            The scanner {outcome.captured ? "flagged this beforehand." : `missed it beforehand${outcome.missReasons.length ? ` (${outcome.missReasons.join(", ")})` : ""}.`}
+          </div>
+          <div style={{ marginTop:6, color:V.text2 }}>
+            You chose <b>{choice === "wait" ? "wait" : choice === "plan" ? "a paper plan" : "skip"}</b>.
+            {" "}The lesson is not whether you guessed the move — one example proves nothing — it is whether you knew
+            your line and your next check before the move happened.
+          </div>
+          <div style={{ fontSize:12, color:V.text4, marginTop:6 }}>
+            This example was chosen because a big move happened, so it is not a fair sample of normal days. Most days nothing happens.
+          </div>
+          <button onClick={() => { writePracticeDone(); onDone?.(); }}
+            style={{ marginTop:9, padding:"8px 12px", borderRadius:8, border:`1px solid ${V.accentLine}`, background:V.chipBg,
+                     color:V.text, cursor:"pointer", fontFamily:"inherit", fontWeight:700 }}>
+            Done — show me today's stocks
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function SimpleHome({ brain, zones, zone, calendar, liveMode, dataStatus, nowMs, feed, barData, onExpert, onOpen, mode, onMode, theme, onTheme, budget, riskPct, onMoney }) {
   // A Set, not a single value: opening one explanation must not close the one you
   // were already reading.
@@ -5021,6 +5357,7 @@ function SimpleHome({ brain, zones, zone, calendar, liveMode, dataStatus, nowMs,
   const isOpen = k => openFolds.has(k);
   const [dte, setDte]     = useState(1);        // 1DTE first: it is the one that overlaps the signal
   const [debit, setDebit] = useState("");       // the reader reads this off their own broker
+  const [practiced, setPracticed] = useState(readPracticeDone);
 
   // Re-read whenever the theme changes. applyTheme has already set the attribute
   // synchronously, so the computed values are correct by the time we get here.
@@ -5101,6 +5438,19 @@ function SimpleHome({ brain, zones, zone, calendar, liveMode, dataStatus, nowMs,
           {read.note && <div style={{ fontSize:13, color:V.text3, lineHeight:1.7, marginTop:8 }}>{read.note}</div>}
         </div>
 
+        {/* The beginner path: one route, four steps. Step 4 stays locked until the
+            outcome grader is verified — no learning claims before then. */}
+        <BeginnerPathStrip V={V} steps={[
+          { n:1, label:"Find a stock", state:best.length ? "done" : "now",
+            note:best.length ? `${best.length} passed today's checks.` : "Nothing passed today. That is a normal answer." },
+          { n:2, label:"Check evidence", state:best.length ? "now" : "todo",
+            note:practiced ? "Read each card: evidence, the line, the next check." : "Do one practice example first." },
+          { n:3, label:"Paper plan", state:"todo",
+            note:"Pick shares, see what being wrong costs. Paper only." },
+          { n:4, label:"Review later", state:"locked",
+            note:"Opens once results are graded reliably." },
+        ]}/>
+
         {/* Shown only in the one state where the person reading this IS the person
             who can fix it, AND nothing is on screen for them to look at instead.
             Alongside a working list it would be noise. One line, not a panel. */}
@@ -5169,6 +5519,12 @@ function SimpleHome({ brain, zones, zone, calendar, liveMode, dataStatus, nowMs,
           </div>
         </div>
 
+        {/* Guided practice on a real past case before reading today's market. */}
+        <Fold V={V} title={practiced ? "Practice again on a past example" : "Start here: practice on a past example"}
+          open={practiced ? isOpen("practice") : !isOpen("practice")} onToggle={()=>flip("practice")}>
+          <PracticeReplay V={V} barData={barData} onDone={() => { setPracticed(true); setOpenFolds(o => { const n = new Set(o); n.delete("practice"); return n; }); }}/>
+        </Fold>
+
         {/* The list, when there is one. */}
         {best.length > 0 && (
           <div style={{ border:"1px solid #16232f", background:V.surface, borderRadius:10, padding:"6px 20px 14px", marginBottom:8 }}>
@@ -5195,6 +5551,8 @@ function SimpleHome({ brain, zones, zone, calendar, liveMode, dataStatus, nowMs,
                       ? "The checks disagree. Treat it as a maybe, not a plan."
                       : "The checks agree and it has not run too far yet."}
                 </div>
+                <DecisionCard b={b} bars={barData?.[b.t]} V={V} budget={budget} riskPct={riskPct}
+                  open={isOpen(`chart:${b.t}`)} onToggle={()=>flip(`chart:${b.t}`)}/>
                 {b.optionStudy?.flush && (
                   <div style={{
                     marginTop:9, padding:"9px 11px", borderRadius:8,
@@ -5256,23 +5614,6 @@ function SimpleHome({ brain, zones, zone, calendar, liveMode, dataStatus, nowMs,
                       An options sweep can be one leg of a spread or hedge, so it does not prove the trader's full position. This site has no live options chain, option bid/ask, delta, open interest validation, or brokerage connection. Verify all of those in your broker. Nothing here places an order.
                     </div>
                   </div>
-                )}
-                {barData?.[b.t]?.length >= 25 && (
-                  <>
-                    <button
-                      onClick={()=>flip(`chart:${b.t}`)}
-                      style={{
-                        width:"100%", marginTop:9, padding:"9px 12px", borderRadius:9,
-                        border:`1px solid ${V.line}`, background:V.raised, color:V.text2,
-                        cursor:"pointer", fontWeight:700, textAlign:"left"
-                      }}
-                    >
-                      {isOpen(`chart:${b.t}`) ? "Hide chart" : "Show chart + pattern"}
-                    </button>
-                    {isOpen(`chart:${b.t}`) && (
-                      <BeginnerPriceChart ticker={b.t} bars={barData[b.t]} v4={b} V={V}/>
-                    )}
-                  </>
                 )}
                 {b.optionBudget && (
                   <div style={{
