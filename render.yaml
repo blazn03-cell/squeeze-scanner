@@ -16,3 +16,10 @@ services:
         value: 8
       - key: DECISION_LOG
         value: false
+      - key: OUTCOME_ADMIN_TOKEN
+        sync: false
+      # Free plan disk is wiped on every deploy. On a paid plan, attach a disk
+      # mounted at /var/data and set OUTCOME_STORE_DIR=/var/data/outcomes and
+      # OUTCOME_STORE_PERSISTENT=true.
+      - key: OUTCOME_STORE_DIR
+        value: ./data/outcomes

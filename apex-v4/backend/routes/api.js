@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { timingSafeEqual } from 'node:crypto';
 import { scanSymbol } from '../engine/scanner.js';
 import { buildQqqCascadeSnapshot } from '../engine/cascade.js';
 
@@ -27,7 +28,16 @@ function readEventInputs() {
   }
 }
 
-export function createApiRouter(tdClient, decisionLog, universeSymbols) {
+function requireAdmin(req, res, next) {
+  const token = process.env.OUTCOME_ADMIN_TOKEN;
+  if (!token) return res.status(403).json({ error: 'OUTCOME_ADMIN_TOKEN is not configured on the server' });
+  const got = Buffer.from(req.get('authorization') ?? '');
+  const want = Buffer.from(`Bearer ${token}`);
+  if (got.length !== want.length || !timingSafeEqual(got, want)) return res.status(401).json({ error: 'Unauthorized' });
+  next();
+}
+
+export function createApiRouter(tdClient, decisionLog, universeSymbols, outcomes = null) {
   const router = Router();
   let lastScan = null;
   let scanRunning = false;
@@ -63,6 +73,10 @@ export function createApiRouter(tdClient, decisionLog, universeSymbols) {
       const meta = { scanned: symbols.length, returned: results.length, durationMs: Date.now() - t0, at: new Date().toISOString(), credits: tdClient.creditReport() };
       lastScan = { results, meta };
       decisionLog.logScanEnd(results.length, meta.durationMs, meta.credits);
+      if (outcomes) {
+        outcomes.runner.recordScan(results);
+        outcomes.runner.maybeEvaluate().catch(() => {});
+      }
     } catch (e) {
       console.error('[scan] Error:', e.message);
     } finally {
@@ -107,6 +121,7 @@ export function createApiRouter(tdClient, decisionLog, universeSymbols) {
       if (cascadeHistory.length > 200) cascadeHistory.length = 200;
       lastCascadeFingerprint = fingerprint;
       decisionLog.logCascade(snapshot, 'state_or_tier_change');
+      outcomes?.runner.recordCascade(snapshot);
     } else {
       snapshot.signalId = cascadeHistory[0]?.signalId ?? null;
     }
@@ -169,6 +184,38 @@ export function createApiRouter(tdClient, decisionLog, universeSymbols) {
     if (!filter) return res.status(404).json({ error: `Unknown view: ${req.params.name}`, available: Object.keys(VIEWS) });
     const filtered = lastScan.results.filter(filter);
     res.json({ results: filtered, meta: { ...lastScan.meta, view: req.params.name, count: filtered.length } });
+  });
+
+  // ── Outcome loop: frozen claims -> later bars -> appended results -> track record ──
+  const noLedger = (_, res) => res.status(503).json({ error: 'Outcome ledger disabled (OUTCOME_LEDGER=false)' });
+
+  router.get('/outcomes/track-record', (req, res) => {
+    if (!outcomes) return noLedger(req, res);
+    try {
+      res.json({ ...outcomes.buildTrackRecord(outcomes.ledger), lastEvaluation: outcomes.runner.lastReport, persistent: outcomes.persistent });
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  router.get('/outcomes/claims', (req, res) => {
+    if (!outcomes) return noLedger(req, res);
+    const limit = parseInt(req.query.limit) || 100;
+    res.json({ claims: outcomes.ledger.listClaims({ status: req.query.status, ruleVersion: req.query.rule, symbol: req.query.symbol, limit }) });
+  });
+
+  router.post('/outcomes/evaluate', requireAdmin, async (req, res) => {
+    if (!outcomes) return noLedger(req, res);
+    try {
+      res.json(await outcomes.runner.evaluate());
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  router.get('/outcomes/export', requireAdmin, (req, res) => {
+    if (!outcomes) return noLedger(req, res);
+    res.type('application/x-ndjson').attachment(`outcomes-${new Date().toISOString().slice(0, 10)}.jsonl`).send(outcomes.ledger.exportJsonl());
   });
 
   router.get('/views', (req, res) => res.json({ views: Object.keys(VIEWS) }));
