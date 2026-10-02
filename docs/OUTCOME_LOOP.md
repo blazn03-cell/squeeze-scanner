@@ -33,7 +33,9 @@ The v1 thresholds come from the replay audit in `docs/DATA_SETUP.md`. A rule ver
 - **Opening gaps first.** A gap through target or stop fills at the open. Otherwise both levels touched intrabar are ambiguous and conservatively graded at the stop.
 - **Append-only writer.** Direct ledger ingestion records changed-ID content conflicts; the runner retains the first daily/signal claim and skips later captures. This is not full revision reconciliation or filesystem immutability.
 - **Validation before append.** Invalid batches write nothing. Multi-file crash atomicity and multi-process safety are not established. Hashes are computed locally.
-- **Cache reuse is conditional.** The same 1day/130-bar request can hit the scanner cache; actual additional provider usage has not been measured.
+- **Grading always fetches fresh bars.** It never reuses the scanner's cache, because a cached candle may predate its session's close. That costs 1 Twelve Data credit per symbol per run: at most 20 per run, every 6 hours by default. The fresh response also refreshes the scanner's cache.
+- **Capped runs rotate.** The least-recently-tried symbols go first, so one symbol that keeps failing cannot block the rest.
+- **Gap exits stop the excursion stats.** An exit at the open ignores the rest of that day's high and low in `mfeR`/`maeR`.
 - **Reporting threshold.** NO VERDICT applies below fifty resolved claims per arm. Reaching fifty does not prove sample independence, statistical power or an edge.
 
 ## Endpoints

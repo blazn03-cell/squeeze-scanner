@@ -4,7 +4,7 @@ import { buildScanClaims, buildCascadeClaim } from './claimRecorder.js';
 import { evaluateClaim, parseDailyBars } from './outcomeEvaluator.js';
 import { nyParts } from './marketTime.js';
 
-// Same request the scanner makes, so a recent scan means a cache hit (0 credits).
+// Same request shape as the scanner, but always fetched fresh (see getTimeSeries).
 const BARS_INTERVAL = '1day';
 const BARS_OUTPUTSIZE = 130;
 
@@ -13,6 +13,9 @@ export class OutcomeRunner {
     this.ledger = ledger;
     this.tdClient = tdClient;
     this.sessionCalendar = sessionCalendar;
+    // symbol -> last attempt time; least-recently-tried symbols go first so a
+    // permanently stuck symbol cannot starve the rest when the run is capped.
+    this.lastAttempt = new Map();
     this.maxSymbolsPerRun = maxSymbolsPerRun;
     this.minIntervalMs = minIntervalMs;
     this.log = log;
@@ -62,17 +65,22 @@ export class OutcomeRunner {
         if (!bySymbol.has(c.symbol)) bySymbol.set(c.symbol, []);
         bySymbol.get(c.symbol).push(c);
       }
-      // Oldest claims first so nothing starves.
+      // Never-tried / least-recently-tried symbols first, then oldest claim.
+      const oldest = sym => bySymbol.get(sym).reduce((m, c) => (c.sessionDate < m ? c.sessionDate : m), '9999-12-31');
       const symbols = [...bySymbol.keys()]
-        .sort((a, b) => (bySymbol.get(a)[0].sessionDate < bySymbol.get(b)[0].sessionDate ? -1 : 1))
+        .sort((a, b) => (this.lastAttempt.get(a) ?? 0) - (this.lastAttempt.get(b) ?? 0)
+          || (oldest(a) < oldest(b) ? -1 : oldest(a) > oldest(b) ? 1 : 0))
         .slice(0, this.maxSymbolsPerRun);
 
       const results = [];
       for (const symbol of symbols) {
         report.symbols += 1;
+        this.lastAttempt.set(symbol, now.getTime() + report.symbols);
         let bars;
         try {
-          bars = parseDailyBars(await this.tdClient.getTimeSeries(symbol, BARS_INTERVAL, BARS_OUTPUTSIZE));
+          // Fetched after `now`, so every session the evaluator treats as final
+          // by `now` had finalized before these bars were retrieved.
+          bars = parseDailyBars(await this.tdClient.getTimeSeries(symbol, BARS_INTERVAL, BARS_OUTPUTSIZE, { fresh: true }));
         } catch (e) {
           report.fetchErrors.push({ symbol, error: e.message });
           continue;

@@ -22,14 +22,14 @@ export class TwelveDataClient {
     this._purge  = setInterval(() => this.cache.purgeExpired(), 5 * 60 * 1000);
   }
 
-  async _get(path, params = {}, cost = 1) {
+  async _get(path, params = {}, cost = 1, { noCache = false } = {}) {
     const url = new URL(BASE + path);
     url.searchParams.set('apikey', this.apiKey);
     for (const [k, v] of Object.entries(params)) {
       if (v !== undefined && v !== null) url.searchParams.set(k, String(v));
     }
     const cacheKey = url.pathname + '?' + url.searchParams.toString();
-    const cached   = this.cache.get(cacheKey);
+    const cached   = noCache ? null : this.cache.get(cacheKey);
     if (cached !== null) return cached;
 
     await this.credits.consume(cost);
@@ -78,11 +78,18 @@ export class TwelveDataClient {
   }
 
   // OHLCV bars — batch multiple symbols in one call (1 credit per symbol).
-  async getTimeSeries(symbols, interval = '1day', outputsize = 130) {
+  // `fresh: true` skips both cache layers: the outcome grader must never grade
+  // from a daily candle that was cached before its session finalized.
+  async getTimeSeries(symbols, interval = '1day', outputsize = 130, { fresh = false } = {}) {
     const sym  = Array.isArray(symbols) ? symbols.join(',') : symbols;
     const cost = sym.split(',').length;
     const key  = `ts|${sym}|${interval}|${outputsize}`;
     const ttl  = interval === '1day' ? TTL.DAILY : TTL.INTRADAY;
+    if (fresh) {
+      const value = await this._get('/time_series', { symbol: sym, interval, outputsize, order: 'asc' }, cost, { noCache: true });
+      this.cache.set(key, value, ttl);
+      return value;
+    }
     return this._cachedGet(key, ttl, () =>
       this._get('/time_series', { symbol: sym, interval, outputsize, order: 'asc' }, cost)
     );

@@ -57,17 +57,22 @@ export function evaluateClaim(claim, bars, now = new Date(), source = 'twelvedat
     const adv = d === 1 ? bar.low : bar.high;
     const hitTarget = d * (fav - target) >= 0;
     const hitStop = d * (stop - adv) >= 0;
+
+    // An opening gap through a level exits at the open; the rest of that day's
+    // range happened after the exit and must not count toward excursions.
+    const gapTarget = d * (bar.open - target) >= 0;
+    const gapStop = d * (stop - bar.open) >= 0;
+    if (gapTarget || gapStop) {
+      mfe = Math.max(mfe, toR(bar.open));
+      mae = Math.min(mae, toR(bar.open));
+      return resolved(claim, gapTarget ? 'TARGET_FIRST' : 'STOP_FIRST', bar.open, bar.date, toR(bar.open), mfe, mae,
+        window.slice(0, window.indexOf(bar) + 1), now, source, calendar);
+    }
     mfe = Math.max(mfe, toR(fav));
     mae = Math.min(mae, toR(adv));
 
     let outcome = null, exit = null;
-    if (d * (bar.open - target) >= 0) {
-      outcome = 'TARGET_FIRST';
-      exit = bar.open;
-    } else if (d * (stop - bar.open) >= 0) {
-      outcome = 'STOP_FIRST';
-      exit = bar.open;
-    } else if (hitStop && hitTarget) {
+    if (hitStop && hitTarget) {
       outcome = 'AMBIGUOUS_SAME_BAR';
       exit = d * (stop - bar.open) >= 0 ? bar.open : stop;
     } else if (hitStop) {
