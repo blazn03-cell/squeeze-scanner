@@ -18,9 +18,13 @@ scan / cascade output ─► frozen claim (claims.jsonl)
 |---|---|---|
 | `scan-apex-v1` | apexScore ≥ 70, direction ≠ 0 | +12% before −6%, 3 sessions |
 | `scan-baseline-v1` | any direction ≠ 0 (control) | same |
+| `scan-apex-atr-v2` | apexScore ≥ 70, direction ≠ 0 (needs ATR) | +2×ATR before −1×ATR, 5 sessions |
+| `scan-baseline-atr-v2` | any direction ≠ 0 (control, needs ATR) | same |
 | `cascade-qqq-v1` | GET_READY/TRIGGERED/CASCADE_ACTIVE with operator invalidation | +$5 before invalidation, 2 sessions |
 
-The thresholds come from the replay audit in `docs/DATA_SETUP.md`. A rule version is never edited. To change a threshold, add a new version.
+v2 was registered on 2026-10-02, before any forward data existed for it. The v1 replay resolved 89% of claims by expiry, so v1 mostly measures 3-session drift. v2 scales levels to each stock's ATR. Its 2×/1×/5 parameters are a conventional 2:1 choice and were not fitted to that history. v1 keeps running unchanged so the two can be compared. `/api/outcomes/track-record` reports `comparisons` for each APEX rule against its paired baseline.
+
+The v1 thresholds come from the replay audit in `docs/DATA_SETUP.md`. A rule version is never edited. To change a threshold, add a new version.
 
 ## Implemented behavior and boundaries
 

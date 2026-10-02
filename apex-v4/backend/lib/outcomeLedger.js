@@ -33,8 +33,11 @@ export function validateResult(r, claim) {
         || r.barsUsed.some((d,i) => !/^\d{4}-\d{2}-\d{2}$/.test(d) || (i && d <= r.barsUsed[i-1]))
         || r.barsUsed.at(-1) !== r.exitDate)) errors.push('result session sequence');
     if (Number.isFinite(r.exitPrice) && Number.isFinite(r.rMultiple)) {
-      const expected = claim.direction * (r.exitPrice - claim.entryPrice) / Math.abs(claim.entryPrice - claim.stopPrice);
-      if (Math.abs(expected - r.rMultiple) > 0.0002) errors.push('return mismatch');
+      const risk = Math.abs(claim.entryPrice - claim.stopPrice);
+      const expected = claim.direction * (r.exitPrice - claim.entryPrice) / risk;
+      // exitPrice and rMultiple are each rounded to 1e-4, so the allowed gap
+      // grows as the stop gets closer to entry.
+      if (Math.abs(expected - r.rMultiple) > 0.00005 / risk + 0.0001) errors.push('return mismatch');
     }
     if (r.outcome === 'EXPIRED' && r.barsUsed?.length !== claim.horizonSessions) errors.push('expiry horizon');
     if (Date.parse(r.evaluatedAt) < Date.parse(claim.decisionTime)) errors.push('future decision');

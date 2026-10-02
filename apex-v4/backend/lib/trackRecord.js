@@ -1,5 +1,5 @@
 // Scores resolved claims per rule version and compares APEX against its baseline.
-import { RULES, MIN_SAMPLE } from './outcomeRules.js';
+import { RULES, MIN_SAMPLE, BASELINE_PAIRS } from './outcomeRules.js';
 
 const r3 = n => (Number.isFinite(n) ? Math.round(n * 1000) / 1000 : null);
 
@@ -40,6 +40,17 @@ function summarize(claims, results) {
   };
 }
 
+function compare(apex, base, baseline) {
+  const comparable = apex.resolved >= MIN_SAMPLE && base.resolved >= MIN_SAMPLE;
+  const edgeR = apex.avgR != null && base.avgR != null ? r3(apex.avgR - base.avgR) : null;
+  let verdict;
+  if (!comparable) verdict = `NO VERDICT: need ${MIN_SAMPLE}+ resolved claims in both APEX and baseline (have ${apex.resolved} / ${base.resolved}). Do not size up on these numbers.`;
+  else if (apex.avgR <= 0) verdict = 'APEX expectancy is not positive on this yardstick. Do not trade it with real size.';
+  else if (edgeR <= 0) verdict = 'APEX is positive but does not beat the naive baseline. The score is not adding edge.';
+  else verdict = 'APEX beats baseline on this sample. Still research-only: check drawdown and repeat on the next rule version before risking more.';
+  return { baseline, comparable, edgeAvgR: edgeR, verdict };
+}
+
 export function buildTrackRecord(ledger) {
   const byRule = {};
   const allClaims = [...ledger.claims.values()];
@@ -50,22 +61,15 @@ export function buildTrackRecord(ledger) {
     };
   }
 
-  const apex = byRule['scan-apex-v1'];
-  const base = byRule['scan-baseline-v1'];
-  const comparable = apex.resolved >= MIN_SAMPLE && base.resolved >= MIN_SAMPLE;
-  const edgeR = apex.avgR != null && base.avgR != null ? r3(apex.avgR - base.avgR) : null;
-
-  let verdict;
-  if (!comparable) verdict = `NO VERDICT: need ${MIN_SAMPLE}+ resolved claims in both APEX and baseline (have ${apex.resolved} / ${base.resolved}). Do not size up on these numbers.`;
-  else if (apex.avgR <= 0) verdict = 'APEX expectancy is not positive on this yardstick. Do not trade it with real size.';
-  else if (edgeR <= 0) verdict = 'APEX is positive but does not beat the naive baseline. The score is not adding edge.';
-  else verdict = 'APEX beats baseline on this sample. Still research-only: check drawdown and repeat on the next rule version before risking more.';
+  const comparisons = Object.fromEntries(Object.entries(BASELINE_PAIRS).map(([apexVersion, baseVersion]) =>
+    [apexVersion, compare(byRule[apexVersion], byRule[baseVersion], baseVersion)]));
 
   return {
     generatedAt: new Date().toISOString(),
     minSample: MIN_SAMPLE,
     rules: byRule,
-    apexVsBaseline: { comparable, edgeAvgR: edgeR, verdict },
+    apexVsBaseline: comparisons['scan-apex-v1'],
+    comparisons,
     ledger: ledger.stats(),
     caveats: [
       'Daily bars only: same-bar target+stop is graded as a loss (conservative).',

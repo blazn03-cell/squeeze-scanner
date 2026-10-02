@@ -25,6 +25,30 @@ export const RULES = Object.freeze({
     stopPct: 6,
     horizonSessions: 3,
   }),
+  // v2 yardstick, registered 2026-10-02 BEFORE any forward data for it exists.
+  // Why: the v1 retrospective (Jan–Sep 18 2026, 33 stocks) resolved 89% of
+  // claims by expiry and ~1% by target, so ±12% in 3 sessions mostly measures
+  // drift, not setup quality. v2 scales levels to each stock's own ATR.
+  // The 2x/1x/5 parameters are a conventional 2:1 reward:risk choice and were
+  // NOT searched or fitted on that history. Never edit; add v3 instead.
+  'scan-apex-atr-v2': Object.freeze({
+    kind: 'scan',
+    registeredAt: '2026-10-02',
+    description: 'APEX directional call (apexScore >= 70, direction != 0). Win = 2x ATR(14) move in call direction before 1x ATR against, within 5 completed sessions.',
+    select: r => Number.isFinite(r?.apexScore) && r.apexScore >= 70 && Math.sign(r?.direction ?? 0) !== 0,
+    targetAtr: 2,
+    stopAtr: 1,
+    horizonSessions: 5,
+  }),
+  'scan-baseline-atr-v2': Object.freeze({
+    kind: 'scan',
+    registeredAt: '2026-10-02',
+    description: 'Baseline control for scan-apex-atr-v2: any directional reading, same 2x/1x ATR, 5-session yardstick.',
+    select: r => Math.sign(r?.direction ?? 0) !== 0,
+    targetAtr: 2,
+    stopAtr: 1,
+    horizonSessions: 5,
+  }),
   // QQQ cascade: only states the engine labels as actionable research signals,
   // and only when the operator supplied both trigger and invalidation. Missing
   // levels mean no claim — never a guessed one.
@@ -38,6 +62,23 @@ export const RULES = Object.freeze({
 });
 
 export const MIN_SAMPLE = 50;
+
+// APEX rule -> its paired baseline control.
+export const BASELINE_PAIRS = Object.freeze({
+  'scan-apex-v1': 'scan-baseline-v1',
+  'scan-apex-atr-v2': 'scan-baseline-atr-v2',
+});
+
+// Target/stop distance in percent for a scan rule, or null when the rule
+// needs an input the claim does not have (no ATR -> no v2 claim, never a guess).
+export function scanLevelPcts(rule, inputs) {
+  if (Number.isFinite(rule?.targetPct) && Number.isFinite(rule?.stopPct)) {
+    return { targetPct: rule.targetPct, stopPct: rule.stopPct };
+  }
+  const atrPct = inputs?.atrPct;
+  if (!Number.isFinite(atrPct) || atrPct <= 0 || atrPct >= 50) return null;
+  return { targetPct: rule.targetAtr * atrPct, stopPct: rule.stopAtr * atrPct };
+}
 
 export function getRule(version) {
   return Object.prototype.hasOwnProperty.call(RULES, version) ? RULES[version] : null;

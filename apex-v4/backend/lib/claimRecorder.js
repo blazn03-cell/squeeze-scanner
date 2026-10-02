@@ -4,7 +4,7 @@
 // who/what/when, the price levels, the horizon, the rule parameters, and a
 // hash of the inputs the engine saw at decision time.
 import { createHash } from 'node:crypto';
-import { RULES, ruleParams } from './outcomeRules.js';
+import { RULES, ruleParams, scanLevelPcts } from './outcomeRules.js';
 import { nyParts, isValidDate } from './marketTime.js';
 
 export const CLAIM_SCHEMA = 'claim/1';
@@ -46,6 +46,8 @@ export function buildScanClaims(results, now = new Date()) {
     for (const [version, rule] of Object.entries(RULES)) {
       if (rule.kind !== 'scan' || !rule.select(r)) continue;
       const inputs = Object.fromEntries(SCAN_INPUT_FIELDS.map(k => [k, r[k] ?? null]));
+      const levels = scanLevelPcts(rule, inputs);
+      if (!levels) continue;
       claims.push(finalize({
         schema: CLAIM_SCHEMA,
         claimId: `${version}:${symbol}:${sessionDate}`,
@@ -56,8 +58,8 @@ export function buildScanClaims(results, now = new Date()) {
         sessionDate,
         direction,
         entryPrice: price,
-        targetPrice: round(price * (1 + direction * rule.targetPct / 100)),
-        stopPrice: round(price * (1 - direction * rule.stopPct / 100)),
+        targetPrice: round(price * (1 + direction * levels.targetPct / 100)),
+        stopPrice: round(price * (1 - direction * levels.stopPct / 100)),
         horizonSessions: rule.horizonSessions,
         rule: ruleParams(version),
         inputs,
@@ -135,11 +137,13 @@ export function validateClaim(c) {
     if (c.horizonSessions !== expectedRule.horizonSessions) errors.push('horizon contract mismatch');
     if (nyParts(new Date(c.decisionTime)).date !== c.sessionDate) errors.push('sessionDate mismatch');
     if (c.kind !== expectedRule.kind) errors.push('kind mismatch');
+    const levels = c.kind === 'scan' ? scanLevelPcts(expectedRule, c.inputs) : null;
+    if (c.kind === 'scan' && !levels) errors.push('level inputs missing');
     const expectedTarget = c.kind === 'scan'
-      ? round(c.entryPrice * (1 + c.direction * expectedRule.targetPct / 100))
+      ? (levels ? round(c.entryPrice * (1 + c.direction * levels.targetPct / 100)) : NaN)
       : round(c.entryPrice + c.direction * expectedRule.targetDollars);
     if (c.targetPrice !== expectedTarget) errors.push('target contract mismatch');
-    if (c.kind === 'scan' && c.stopPrice !== round(c.entryPrice * (1 - c.direction * expectedRule.stopPct / 100))) errors.push('stop contract mismatch');
+    if (c.kind === 'scan' && levels && c.stopPrice !== round(c.entryPrice * (1 - c.direction * levels.stopPct / 100))) errors.push('stop contract mismatch');
     if (c.kind === 'cascade') {
       const sourceTime = Date.parse(c.inputs?.generatedAt);
       const capturedTime = Date.parse(c.capturedAt);
