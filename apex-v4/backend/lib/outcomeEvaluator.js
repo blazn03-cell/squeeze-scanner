@@ -9,8 +9,9 @@
 //  - Target and stop touched in the same daily bar -> AMBIGUOUS, graded as the
 //    stop (conservative): daily bars cannot tell which came first.
 //  - Gaps through a level fill at the open, not at the level.
-import { isCompletedSession } from './marketTime.js';
 import { sha256 } from './claimRecorder.js';
+import { validateClaim } from './claimRecorder.js';
+import { requiredSessions } from './sessionCalendar.js';
 
 export const RESULT_SCHEMA = 'result/1';
 
@@ -29,13 +30,19 @@ const validBar = b => /^\d{4}-\d{2}-\d{2}$/.test(b.date)
 
 const r4 = n => Math.round(n * 1e4) / 1e4;
 
-export function evaluateClaim(claim, bars, now = new Date(), source = 'twelvedata:/time_series:1day') {
+export function evaluateClaim(claim, bars, now = new Date(), source = 'twelvedata:/time_series:1day', calendar = null) {
+  if (validateClaim(claim).length || !Number.isFinite(now.getTime()) || Date.parse(claim.decisionTime) > now.getTime()) return { status: 'INSUFFICIENT_DATA', reason: 'invalid or future claim' };
   if (!Array.isArray(bars)) return { status: 'INSUFFICIENT_DATA', reason: 'no bars' };
-
-  const after = bars
-    .filter(b => b.date > claim.sessionDate && isCompletedSession(b.date, now))
-    .sort((a, b) => (a.date < b.date ? -1 : 1));
-  const window = after.slice(0, claim.horizonSessions);
+  const expected = requiredSessions(calendar, claim.sessionDate, claim.horizonSessions);
+  if (!expected) return { status: 'INSUFFICIENT_DATA', reason: 'explicit complete session calendar required' };
+  const window = [];
+  let coverageError = null;
+  for (const session of expected) {
+    if (Date.parse(session.closeAt) > now.getTime()) break;
+    const matches = bars.filter(b => b?.date === session.date);
+    if (matches.length !== 1) { coverageError = session.date; break; }
+    window.push(matches[0]);
+  }
 
   if (window.some(b => !validBar(b))) return { status: 'INSUFFICIENT_DATA', reason: 'malformed bar in window' };
   if (new Set(window.map(b => b.date)).size !== window.length) return { status: 'INSUFFICIENT_DATA', reason: 'duplicate bar dates' };
@@ -54,7 +61,13 @@ export function evaluateClaim(claim, bars, now = new Date(), source = 'twelvedat
     mae = Math.min(mae, toR(adv));
 
     let outcome = null, exit = null;
-    if (hitStop && hitTarget) {
+    if (d * (bar.open - target) >= 0) {
+      outcome = 'TARGET_FIRST';
+      exit = bar.open;
+    } else if (d * (stop - bar.open) >= 0) {
+      outcome = 'STOP_FIRST';
+      exit = bar.open;
+    } else if (hitStop && hitTarget) {
       outcome = 'AMBIGUOUS_SAME_BAR';
       exit = d * (stop - bar.open) >= 0 ? bar.open : stop;
     } else if (hitStop) {
@@ -64,21 +77,24 @@ export function evaluateClaim(claim, bars, now = new Date(), source = 'twelvedat
       outcome = 'TARGET_FIRST';
       exit = d * (bar.open - target) >= 0 ? bar.open : target;
     }
-    if (outcome) return resolved(claim, outcome, exit, bar.date, toR(exit), mfe, mae, window.slice(0, window.indexOf(bar) + 1), now, source);
+    if (outcome) return resolved(claim, outcome, exit, bar.date, toR(exit), mfe, mae, window.slice(0, window.indexOf(bar) + 1), now, source, calendar);
   }
 
+  if (coverageError) return { status: 'INSUFFICIENT_DATA', reason: 'missing or duplicate required session', session: coverageError };
   if (window.length < claim.horizonSessions) {
     return { status: 'IMMATURE', barsSeen: window.length, needed: claim.horizonSessions };
   }
   const last = window[window.length - 1];
-  return resolved(claim, 'EXPIRED', last.close, last.date, toR(last.close), mfe, mae, window, now, source);
+  return resolved(claim, 'EXPIRED', last.close, last.date, toR(last.close), mfe, mae, window, now, source, calendar);
 }
 
-function resolved(claim, outcome, exitPrice, exitDate, r, mfe, mae, barsUsed, now, source) {
+function resolved(claim, outcome, exitPrice, exitDate, r, mfe, mae, barsUsed, now, source, calendar) {
   return {
     status: 'RESOLVED',
     result: {
       schema: RESULT_SCHEMA,
+      evaluatorVersion: 'outcome-repair/1',
+      calendar: { source: calendar.source, version: calendar.version, hash: sha256(calendar) },
       claimId: claim.claimId,
       ruleVersion: claim.ruleVersion,
       claimContentHash: claim.contentHash,

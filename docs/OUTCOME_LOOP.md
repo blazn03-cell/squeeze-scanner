@@ -1,6 +1,6 @@
 # Outcome loop
 
-Grades APEX calls against what the market did afterwards, so the scanner has a real track record instead of a guess.
+Records daily price-reference research outcomes. This is not an execution track record or proof of a profitable strategy.
 
 ```
 scan / cascade output ─► frozen claim (claims.jsonl)
@@ -22,15 +22,15 @@ scan / cascade output ─► frozen claim (claims.jsonl)
 
 The thresholds come from the replay audit in `docs/DATA_SETUP.md`. A rule version is never edited. To change a threshold, add a new version.
 
-## Guarantees
+## Implemented behavior and boundaries
 
-- **Hindsight is impossible.** The decision-day bar and unfinished bars are excluded.
+- **Bounded chronology checks.** Decision-day and incomplete calendar sessions are excluded. This does not independently prove historical source availability or absence of revised data.
 - **Unknown stays unknown.** A claim with too few completed sessions stays `IMMATURE`, and bad bars return `INSUFFICIENT_DATA`. Neither is ever written as a pass.
-- **Daily-bar ambiguity is graded conservatively.** If target and stop are both hit in the same bar, it is graded as a loss. A gap through a level fills at the open.
-- **Nothing is overwritten.** The ledger is append-only. If the same claim ID arrives with different content, it goes to `conflicts.jsonl` and the stored record is kept.
-- **Batches are all-or-nothing.** Every record is validated before anything is written. Hashes are computed by the server, not supplied by the caller.
-- **Evaluation costs little.** It requests the same 1day/130-bar series the scanner already caches, so a run after a scan usually costs 0 extra credits.
-- **The verdict waits for data.** The APEX vs baseline verdict says `NO VERDICT` until both have 50+ resolved claims.
+- **Opening gaps first.** A gap through target or stop fills at the open. Otherwise both levels touched intrabar are ambiguous and conservatively graded at the stop.
+- **Append-only writer.** Direct ledger ingestion records changed-ID content conflicts; the runner retains the first daily/signal claim and skips later captures. This is not full revision reconciliation or filesystem immutability.
+- **Validation before append.** Invalid batches write nothing. Multi-file crash atomicity and multi-process safety are not established. Hashes are computed locally.
+- **Cache reuse is conditional.** The same 1day/130-bar request can hit the scanner cache; actual additional provider usage has not been measured.
+- **Reporting threshold.** NO VERDICT applies below fifty resolved claims per arm. Reaching fifty does not prove sample independence, statistical power or an edge.
 
 ## Endpoints
 
@@ -54,3 +54,17 @@ Evaluation also runs automatically after each scan and every `OUTCOME_EVAL_INTER
 - **Survivorship bias applies.** The universe is a fixed watchlist.
 - **R is per-share price R.** It does not include spread, slippage, commissions or options decay.
 - **Cascade grading is coarse.** It uses daily bars, so intraday cascade timing is not captured.
+
+## Local repair (outcome-repair/1)
+
+This repair fixes the five additional PR15 regression findings. It remains a daily price-reference research grader, not trade execution or a model-learning service. Existing UI and engine formulas are unchanged.
+
+Set OUTCOME_SESSION_CALENDAR_FILE to a private JSON calendar with source, version, complete:true, from, through, and strictly sorted sessions [{date,closeAt}]. closeAt must represent availability/finalization after the actual session close, including early closes. complete asserts all sessions in that coverage interval are included. The operator must verify source and completeness: validation does not independently certify exchange sessions. No production calendar is supplied. Missing/invalid calendar means INSUFFICIENT_DATA, not guessed weekdays or a pass. Missing required elapsed session cannot be replaced by a later bar. A terminal target/stop may resolve early only after all preceding required sessions are present and complete; unused future sessions are not needed.
+
+Opening target/stop gaps have priority over later bar extremes; otherwise both intrabar levels touched remains ambiguous/conservative. New results carry evaluatorVersion and calendar source/version/hash. Do not overwrite or silently regrade older results; compare evaluator cohorts separately.
+
+Claims must match copied versioned rule settings, levels and horizon. Cascade capture requires positive trigger plus losing-side invalidation and a generatedAt no later than decision and within twelve minutes. This is an explicit local research availability assumption, not provider latency verification. Historical records failing stricter checks remain on disk and are counted as quarantined; capture them in backups before any operational migration.
+
+Storage remains local JSONL. These changes do not establish crash-atomic multi-file writes, multiprocess concurrency, durable hosting, a complete immutable error/adoption ledger or live Vercel integration. Source/revision identity and actual model-claim correctness need their own contracts. Public claims/track-record routes retain PR15 access semantics; review private-data access before integration.
+
+Verification: 40 tests passed (seven additional regression tests); static release check passed. No real feed request, broker action, Render deployment or Vercel release performed.

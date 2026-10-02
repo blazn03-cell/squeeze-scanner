@@ -9,9 +9,10 @@ const BARS_INTERVAL = '1day';
 const BARS_OUTPUTSIZE = 130;
 
 export class OutcomeRunner {
-  constructor({ ledger, tdClient, maxSymbolsPerRun = 20, minIntervalMs = 60 * 60 * 1000, log = console }) {
+  constructor({ ledger, tdClient, sessionCalendar = null, maxSymbolsPerRun = 20, minIntervalMs = 60 * 60 * 1000, log = console }) {
     this.ledger = ledger;
     this.tdClient = tdClient;
+    this.sessionCalendar = sessionCalendar;
     this.maxSymbolsPerRun = maxSymbolsPerRun;
     this.minIntervalMs = minIntervalMs;
     this.log = log;
@@ -77,7 +78,7 @@ export class OutcomeRunner {
           continue;
         }
         for (const claim of bySymbol.get(symbol)) {
-          const out = evaluateClaim(claim, bars, now);
+          const out = evaluateClaim(claim, bars, now, 'twelvedata:/time_series:1day', this.sessionCalendar);
           if (out.status === 'RESOLVED') results.push(out.result);
           else if (out.status === 'IMMATURE') report.immature += 1;
           else report.insufficientData += 1;

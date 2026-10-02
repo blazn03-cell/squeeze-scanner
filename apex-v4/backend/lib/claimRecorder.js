@@ -77,6 +77,10 @@ export function buildCascadeClaim(snapshot, now = new Date()) {
   const entry = snapshot.technical?.price;
   const stop = snapshot.event?.invalidationPrice;
   if (direction === 0 || !Number.isFinite(entry) || !Number.isFinite(stop)) return null;
+  const trigger = snapshot.event?.triggerPrice;
+  const sourceTime = Date.parse(snapshot.generatedAt);
+  if (!Number.isFinite(trigger) || trigger <= 0 || !Number.isFinite(sourceTime)
+      || sourceTime > now.getTime() || now.getTime() - sourceTime > 12 * 60000) return null;
   // Invalidation must sit on the losing side of entry, otherwise the claim is incoherent.
   if (direction * (entry - stop) <= 0) return null;
 
@@ -125,6 +129,22 @@ export function validateClaim(c) {
   }
   if (!Number.isInteger(c.horizonSessions) || c.horizonSessions < 1 || c.horizonSessions > 60) errors.push('horizonSessions');
   if (errors.length === 0) {
+    const expectedRule = ruleParams(c.ruleVersion);
+    if (stableStringify(c.rule) !== stableStringify(expectedRule)) errors.push('rule contract mismatch');
+    if (c.horizonSessions !== expectedRule.horizonSessions) errors.push('horizon contract mismatch');
+    if (nyParts(new Date(c.decisionTime)).date !== c.sessionDate) errors.push('sessionDate mismatch');
+    if (c.kind !== expectedRule.kind) errors.push('kind mismatch');
+    const expectedTarget = c.kind === 'scan'
+      ? round(c.entryPrice * (1 + c.direction * expectedRule.targetPct / 100))
+      : round(c.entryPrice + c.direction * expectedRule.targetDollars);
+    if (c.targetPrice !== expectedTarget) errors.push('target contract mismatch');
+    if (c.kind === 'scan' && c.stopPrice !== round(c.entryPrice * (1 - c.direction * expectedRule.stopPct / 100))) errors.push('stop contract mismatch');
+    if (c.kind === 'cascade') {
+      const sourceTime = Date.parse(c.inputs?.generatedAt);
+      if (!Number.isFinite(c.inputs?.triggerPrice) || c.inputs.triggerPrice <= 0
+          || !Number.isFinite(sourceTime) || sourceTime > Date.parse(c.decisionTime)
+          || Date.parse(c.decisionTime) - sourceTime > 12 * 60000) errors.push('cascade source availability');
+    }
     if (c.direction * (c.targetPrice - c.entryPrice) <= 0) errors.push('target on wrong side');
     if (c.direction * (c.entryPrice - c.stopPrice) <= 0) errors.push('stop on wrong side');
     if (c.inputsHash !== sha256(c.inputs ?? null)) errors.push('inputsHash');

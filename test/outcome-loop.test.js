@@ -4,7 +4,7 @@ import { mkdtempSync, readFileSync, rmSync, appendFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { buildScanClaims, buildCascadeClaim, validateClaim, sha256 } from "../apex-v4/backend/lib/claimRecorder.js";
-import { evaluateClaim } from "../apex-v4/backend/lib/outcomeEvaluator.js";
+import { evaluateClaim as evaluateRaw } from "../apex-v4/backend/lib/outcomeEvaluator.js";
 import { OutcomeLedger } from "../apex-v4/backend/lib/outcomeLedger.js";
 import { OutcomeRunner } from "../apex-v4/backend/lib/outcomeRunner.js";
 import { buildTrackRecord } from "../apex-v4/backend/lib/trackRecord.js";
@@ -12,6 +12,8 @@ import { buildTrackRecord } from "../apex-v4/backend/lib/trackRecord.js";
 // Thu 2026-10-01 14:00 NY = 18:00Z (EDT)
 const DECISION = new Date("2026-10-01T18:00:00Z");
 // Tue 2026-10-06 20:30Z = 16:30 NY, after the Oct 6 session closed
+const SESSION_CALENDAR = {source:'Synthetic test fixture, not production calendar',version:'fixture-1',complete:true,from:'2026-10-01',through:'2026-10-07',sessions:[{date:'2026-10-02',closeAt:'2026-10-02T20:15:00Z'},{date:'2026-10-05',closeAt:'2026-10-05T20:15:00Z'},{date:'2026-10-06',closeAt:'2026-10-06T20:15:00Z'},{date:'2026-10-07',closeAt:'2026-10-07T20:15:00Z'}]};
+const evaluateClaim = (c,b,n) => evaluateRaw(c,b,n,'test-fixture',SESSION_CALENDAR);
 const LATER = new Date("2026-10-06T20:30:00Z");
 
 const scanRow = (over = {}) => ({ symbol: "TEST", price: 100, apexScore: 80, direction: 1, relVol: 2, scannedAt: DECISION.toISOString(), ...over });
@@ -46,7 +48,7 @@ test("invalid decision time, tampered fields and broken hashes are rejected", ()
 });
 
 test("cascade claims need an actionable state, direction and an invalidation on the losing side", () => {
-  const snap = { signalId: "QQQ-1", state: "TRIGGERED", direction: "BULLISH", technical: { price: 500 }, event: { invalidationPrice: 495, triggerPrice: 499 } };
+  const snap = { generatedAt: DECISION.toISOString(), signalId: "QQQ-1", state: "TRIGGERED", direction: "BULLISH", technical: { price: 500 }, event: { invalidationPrice: 495, triggerPrice: 499 } };
   const c = buildCascadeClaim(snap, DECISION);
   assert.equal(c.targetPrice, 505);
   assert.deepEqual(validateClaim(c), []);
@@ -56,11 +58,11 @@ test("cascade claims need an actionable state, direction and an invalidation on 
   assert.equal(buildCascadeClaim({ ...snap, direction: "NEUTRAL" }, DECISION), null);
 });
 
-test("decision-day bar is ignored and missing sessions stay IMMATURE, never a pass", () => {
+test("decision-day bar is ignored and missing elapsed sessions stay unresolved", () => {
   const c = apexClaim();
   const bars = [bar("2026-10-01", 100, 130, 99, 120), bar("2026-10-02", 100, 101, 99, 100)];
-  assert.equal(evaluateClaim(c, bars, LATER).status, "IMMATURE");
-  assert.equal(evaluateClaim(c, [], LATER).status, "IMMATURE");
+  assert.equal(evaluateClaim(c, bars, LATER).status, "INSUFFICIENT_DATA");
+  assert.equal(evaluateClaim(c, [], LATER).status, "INSUFFICIENT_DATA");
 });
 
 test("today's unfinished bar does not count", () => {
@@ -139,7 +141,7 @@ test("ledger: results must reference a known claim and post-decision bars; reloa
     assert.equal(ledger.appendResults([{ ...result, barsUsed: ["2026-10-01"] }]).rejected.length, 1);
     assert.equal(ledger.appendResults([result]).written, 1);
     assert.equal(ledger.appendResults([{ ...result, evaluatedAt: new Date().toISOString() }]).duplicates, 1);
-    assert.equal(ledger.appendResults([{ ...result, outcome: "STOP_FIRST", rMultiple: -1 }]).conflicts, 1);
+    assert.equal(ledger.appendResults([{ ...result, outcome: "STOP_FIRST", exitPrice: 94, rMultiple: -1 }]).conflicts, 1);
 
     appendFileSync(join(dir, "claims.jsonl"), "{not json\n");
     const reloaded = new OutcomeLedger(dir);
@@ -162,10 +164,12 @@ test("runner closes the loop end to end with later bars, and survives fetch erro
         return { values: [
           { datetime: "2026-10-01", open: "100", high: "130", low: "99", close: "120" },
           { datetime: "2026-10-02", open: "100", high: "113", low: "99", close: "112" },
+          { datetime: "2026-10-05", open: "100", high: "101", low: "99", close: "100" },
+          { datetime: "2026-10-06", open: "100", high: "101", low: "99", close: "100" },
         ] };
       },
     };
-    const runner = new OutcomeRunner({ ledger, tdClient, log: { warn() {} } });
+    const runner = new OutcomeRunner({ ledger, tdClient, sessionCalendar: SESSION_CALENDAR, log: { warn() {} } });
     runner.recordScan([scanRow(), scanRow({ symbol: "BAD" })], DECISION);
     assert.equal(ledger.stats().claims, 4);
 

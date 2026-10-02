@@ -18,6 +18,10 @@ export function validateResult(r, claim) {
   const errors = [];
   if (!r || typeof r !== 'object') return ['not an object'];
   if (r.schema !== RESULT_SCHEMA) errors.push('schema');
+  if (r.evaluatorVersion !== 'outcome-repair/1' || typeof r.calendar?.source !== 'string'
+      || typeof r.calendar?.version !== 'string' || !/^[a-f0-9]{64}$/.test(r.calendar?.hash ?? '')) errors.push('evaluator provenance');
+  if (!Number.isFinite(Date.parse(r.evaluatedAt)) || typeof r.source !== 'string' || !r.source
+      || !/^[a-f0-9]{64}$/.test(r.barsHash ?? '')) errors.push('result provenance');
   if (!claim) errors.push('unknown claimId');
   else {
     if (r.ruleVersion !== claim.ruleVersion) errors.push('ruleVersion mismatch');
@@ -25,9 +29,19 @@ export function validateResult(r, claim) {
     if (!(r.exitDate > claim.sessionDate)) errors.push('exitDate not after decision session');
     if (!Array.isArray(r.barsUsed) || r.barsUsed.length < 1 || r.barsUsed.length > claim.horizonSessions) errors.push('barsUsed');
     else if (r.barsUsed.some(d => !(d > claim.sessionDate))) errors.push('bar not after decision session');
+    if (Array.isArray(r.barsUsed) && (new Set(r.barsUsed).size !== r.barsUsed.length
+        || r.barsUsed.some((d,i) => !/^\d{4}-\d{2}-\d{2}$/.test(d) || (i && d <= r.barsUsed[i-1]))
+        || r.barsUsed.at(-1) !== r.exitDate)) errors.push('result session sequence');
+    if (Number.isFinite(r.exitPrice) && Number.isFinite(r.rMultiple)) {
+      const expected = claim.direction * (r.exitPrice - claim.entryPrice) / Math.abs(claim.entryPrice - claim.stopPrice);
+      if (Math.abs(expected - r.rMultiple) > 0.0002) errors.push('return mismatch');
+    }
+    if (r.outcome === 'EXPIRED' && r.barsUsed?.length !== claim.horizonSessions) errors.push('expiry horizon');
+    if (Date.parse(r.evaluatedAt) < Date.parse(claim.decisionTime)) errors.push('future decision');
   }
   if (!OUTCOMES.has(r.outcome)) errors.push('outcome');
   for (const k of ['exitPrice', 'rMultiple', 'mfeR', 'maeR']) if (!Number.isFinite(r[k])) errors.push(k);
+  if (r.exitPrice <= 0 || r.mfeR < 0 || r.maeR > 0) errors.push('result geometry');
   return errors;
 }
 
@@ -55,11 +69,20 @@ export class OutcomeLedger {
     this.results = new Map();
     this.corruptLines = 0;
     this.conflictCount = 0;
+    this.quarantinedRecords = 0;
 
     const c = readJsonl(this.files.claims);
-    for (const row of c.rows) if (!this.claims.has(row.claimId)) this.claims.set(row.claimId, row);
+    for (const row of c.rows) {
+      if (validateClaim(row).length) { this.quarantinedRecords++; continue; }
+      const prior = this.claims.get(row.claimId);
+      if (prior && prior.contentHash !== row.contentHash) { this.quarantinedRecords++; continue; }
+      if (!prior) this.claims.set(row.claimId, row);
+    }
     const r = readJsonl(this.files.results);
-    for (const row of r.rows) if (!this.results.has(row.claimId)) this.results.set(row.claimId, row);
+    for (const row of r.rows) {
+      if (validateResult(row, this.claims.get(row?.claimId)).length) { this.quarantinedRecords++; continue; }
+      if (!this.results.has(row.claimId)) this.results.set(row.claimId, row);
+    }
     this.corruptLines = c.corrupt + r.corrupt;
     this.conflictCount = readJsonl(this.files.conflicts).rows.length;
   }
@@ -158,6 +181,7 @@ export class OutcomeLedger {
       pending: this.claims.size - this.results.size,
       conflicts: this.conflictCount,
       corruptLines: this.corruptLines,
+      quarantinedRecords: this.quarantinedRecords,
     };
   }
 }
