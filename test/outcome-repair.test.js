@@ -53,3 +53,13 @@ test('reload quarantines semantic claim and result corruption without deleting s
   assert.equal(ledger.claims.size,0);assert.equal(ledger.results.size,0);assert.equal(ledger.stats().quarantinedRecords,2);
  }finally{rmSync(dir,{recursive:true,force:true});}
 });
+
+test('cascade decision session follows source time across midnight while capture remains separate',()=>{
+ const source='2026-10-01T23:58:00-04:00';
+ const capture=new Date('2026-10-02T04:03:00Z');
+ const c=buildCascadeClaim({signalId:'midnight-fixture',state:'TRIGGERED',direction:'BULLISH',technical:{price:500},event:{triggerPrice:499,invalidationPrice:495},generatedAt:source},capture);
+ assert.equal(c.decisionTime,'2026-10-02T03:58:00.000Z');
+ assert.equal(c.capturedAt,capture.toISOString());
+ assert.equal(c.sessionDate,'2026-10-01');
+ assert.deepEqual(validateClaim(c),[]);
+});
