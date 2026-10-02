@@ -59,7 +59,7 @@ Evaluation also runs automatically after each scan and every `OUTCOME_EVAL_INTER
 
 This repair fixes the five additional PR15 regression findings. It remains a daily price-reference research grader, not trade execution or a model-learning service. Existing UI and engine formulas are unchanged.
 
-Set OUTCOME_SESSION_CALENDAR_FILE to a private JSON calendar with source, version, complete:true, from, through, and strictly sorted sessions [{date,closeAt}]. closeAt must represent availability/finalization after the actual session close, including early closes. complete asserts all sessions in that coverage interval are included. The operator must verify source and completeness: validation does not independently certify exchange sessions. No production calendar is supplied. Missing/invalid calendar means INSUFFICIENT_DATA, not guessed weekdays or a pass. Missing required elapsed session cannot be replaced by a later bar. A terminal target/stop may resolve early only after all preceding required sessions are present and complete; unused future sessions are not needed.
+Set OUTCOME_SESSION_CALENDAR_FILE to a private JSON calendar with source, version, complete:true, from, through, and strictly sorted sessions [{date,closeAt}]. closeAt must represent availability/finalization after the actual session close, including early closes. complete asserts all sessions in that coverage interval are included. The operator must verify source and completeness: validation does not independently certify exchange sessions. The bundled scheduled calendar is described below; override data must retain source/version coverage. Missing/invalid calendar means INSUFFICIENT_DATA, not guessed weekdays or a pass. Missing required elapsed session cannot be replaced by a later bar. A terminal target/stop may resolve early only after all preceding required sessions are present and complete; unused future sessions are not needed.
 
 Opening target/stop gaps have priority over later bar extremes; otherwise both intrabar levels touched remains ambiguous/conservative. New results carry evaluatorVersion and calendar source/version/hash. Do not overwrite or silently regrade older results; compare evaluator cohorts separately.
 
@@ -69,4 +69,10 @@ Storage remains local JSONL. These changes do not establish crash-atomic multi-f
 
 Verification: 40 tests passed (seven additional regression tests); static release check passed. No real feed request, broker action, Render deployment or Vercel release performed.
 
+## NYSE scheduled calendar follow-up
+
+Default regular US cash-equity calendar covers January 1, 2026 through December 31, 2027. Source reviewed October 2, 2026: https://www.nyse.com/trade/hours-calendars. Scheduled holidays and three early closes are explicit; timezone conversion uses America/New_York. exchangeCloseAt is the NYSE close; closeAt adds the research fifteen-minute finalization buffer, not a verified provider latency promise. OUTCOME_SESSION_CALENDAR_FILE may override the bundled calendar with separately sourced/versioned coverage.
+
+No unscheduled future closure is predicted. Missing required bars remain unresolved. Horizon requests beyond available calendar sessions fail closed; a release test fails once calendar coverage expires. Historical/forward rule versions are unchanged. This is the first follow-up dependency; Supabase, live adapter and scheduler remain separate work in that order. Nothing on index.html is changed.
 Cascade timing clarification: outcome-repair/1 uses the validated source generatedAt as decisionTime/sessionDate and records server capturedAt separately. A five-minute capture across midnight cannot shift the decision session. Source-to-capture delay is bounded by the declared twelve-minute research assumption. This does not certify provider publication time or latency.
+
