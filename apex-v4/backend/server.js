@@ -9,6 +9,7 @@ import { OutcomeLedger }    from './lib/outcomeLedger.js';
 import { OutcomeRunner }    from './lib/outcomeRunner.js';
 import { buildTrackRecord } from './lib/trackRecord.js';
 import { readFileSync } from 'node:fs';
+import { NYSE_CALENDAR } from './lib/nyseCalendar.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -35,7 +36,7 @@ if (tdClient && process.env.OUTCOME_LEDGER !== 'false') {
   try {
     const ledger = new OutcomeLedger(process.env.OUTCOME_STORE_DIR || './data/outcomes');
     const sessionCalendar = process.env.OUTCOME_SESSION_CALENDAR_FILE
-      ? JSON.parse(readFileSync(process.env.OUTCOME_SESSION_CALENDAR_FILE, 'utf8')) : null;
+      ? JSON.parse(readFileSync(process.env.OUTCOME_SESSION_CALENDAR_FILE, 'utf8')) : NYSE_CALENDAR;
     const runner = new OutcomeRunner({ ledger, tdClient, sessionCalendar, maxSymbolsPerRun: parseInt(process.env.OUTCOME_MAX_SYMBOLS_PER_RUN) || 20 });
     outcomes = { ledger, runner, buildTrackRecord, persistent: process.env.OUTCOME_STORE_PERSISTENT === 'true' };
     const everyMin = parseInt(process.env.OUTCOME_EVAL_INTERVAL_MIN) || 360;

@@ -68,3 +68,9 @@ Claims must match copied versioned rule settings, levels and horizon. Cascade ca
 Storage remains local JSONL. These changes do not establish crash-atomic multi-file writes, multiprocess concurrency, durable hosting, a complete immutable error/adoption ledger or live Vercel integration. Source/revision identity and actual model-claim correctness need their own contracts. Public claims/track-record routes retain PR15 access semantics; review private-data access before integration.
 
 Verification: 40 tests passed (seven additional regression tests); static release check passed. No real feed request, broker action, Render deployment or Vercel release performed.
+
+## NYSE scheduled calendar follow-up
+
+Default regular US cash-equity calendar covers January 1, 2026 through December 31, 2027. Source reviewed October 2, 2026: https://www.nyse.com/trade/hours-calendars. Scheduled holidays and three early closes are explicit; timezone conversion uses America/New_York. exchangeCloseAt is the NYSE close; closeAt adds the research fifteen-minute finalization buffer, not a verified provider latency promise. OUTCOME_SESSION_CALENDAR_FILE may override the bundled calendar with separately sourced/versioned coverage.
+
+No unscheduled future closure is predicted. Missing required bars remain unresolved. Horizon requests beyond available calendar sessions fail closed; a release test fails once calendar coverage expires. Historical/forward rule versions are unchanged. This is the first follow-up dependency; Supabase, live adapter and scheduler remain separate work in that order. Nothing on index.html is changed.
