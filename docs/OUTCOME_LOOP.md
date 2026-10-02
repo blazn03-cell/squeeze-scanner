@@ -68,3 +68,5 @@ Claims must match copied versioned rule settings, levels and horizon. Cascade ca
 Storage remains local JSONL. These changes do not establish crash-atomic multi-file writes, multiprocess concurrency, durable hosting, a complete immutable error/adoption ledger or live Vercel integration. Source/revision identity and actual model-claim correctness need their own contracts. Public claims/track-record routes retain PR15 access semantics; review private-data access before integration.
 
 Verification: 40 tests passed (seven additional regression tests); static release check passed. No real feed request, broker action, Render deployment or Vercel release performed.
+
+Cascade timing clarification: outcome-repair/1 uses the validated source generatedAt as decisionTime/sessionDate and records server capturedAt separately. A five-minute capture across midnight cannot shift the decision session. Source-to-capture delay is bounded by the declared twelve-minute research assumption. This does not certify provider publication time or latency.

@@ -90,8 +90,9 @@ export function buildCascadeClaim(snapshot, now = new Date()) {
     ruleVersion: version,
     kind: 'cascade',
     symbol: 'QQQ',
-    decisionTime: now.toISOString(),
-    sessionDate: nyParts(now).date,
+    decisionTime: new Date(sourceTime).toISOString(),
+    capturedAt: now.toISOString(),
+    sessionDate: nyParts(new Date(sourceTime)).date,
     direction,
     entryPrice: entry,
     targetPrice: round(entry + direction * rule.targetDollars),
@@ -141,9 +142,11 @@ export function validateClaim(c) {
     if (c.kind === 'scan' && c.stopPrice !== round(c.entryPrice * (1 - c.direction * expectedRule.stopPct / 100))) errors.push('stop contract mismatch');
     if (c.kind === 'cascade') {
       const sourceTime = Date.parse(c.inputs?.generatedAt);
+      const capturedTime = Date.parse(c.capturedAt);
       if (!Number.isFinite(c.inputs?.triggerPrice) || c.inputs.triggerPrice <= 0
           || !Number.isFinite(sourceTime) || sourceTime > Date.parse(c.decisionTime)
-          || Date.parse(c.decisionTime) - sourceTime > 12 * 60000) errors.push('cascade source availability');
+          || sourceTime !== Date.parse(c.decisionTime) || !Number.isFinite(capturedTime)
+          || capturedTime < sourceTime || capturedTime - sourceTime > 12 * 60000) errors.push('cascade source availability');
     }
     if (c.direction * (c.targetPrice - c.entryPrice) <= 0) errors.push('target on wrong side');
     if (c.direction * (c.entryPrice - c.stopPrice) <= 0) errors.push('stop on wrong side');
